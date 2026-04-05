@@ -15,6 +15,10 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "android": {
+      "package": "com.alan.lifeos",
+      "versionCode": 1
     }
   }
 }
