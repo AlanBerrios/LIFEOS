@@ -1,0 +1,14 @@
+# Features Centrales Avanzadas
+- [ ] Geofencing pasivo (expo-location) para detectar llegada a casa y activar el Scheduler.
+- [ ] IA Negociadora (RAG + Function Calling) para reprogramación interactiva.
+- [ ] Modelo de energía cruzado con Carga Cognitiva para gestión de fatiga precisa.
+- [ ] Sincronización en la nube (PostgreSQL + Supabase).
+
+# Mejoras de UI/UX Inmediatas (Pendientes)
+- [x] Estadísticas y análisis de productividad: pantalla /stats con resumen del día, energía cognitiva, barras de distribución, sparkline 7 días y pool breakdown.
+- [x] Modelo de energía cognitiva en el Scheduler: presupuesto dual (tiempo 90min + energía 600u). Superarlo inserta "Recarga mental" de 20min. Penalización dinámica de tareas pesadas cuando el presupuesto baja.
+- [x] Gestos "Swipe": SwipeableTaskCard.tsx con react-native-gesture-handler. Swipe derecho = completar, izquierdo = borrar. Hints visuales de color mientras arrastras.
+- [x] Formularios Intuitivos: Sliders para ETA (5–240 min), prioridad (1–5 con estrellas) y carga cognitiva (1–10 con colores). DateTimePicker nativo para deadline.
+- [x] Animaciones Fluidas: FadeInDown, ZoomIn y Layout.springify() con react-native-reanimated en index.tsx y pool.tsx. Barra de progreso animada en ActionTimer.
+- [x] Ajuste Tipográfico: fontFamily: 'monospace' aplicado en stats del Dashboard, reloj del ActionTimer, timestamps del TimelineBlock y duración en sliders.
+- [x] Scheduler avanzado OR-Tools inspired: Hard constraints (deadlines <2h), Beam Search K=3 contextual, Simulated Annealing global (400 iter), cognitive alternation penalties — TypeScript puro, sin deps externas.
