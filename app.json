@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "LifeOS",
+    "slug": "lifeos",
+    "scheme": "lifeos",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "plugins": [
+      "expo-router",
+      "expo-notifications"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
