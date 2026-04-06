@@ -19,6 +19,12 @@
     "android": {
       "package": "com.alan.lifeos",
       "versionCode": 1
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "9b0d0b38-a4e3-4343-a007-fb2edd693a19"
+      }
     }
   }
 }
