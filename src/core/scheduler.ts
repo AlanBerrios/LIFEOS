@@ -1,72 +1,50 @@
 /**
- * LifeOS — Advanced Scheduler (OR-Tools inspired)
- *
- * Implementa un scheduler de optimización global en TypeScript puro,
- * equivalente a lo que OR-Tools (Google) haría para este problema de
- * secuenciación con restricciones (Constraint Programming + Local Search).
- *
- * Algoritmos utilizados:
- *  1. Hard constraints:   Deadlines inminentes (<2h) forzados al frente
- *  2. Beam Search (K=3):  Exploración de los K mejores candidatos por paso
- *  3. Cognitive Alternation: Penaliza N tareas pesadas consecutivas
- *  4. Simulated Annealing: Post-proceso de mejora de secuencia global
- *  5. Dual resource model: Tiempo (90min) + Energía cognitiva (600u)
+ * LifeOS — Scheduler v2
+ * Soporta: urgency, fixed_start/end, breakDurationMinutes configurable
  */
 
 import { createId } from '../utils/ids';
 import { HOUR_MS } from '../utils/time';
-import type { ScheduleBlock, Task } from '../types';
+import type { AppSettings, ScheduleBlock, Task, TaskUrgency } from '../types';
 
-// ─── Constantes ───────────────────────────────────────────────────────────────
+const URGENCY_BONUS: Record<TaskUrgency, number> = {
+  today: 50,
+  this_week: 20,
+  this_month: 5,
+  someday: 0
+};
 
-const TIME_STREAK_LIMIT    = 90;   // minutos de trabajo continuo → descanso
-const TIME_BREAK           = 10;   // minutos de descanso estándar
-const COGNITIVE_BUDGET     = 600;  // cognitive_load × eta_minutes → carga máxima
-const COGNITIVE_BREAK      = 20;   // descanso "Recarga mental"
-
-// Beam Search: cuántos candidatos evalúa en cada paso
 const BEAM_WIDTH = 3;
-// Simulated Annealing: iteraciones y temperatura inicial
-const SA_ITERATIONS  = 400;
-const SA_TEMP_INIT   = 8.0;
-const SA_COOLING     = 0.97;
-// Hard deadline: tareas dentro de este umbral van PRIMERO
+const SA_ITERATIONS = 400;
+const SA_TEMP_INIT = 8.0;
+const SA_COOLING = 0.97;
 const HARD_DEADLINE_HOURS = 2;
-// Penalización por N tareas consecutivas de alta carga cognitiva
-const HIGH_LOAD_THRESHOLD   = 7;
-const MAX_HIGH_LOAD_STREAK  = 2;
-
-// ─── Tipos internos ───────────────────────────────────────────────────────────
+const HIGH_LOAD_THRESHOLD = 7;
+const MAX_HIGH_LOAD_STREAK = 2;
 
 interface ScoredTask {
   task: Task;
   baseScore: number;
-  isHardConstraint: boolean;   // deadline inminente
+  isHardConstraint: boolean;
 }
-
-// ─── Utilidades de scoring ────────────────────────────────────────────────────
 
 function deadlineProximityScore(task: Task, now: Date): number {
   if (!task.deadline) return 0;
   const hoursLeft = (task.deadline.getTime() - now.getTime()) / HOUR_MS;
-  if (hoursLeft <= 0)  return 120;  // vencida → máxima urgencia
-  if (hoursLeft <= 2)  return 100;  // inminente
+  if (hoursLeft <= 0) return 120;
+  if (hoursLeft <= 2) return 100;
   return Math.max(0, 72 - hoursLeft * 2);
 }
 
-/**
- * Score base de una tarea (sin contexto de secuencia).
- */
 function baseScore(task: Task, now: Date): number {
-  return task.priority * 10
-    + deadlineProximityScore(task, now)
-    - task.cognitive_load * 0.5;
+  return (
+    task.priority * 10 +
+    deadlineProximityScore(task, now) +
+    URGENCY_BONUS[task.urgency] -
+    task.cognitive_load * 0.5
+  );
 }
 
-/**
- * Score contextual: aplica penalización si hay racha de tareas pesadas
- * antes de esta en la secuencia propuesta.
- */
 function contextualScore(
   task: Task,
   now: Date,
@@ -74,266 +52,199 @@ function contextualScore(
   remainingCognitiveBudget: number
 ): number {
   let score = baseScore(task, now);
-
-  // Penalización por racha de alta carga cognitiva
   const recentHighLoad = recentTasks
     .slice(-MAX_HIGH_LOAD_STREAK)
     .filter((t) => t.cognitive_load >= HIGH_LOAD_THRESHOLD).length;
-
   if (recentHighLoad >= MAX_HIGH_LOAD_STREAK && task.cognitive_load >= HIGH_LOAD_THRESHOLD) {
-    score -= 15; // penaliza insertar otra tarea pesada en la racha
+    score -= 30;
   }
-
-  // Penalización dinámica por presupuesto cognitivo bajo
-  const budgetRatio = Math.min(1, remainingCognitiveBudget / COGNITIVE_BUDGET);
-  const cognitiveWeight = 0.5 + (1 - budgetRatio) * 1.5; // 0.5 → 2.0
-  score -= task.cognitive_load * (cognitiveWeight - 0.5); // ajuste delta
-
+  const taskBudgetCost = task.cognitive_load * task.eta_minutes;
+  if (taskBudgetCost > remainingCognitiveBudget * 0.6) {
+    score -= 15;
+  }
   return score;
 }
 
-// ─── Simulated Annealing ──────────────────────────────────────────────────────
-
-/**
- * Calcula la puntuación total de una secuencia de tareas.
- * Penaliza: rachas de alta carga, deadline violations.
- */
-function sequenceScore(tasks: Task[], now: Date): number {
-  let total = 0;
-  for (let i = 0; i < tasks.length; i++) {
-    total += baseScore(tasks[i], now);
-
-    // Penalización por racha de alta carga
-    if (
-      i >= MAX_HIGH_LOAD_STREAK - 1 &&
-      tasks[i].cognitive_load >= HIGH_LOAD_THRESHOLD &&
-      tasks[i - 1].cognitive_load >= HIGH_LOAD_THRESHOLD
-    ) {
-      total -= 10;
-    }
-  }
-  return total;
+function scoreAll(tasks: Task[], now: Date): ScoredTask[] {
+  return tasks.map((task) => ({
+    task,
+    baseScore: baseScore(task, now),
+    isHardConstraint: !!(
+      task.deadline &&
+      (task.deadline.getTime() - now.getTime()) / HOUR_MS <= HARD_DEADLINE_HOURS
+    ) || task.urgency === 'today'
+  }));
 }
 
-/**
- * Simulated Annealing: intercambia dos posiciones aleatorias en la secuencia
- * y acepta con probabilidad e^(delta/T). Preserva hard-constraints al frente.
- */
-function simulatedAnnealing(
-  tasks: Task[],
-  hardCount: number,
-  now: Date
-): Task[] {
-  // La zona "suave" empieza después de los hard-constraints
-  const softStart = hardCount;
-  if (tasks.length - softStart < 2) return tasks;
+function computeSequenceQuality(sequence: Task[], now: Date): number {
+  return sequence.reduce((sum, t) => sum + baseScore(t, now), 0);
+}
 
-  let current = [...tasks];
-  let currentScore = sequenceScore(current, now);
+function simulatedAnnealing(sequence: Task[], now: Date): Task[] {
+  let current = [...sequence];
+  let currentQuality = computeSequenceQuality(current, now);
   let temp = SA_TEMP_INIT;
 
   for (let iter = 0; iter < SA_ITERATIONS; iter++) {
-    // Elegir dos índices aleatorios en la zona suave
-    const range = tasks.length - softStart;
-    const i = softStart + Math.floor(Math.random() * range);
-    const j = softStart + Math.floor(Math.random() * range);
+    if (current.length < 2) break;
+    const i = Math.floor(Math.random() * current.length);
+    const j = Math.floor(Math.random() * current.length);
     if (i === j) continue;
 
     const candidate = [...current];
     [candidate[i], candidate[j]] = [candidate[j], candidate[i]];
-
-    const candidateScore = sequenceScore(candidate, now);
-    const delta = candidateScore - currentScore;
+    const candidateQuality = computeSequenceQuality(candidate, now);
+    const delta = candidateQuality - currentQuality;
 
     if (delta > 0 || Math.random() < Math.exp(delta / temp)) {
       current = candidate;
-      currentScore = candidateScore;
+      currentQuality = candidateQuality;
     }
-
     temp *= SA_COOLING;
   }
-
   return current;
 }
 
-// ─── Beam Search ──────────────────────────────────────────────────────────────
+export function generateTimeline(
+  tasks: Task[],
+  now: Date,
+  settings?: Partial<AppSettings>
+): ScheduleBlock[] {
+  const breakMin = settings?.breakDurationMinutes ?? 10;
+  const longBreakMin = settings?.longBreakDurationMinutes ?? 20;
+  const streakLimit = settings?.workStreakLimitMinutes ?? 90;
+  const cognitiveBudget = 600;
 
-/**
- * Ordena las tareas usando Beam Search de ancho BEAM_WIDTH.
- * En cada paso elige entre los BEAM_WIDTH mejores candidatos
- * considerando el contexto de la secuencia ya construida.
- */
-function beamSearchOrder(
-  scoredTasks: ScoredTask[],
-  now: Date
-): Task[] {
-  // Hard constraints siempre primero (ordenadas por urgencia descendente)
-  const hardTasks = scoredTasks
-    .filter((s) => s.isHardConstraint)
-    .sort((a, b) => b.baseScore - a.baseScore)
-    .map((s) => s.task);
-
-  const softPool = scoredTasks
-    .filter((s) => !s.isHardConstraint)
-    .map((s) => s.task);
-
-  const sequence: Task[] = [...hardTasks];
-  const remaining = new Set(softPool.map((t) => t.id));
-  const pool = [...softPool];
-
-  let cognitiveBudgetUsed = hardTasks.reduce(
-    (sum, t) => sum + t.cognitive_load * t.eta_minutes, 0
+  const schedulableTasks = tasks.filter(
+    (t) => t.status === 'pool' || t.status === 'scheduled'
   );
+  if (schedulableTasks.length === 0) return [];
 
-  while (remaining.size > 0) {
-    const available = pool.filter((t) => remaining.has(t.id));
-    const remainingBudget = COGNITIVE_BUDGET - (cognitiveBudgetUsed % COGNITIVE_BUDGET);
-    const recentTasks = sequence.slice(-MAX_HIGH_LOAD_STREAK);
+  const scored = scoreAll(schedulableTasks, now);
+  const hardFirst = scored.filter((s) => s.isHardConstraint).sort((a, b) => b.baseScore - a.baseScore);
+  const flexible = scored.filter((s) => !s.isHardConstraint);
 
-    // Scoring contextual para todos los candidatos
-    const scored = available
-      .map((task) => ({
-        task,
-        score: contextualScore(task, now, recentTasks, remainingBudget)
-      }))
-      .sort((a, b) => b.score - a.score);
+  // Beam Search para flexible
+  type Beam = { sequence: Task[]; recentTasks: Task[]; cognitiveBudgetLeft: number; score: number };
+  let beams: Beam[] = [{ sequence: [], recentTasks: [], cognitiveBudgetLeft: cognitiveBudget, score: 0 }];
+  const remainingFlexible = [...flexible.map((s) => s.task)];
 
-    // Tomar el mejor del beam (top-1 después del scoring contextual)
-    const best = scored[0];
-    if (!best) break;
-
-    sequence.push(best.task);
-    remaining.delete(best.task.id);
-    cognitiveBudgetUsed += best.task.cognitive_load * best.task.eta_minutes;
+  for (let step = 0; step < remainingFlexible.length; step++) {
+    const candidates: Beam[] = [];
+    for (const beam of beams) {
+      const available = remainingFlexible.filter(
+        (t) => !beam.sequence.find((s) => s.id === t.id)
+      );
+      if (available.length === 0) {
+        candidates.push(beam);
+        continue;
+      }
+      const scored2 = available.map((t) => ({
+        task: t,
+        score: contextualScore(t, now, beam.recentTasks, beam.cognitiveBudgetLeft)
+      }));
+      scored2.sort((a, b) => b.score - a.score);
+      for (const { task } of scored2.slice(0, BEAM_WIDTH)) {
+        candidates.push({
+          sequence: [...beam.sequence, task],
+          recentTasks: [...beam.recentTasks.slice(-MAX_HIGH_LOAD_STREAK), task],
+          cognitiveBudgetLeft: beam.cognitiveBudgetLeft - task.cognitive_load * task.eta_minutes,
+          score: beam.score + contextualScore(task, now, beam.recentTasks, beam.cognitiveBudgetLeft)
+        });
+      }
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    beams = candidates.slice(0, BEAM_WIDTH);
   }
 
-  return sequence;
-}
+  const bestFlexible = beams[0]?.sequence ?? [];
+  const finalSequence = simulatedAnnealing(
+    [...hardFirst.map((s) => s.task), ...bestFlexible],
+    now
+  );
 
-// ─── Construcción del timeline ────────────────────────────────────────────────
-
-function makeRestBlock(start: Date, minutes: number, label: string): ScheduleBlock {
-  return {
-    id: createId('rest'),
-    type: 'rest',
-    title: label,
-    start_time: new Date(start),
-    end_time: new Date(start.getTime() + minutes * 60_000)
-  };
-}
-
-function buildTimelineFromSequence(
-  orderedTasks: Task[],
-  startTime: Date
-): ScheduleBlock[] {
-  const timeline: ScheduleBlock[] = [];
-  let cursor = new Date(startTime);
-  let timeStreak = 0;
+  // ── Build timeline blocks ─────────────────────────────────────────────────
+  const blocks: ScheduleBlock[] = [];
+  let cursor = new Date(now);
+  let workStreakMinutes = 0;
   let cognitiveUsed = 0;
 
-  for (const task of orderedTasks) {
-    const taskDrain = task.cognitive_load * task.eta_minutes;
-    const timeExhausted = timeStreak >= TIME_STREAK_LIMIT;
-    const cognitiveExhausted = cognitiveUsed >= COGNITIVE_BUDGET;
+  for (const task of finalSequence) {
+    // Si la tarea tiene hora fija, insertar descanso hasta ese momento
+    if (task.fixed_start && task.fixed_start > cursor) {
+      const waitMinutes = (task.fixed_start.getTime() - cursor.getTime()) / 60_000;
+      if (waitMinutes > 2) {
+        blocks.push({
+          id: createId('rest'),
+          type: 'rest',
+          title: 'Espera',
+          start_time: new Date(cursor),
+          end_time: new Date(task.fixed_start)
+        });
+      }
+      cursor = new Date(task.fixed_start);
+      workStreakMinutes = 0;
+    }
 
-    if (timeExhausted || cognitiveExhausted) {
-      const isDeep = cognitiveExhausted;
-      const restBlock = makeRestBlock(
-        cursor,
-        isDeep ? COGNITIVE_BREAK : TIME_BREAK,
-        isDeep ? 'Recarga mental' : 'Descanso'
-      );
-      timeline.push(restBlock);
-      cursor = restBlock.end_time;
-      timeStreak = 0;
+    // Descanso por racha de trabajo
+    if (workStreakMinutes >= streakLimit) {
+      const breakStart = new Date(cursor);
+      const breakEnd = new Date(cursor.getTime() + breakMin * 60_000);
+      blocks.push({
+        id: createId('rest'),
+        type: 'rest',
+        title: 'Descanso',
+        start_time: breakStart,
+        end_time: breakEnd
+      });
+      cursor = breakEnd;
+      workStreakMinutes = 0;
+    }
+
+    // Descanso cognitivo
+    if (cognitiveUsed >= cognitiveBudget) {
+      const breakStart = new Date(cursor);
+      const breakEnd = new Date(cursor.getTime() + longBreakMin * 60_000);
+      blocks.push({
+        id: createId('rest'),
+        type: 'rest',
+        title: 'Recarga mental',
+        start_time: breakStart,
+        end_time: breakEnd
+      });
+      cursor = breakEnd;
       cognitiveUsed = 0;
     }
 
-    const taskStart = new Date(cursor);
-    const taskEnd = new Date(taskStart.getTime() + task.eta_minutes * 60_000);
+    const taskDuration = task.eta_minutes * 60_000;
+    const taskEnd = task.fixed_end ?? new Date(cursor.getTime() + taskDuration);
+    const drain = task.cognitive_load * task.eta_minutes;
 
-    timeline.push({
-      id: createId('task'),
+    blocks.push({
+      id: createId('block'),
       type: 'task',
       task_id: task.id,
       title: task.title,
-      start_time: taskStart,
+      start_time: new Date(cursor),
       end_time: taskEnd,
-      cognitive_drain: taskDrain
+      cognitive_drain: drain
     });
 
     cursor = taskEnd;
-    timeStreak += task.eta_minutes;
-    cognitiveUsed += taskDrain;
+    workStreakMinutes += task.eta_minutes;
+    cognitiveUsed += drain;
 
-    if (timeStreak >= TIME_STREAK_LIMIT || cognitiveUsed >= COGNITIVE_BUDGET) {
-      const isDeep = cognitiveUsed >= COGNITIVE_BUDGET;
-      const restBlock = makeRestBlock(
-        cursor,
-        isDeep ? COGNITIVE_BREAK : TIME_BREAK,
-        isDeep ? 'Recarga mental' : 'Descanso'
-      );
-      timeline.push(restBlock);
-      cursor = restBlock.end_time;
-      timeStreak = 0;
-      cognitiveUsed = 0;
-    }
+    // Descanso corto entre tareas (siempre)
+    const shortBreakEnd = new Date(cursor.getTime() + breakMin * 60_000);
+    blocks.push({
+      id: createId('rest'),
+      type: 'rest',
+      title: 'Descanso',
+      start_time: new Date(cursor),
+      end_time: shortBreakEnd
+    });
+    cursor = shortBreakEnd;
   }
 
-  return timeline;
-}
-
-// ─── API pública ──────────────────────────────────────────────────────────────
-
-export interface SchedulerOptions {
-  initialCognitiveBudget?: number;
-  /** Horas para considerar una tarea como "hard constraint" de deadline */
-  hardDeadlineHours?: number;
-}
-
-/**
- * Genera un timeline optimizado globalmente a partir de las tareas del pool.
- *
- * Pipeline de optimización:
- *  1. Separación de hard constraints (deadlines inminentes → siempre primero)
- *  2. Beam Search contextual para ordenamiento inicial inteligente
- *  3. Simulated Annealing para refinamiento global de la secuencia
- *  4. Construcción del timeline con modelo dual de recursos
- *     (tiempo 90min + energía cognitiva 600u)
- */
-export function generateTimeline(
-  tasks: Task[],
-  startTime: Date,
-  options: SchedulerOptions = {}
-): ScheduleBlock[] {
-  const hardDeadlineHours = options.hardDeadlineHours ?? HARD_DEADLINE_HOURS;
-  const now = startTime;
-
-  // 1. Pool de tareas pendientes con scoring base
-  const pool = tasks
-    .filter((t) => t.status === 'pool')
-    .map((task): ScoredTask => {
-      const score = baseScore(task, now);
-      const hoursLeft = task.deadline
-        ? (task.deadline.getTime() - now.getTime()) / HOUR_MS
-        : Infinity;
-      return {
-        task,
-        baseScore: score,
-        isHardConstraint: hoursLeft <= hardDeadlineHours
-      };
-    });
-
-  if (pool.length === 0) return [];
-
-  // 2. Beam Search para ordenamiento contextual
-  const beamOrdered = beamSearchOrder(pool, now);
-
-  // 3. Simulated Annealing para refinamiento global
-  //    (preserva hard constraints al frente)
-  const hardCount = pool.filter((s) => s.isHardConstraint).length;
-  const optimized = simulatedAnnealing(beamOrdered, hardCount, now);
-
-  // 4. Construir el timeline con el modelo dual de recursos
-  return buildTimelineFromSequence(optimized, startTime);
+  return blocks;
 }

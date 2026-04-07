@@ -5,11 +5,20 @@ import { generateTimeline as buildTimelineLocal } from '../core/scheduler';
 import { callSchedulerApi, SchedulerApiError } from '../services/schedulerApi';
 import { createId } from '../utils/ids';
 import { MINUTE_MS } from '../utils/time';
-import { cancelAllNotifications, scheduleLocalNotification } from '../services/notifications';
+import { cancelAllNotifications, scheduleTaskNotifications } from '../services/notifications';
 import { toDate, toDateRequired } from '../utils/date';
-import type { DailySession, LifeTimer, ScheduleBlock, Task, TaskStatus } from '../types';
+import type {
+  AppSettings,
+  DailySession,
+  DEFAULT_SETTINGS as SettingsDefaults,
+  LifeTimer,
+  ScheduleBlock,
+  Task,
+  TaskStatus
+} from '../types';
+import { DEFAULT_SETTINGS } from '../types';
 
-// ─── Interfaces internas ──────────────────────────────────────────────────────
+// ─── Tipos internos ───────────────────────────────────────────────────────────
 
 interface TaskDraft {
   title: string;
@@ -18,6 +27,9 @@ interface TaskDraft {
   priority: 1 | 2 | 3 | 4 | 5;
   cognitive_load: number;
   deadline?: Date | string | null;
+  fixed_start?: Date | string | null;
+  fixed_end?: Date | string | null;
+  urgency: import('../types').TaskUrgency;
 }
 
 interface TaskUpdate {
@@ -27,10 +39,12 @@ interface TaskUpdate {
   priority?: 1 | 2 | 3 | 4 | 5;
   cognitive_load?: number;
   deadline?: Date | string | null;
+  fixed_start?: Date | string | null;
+  fixed_end?: Date | string | null;
+  urgency?: import('../types').TaskUrgency;
   status?: TaskStatus;
 }
 
-/** Motor que generó el último timeline */
 export type SchedulerEngine = 'ortools-cpsat' | 'greedy-fallback' | 'local-ts' | 'idle';
 
 interface LifeStore {
@@ -38,11 +52,9 @@ interface LifeStore {
   timeline: ScheduleBlock[];
   activeTimer: LifeTimer | null;
   sessions: DailySession[];
-  /** Motor que generó el timeline actual */
+  settings: AppSettings;
   lastEngine: SchedulerEngine;
-  /** Status del solver (OPTIMAL, FEASIBLE, etc.) */
   lastSolverStatus: string;
-  /** true mientras genera el timeline */
   isGenerating: boolean;
 
   // Tasks
@@ -54,14 +66,20 @@ interface LifeStore {
   // Timeline
   generateTimeline: (startTime?: Date) => Promise<void>;
   setTimeline: (blocks: ScheduleBlock[]) => void;
+  moveBlock: (blockId: string, direction: 'up' | 'down') => void;
+  updateBreakDuration: (blockId: string, newMinutes: number) => void;
 
   // Timer
   startMealTimer: () => Promise<void>;
   stopTimer: () => Promise<void>;
   restoreMealTimer: () => void;
 
-  // Sessions
+  // Settings
+  updateSettings: (partial: Partial<AppSettings>) => void;
+
+  // Data management
   clearOldSessions: () => void;
+  clearAllData: () => void;
 }
 
 // ─── Timer helpers ────────────────────────────────────────────────────────────
@@ -80,8 +98,11 @@ function clearMealTimeout(): void {
 function reviveTask(task: Task): Task {
   return {
     ...task,
+    urgency: (task as any).urgency ?? 'someday',
     created_at: toDateRequired(task.created_at),
-    deadline: toDate(task.deadline)
+    deadline: toDate(task.deadline),
+    fixed_start: toDate((task as any).fixed_start),
+    fixed_end: toDate((task as any).fixed_end)
   };
 }
 
@@ -161,6 +182,7 @@ export const useLifeStore = create<LifeStore>()(
       timeline: [],
       activeTimer: null,
       sessions: [],
+      settings: DEFAULT_SETTINGS,
       lastEngine: 'idle',
       lastSolverStatus: '',
       isGenerating: false,
@@ -175,6 +197,9 @@ export const useLifeStore = create<LifeStore>()(
           priority: task.priority,
           cognitive_load: Math.max(1, Math.min(10, Math.round(task.cognitive_load))),
           deadline: toDate(task.deadline),
+          fixed_start: toDate(task.fixed_start),
+          fixed_end: toDate(task.fixed_end),
+          urgency: task.urgency,
           status: 'pool',
           created_at: new Date()
         };
@@ -203,6 +228,11 @@ export const useLifeStore = create<LifeStore>()(
                   : Math.max(1, Math.min(10, Math.round(updates.cognitive_load))),
               deadline:
                 updates.deadline === undefined ? task.deadline : toDate(updates.deadline),
+              fixed_start:
+                updates.fixed_start === undefined ? task.fixed_start : toDate(updates.fixed_start),
+              fixed_end:
+                updates.fixed_end === undefined ? task.fixed_end : toDate(updates.fixed_end),
+              urgency: updates.urgency ?? task.urgency,
               status: updates.status ?? task.status
             };
           })
@@ -227,34 +257,31 @@ export const useLifeStore = create<LifeStore>()(
 
       // ── Timeline ───────────────────────────────────────────────────────────
       generateTimeline: async (startTime = new Date()) => {
-        const currentTasks = get().tasks;
+        const { tasks, settings } = get();
+        // Solo re-planificar tareas que aún están en pool (no completadas)
+        const schedulableTasks = tasks.filter(
+          (t) => t.status === 'pool' || t.status === 'scheduled'
+        );
         set({ isGenerating: true });
 
-        let nextTimeline: ScheduleBlock[];
+        let newBlocks: ScheduleBlock[];
         let engine: SchedulerEngine;
         let solverStatus: string;
 
-        // 1. Intentar backend Python (OR-Tools)
         try {
-          const { blocks, meta } = await callSchedulerApi(currentTasks, startTime);
-          nextTimeline  = blocks;
-          engine        = meta.engine === 'ortools-cpsat' ? 'ortools-cpsat' : 'greedy-fallback';
-          solverStatus  = meta.solver_status;
+          const { blocks, meta } = await callSchedulerApi(schedulableTasks, startTime);
+          newBlocks = blocks;
+          engine = meta.engine === 'ortools-cpsat' ? 'ortools-cpsat' : 'greedy-fallback';
+          solverStatus = meta.solver_status;
         } catch (err) {
-          // 2. Fallback al scheduler TypeScript local
-          console.warn(
-            '[LifeOS] Backend Python no disponible, usando scheduler local.',
-            err instanceof SchedulerApiError ? err.message : err
-          );
-          nextTimeline  = buildTimelineLocal(currentTasks, startTime);
-          engine        = 'local-ts';
-          solverStatus  = 'LOCAL_FALLBACK';
+          console.warn('[LifeOS] Backend no disponible, usando scheduler local.', err instanceof SchedulerApiError ? err.message : err);
+          newBlocks = buildTimelineLocal(schedulableTasks, startTime, settings);
+          engine = 'local-ts';
+          solverStatus = 'LOCAL_FALLBACK';
         }
 
         const scheduledTaskIds = new Set(
-          nextTimeline
-            .filter((b) => b.type === 'task' && b.task_id)
-            .map((b) => b.task_id as string)
+          newBlocks.filter((b) => b.type === 'task' && b.task_id).map((b) => b.task_id as string)
         );
 
         const today = todayISO();
@@ -266,21 +293,77 @@ export const useLifeStore = create<LifeStore>()(
               : task
           );
 
-          const session: DailySession = buildSession(updatedTasks, nextTimeline);
+          const session = buildSession(updatedTasks, newBlocks);
           const otherSessions = state.sessions.filter((s) => s.date !== today);
 
           return {
             tasks: updatedTasks,
-            timeline: nextTimeline,
+            timeline: newBlocks,
             sessions: [...otherSessions, session],
             lastEngine: engine,
             lastSolverStatus: solverStatus,
             isGenerating: false
           };
         });
+
+        // Programar notificaciones para el nuevo timeline
+        if (settings.notifyTaskStart) {
+          void scheduleTaskNotifications(newBlocks, tasks, settings.notifyTaskStartLeadMinutes);
+        }
       },
 
       setTimeline: (blocks) => set({ timeline: blocks }),
+
+      moveBlock: (blockId, direction) => {
+        set((state) => {
+          const idx = state.timeline.findIndex((b) => b.id === blockId);
+          if (idx < 0) return state;
+          const blocks = [...state.timeline];
+          const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+          if (targetIdx < 0 || targetIdx >= blocks.length) return state;
+          // Swap preservando los tiempos
+          const a = blocks[idx];
+          const b = blocks[targetIdx];
+          const aDuration = a.end_time.getTime() - a.start_time.getTime();
+          const bDuration = b.end_time.getTime() - b.start_time.getTime();
+          // Recalcular tiempos según la posición del más temprano
+          const firstStart = idx < targetIdx ? a.start_time : b.start_time;
+          const first = idx < targetIdx ? b : a;
+          const second = idx < targetIdx ? a : b;
+          const firstDur = idx < targetIdx ? bDuration : aDuration;
+          const secondDur = idx < targetIdx ? aDuration : bDuration;
+          const firstEnd = new Date(firstStart.getTime() + firstDur);
+          const secondStart = firstEnd;
+          const secondEnd = new Date(secondStart.getTime() + secondDur);
+          blocks[Math.min(idx, targetIdx)] = { ...first, start_time: firstStart, end_time: firstEnd, pinned: true };
+          blocks[Math.max(idx, targetIdx)] = { ...second, start_time: secondStart, end_time: secondEnd, pinned: true };
+          return { timeline: blocks };
+        });
+      },
+
+      updateBreakDuration: (blockId, newMinutes) => {
+        set((state) => {
+          const idx = state.timeline.findIndex((b) => b.id === blockId);
+          if (idx < 0) return state;
+          const blocks = [...state.timeline];
+          const block = blocks[idx];
+          if (block.type !== 'rest' && block.type !== 'meal') return state;
+          const oldDuration = block.end_time.getTime() - block.start_time.getTime();
+          const newDuration = newMinutes * 60_000;
+          const delta = newDuration - oldDuration;
+          const newEnd = new Date(block.end_time.getTime() + delta);
+          blocks[idx] = { ...block, end_time: newEnd };
+          // Shift all subsequent blocks
+          for (let i = idx + 1; i < blocks.length; i++) {
+            blocks[i] = {
+              ...blocks[i],
+              start_time: new Date(blocks[i].start_time.getTime() + delta),
+              end_time: new Date(blocks[i].end_time.getTime() + delta)
+            };
+          }
+          return { timeline: blocks };
+        });
+      },
 
       // ── Meal timer ─────────────────────────────────────────────────────────
       startMealTimer: async () => {
@@ -298,11 +381,6 @@ export const useLifeStore = create<LifeStore>()(
             active: true
           }
         });
-        await scheduleLocalNotification(
-          'Tiempo terminado',
-          'Volvamos a reorganizar el día.',
-          90 * 60
-        );
         scheduleMealTimeout(get, set);
       },
 
@@ -316,7 +394,14 @@ export const useLifeStore = create<LifeStore>()(
         scheduleMealTimeout(get, set);
       },
 
-      // ── Sessions ───────────────────────────────────────────────────────────
+      // ── Settings ───────────────────────────────────────────────────────────
+      updateSettings: (partial) => {
+        set((state) => ({
+          settings: { ...state.settings, ...partial }
+        }));
+      },
+
+      // ── Data management ────────────────────────────────────────────────────
       clearOldSessions: () => {
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - 30);
@@ -324,31 +409,45 @@ export const useLifeStore = create<LifeStore>()(
         set((state) => ({
           sessions: state.sessions.filter((s) => s.date >= cutoffStr)
         }));
+      },
+
+      clearAllData: () => {
+        set({
+          tasks: [],
+          timeline: [],
+          sessions: [],
+          activeTimer: null,
+          lastEngine: 'idle',
+          lastSolverStatus: ''
+        });
+        void cancelAllNotifications();
       }
     }),
 
     // ── Persistencia ──────────────────────────────────────────────────────────
     {
-      name: 'lifeos-storage',
+      name: 'lifeos-storage-v2',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         tasks: state.tasks,
         timeline: state.timeline,
         activeTimer: state.activeTimer,
         sessions: state.sessions,
+        settings: state.settings,
         lastEngine: state.lastEngine,
         lastSolverStatus: state.lastSolverStatus
       }),
       merge: (persistedState, currentState) => {
-        const snapshot = persistedState as Partial<LifeStore> | undefined;
+        const snap = persistedState as Partial<LifeStore> | undefined;
         return {
           ...currentState,
-          tasks: (snapshot?.tasks ?? currentState.tasks).map(reviveTask),
-          timeline: (snapshot?.timeline ?? currentState.timeline).map(reviveBlock),
-          activeTimer: reviveTimer(snapshot?.activeTimer ?? currentState.activeTimer),
-          sessions: snapshot?.sessions ?? currentState.sessions,
-          lastEngine: snapshot?.lastEngine ?? 'idle',
-          lastSolverStatus: snapshot?.lastSolverStatus ?? ''
+          tasks: (snap?.tasks ?? []).map(reviveTask),
+          timeline: (snap?.timeline ?? []).map(reviveBlock),
+          activeTimer: reviveTimer(snap?.activeTimer ?? null),
+          sessions: snap?.sessions ?? [],
+          settings: { ...DEFAULT_SETTINGS, ...(snap?.settings ?? {}) },
+          lastEngine: snap?.lastEngine ?? 'idle',
+          lastSolverStatus: snap?.lastSolverStatus ?? ''
         };
       }
     }
