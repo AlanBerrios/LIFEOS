@@ -16,7 +16,6 @@
     "@react-native-community/slider": "^5.0.1",
     "@react-navigation/material-top-tabs": "^7.4.23",
     "expo": "~54.0.0",
-    "expo-android-usagestats": "^1.2.0",
     "expo-auth-session": "^55.0.12",
     "expo-background-fetch": "^55.0.13",
     "expo-constants": "~18.0.13",
