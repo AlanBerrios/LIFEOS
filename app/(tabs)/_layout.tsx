@@ -1,104 +1,89 @@
-import { withLayoutContext } from 'expo-router';
-import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+import { Tabs } from 'expo-router';
 import type { ReactElement } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lifeTheme } from '../../src/theme';
 
-const { Navigator } = createMaterialTopTabNavigator();
-const MaterialTabs = withLayoutContext(Navigator);
-
 const TABS = [
-  { name: 'index', label: 'Hoy', icon: '⚡' },
-  { name: 'calendar', label: 'Calendario', icon: '📅' },
-  { name: 'pool', label: 'Tareas', icon: '📋' },
-  { name: 'stats', label: 'Stats', icon: '📊' },
-  { name: 'settings', label: 'Config', icon: '⚙️' }
+  { name: 'index',    label: 'Hoy',     icon: '⚡' },
+  { name: 'calendar', label: 'Cal.',    icon: '📅' },
+  { name: 'habits',   label: 'Hábitos', icon: '🌟' },
+  { name: 'pool',     label: 'Tareas',  icon: '📋' },
+  { name: 'routines', label: 'Rutinas', icon: '⏰' },
+  { name: 'settings', label: 'Config',  icon: '⚙️' }
 ];
 
 export default function TabLayout(): ReactElement {
   const insets = useSafeAreaInsets();
+  const barHeight = 64 + Math.max(insets.bottom, 12);
 
   return (
-    <MaterialTabs
-      tabBarPosition="bottom"
-      screenOptions={{
-        swipeEnabled: true,
-        animationEnabled: true,
-        tabBarStyle: { display: 'none' }, // Ocultamos la barra nativa para usar la custom
-        lazy: false
-      }}
-      tabBar={(props) => {
-        const { state, navigation } = props;
-        return (
-          <View style={[styles.bottomBar, { paddingBottom: insets.bottom }]}>
-            {TABS.map((tab, index) => {
-              const focused = state.index === index;
-              return (
-                <Pressable
-                  key={tab.name}
-                  style={styles.tabItem}
-                  onPress={() => navigation.navigate(tab.name)}
-                >
-                  <Text style={focused ? styles.iconActive : styles.icon}>
-                    {tab.icon}
-                  </Text>
-                  <Text style={[styles.label, focused && styles.labelActive]}>
-                    {tab.label}
-                  </Text>
-                  {focused && <View style={styles.activeIndicator} />}
-                </Pressable>
-              );
-            })}
-          </View>
-        );
-      }}
+    <Tabs
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarStyle: [styles.tabBar, { height: barHeight }],
+        tabBarActiveTintColor: lifeTheme.colors.primary,
+        tabBarInactiveTintColor: lifeTheme.colors.muted,
+        tabBarShowLabel: false,
+        tabBarIcon: ({ focused }) => {
+          const tab = TABS.find((t) => t.name === route.name);
+          if (!tab) return null;
+          return (
+            <View style={[styles.tabItem, { paddingBottom: Math.max(insets.bottom / 2, 4) }]}>
+              {focused && <View style={styles.activePill} />}
+              <Text style={[styles.tabIcon, focused && { transform: [{ scale: 1.1 }] }]}>{tab.icon}</Text>
+              <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
+                {tab.label}
+              </Text>
+            </View>
+          );
+        }
+      })}
     >
-      <MaterialTabs.Screen name="index" />
-      <MaterialTabs.Screen name="calendar" />
-      <MaterialTabs.Screen name="pool" />
-      <MaterialTabs.Screen name="stats" />
-      <MaterialTabs.Screen name="settings" />
-    </MaterialTabs>
+      {TABS.map((tab) => (
+        <Tabs.Screen key={tab.name} name={tab.name} />
+      ))}
+    </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  bottomBar: {
-    flexDirection: 'row',
+  tabBar: {
     backgroundColor: lifeTheme.colors.surface,
     borderTopWidth: 1,
     borderTopColor: lifeTheme.colors.border,
-    paddingTop: 10
+    paddingBottom: 0,
+    paddingTop: 0,
+    elevation: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4
   },
   tabItem: {
-    flex: 1,
     alignItems: 'center',
-    gap: 3,
-    paddingBottom: 6,
-    position: 'relative'
+    justifyContent: 'center',
+    gap: 2,
+    position: 'relative',
+    paddingTop: 12,
+    width: 64
   },
-  icon: {
-    fontSize: 22
-  },
-  iconActive: {
-    fontSize: 22
-  },
-  label: {
-    fontSize: 10,
-    color: lifeTheme.colors.muted,
-    fontWeight: '500'
-  },
-  labelActive: {
-    color: lifeTheme.colors.primary,
-    fontWeight: '700'
-  },
-  activeIndicator: {
+  activePill: {
     position: 'absolute',
-    top: -10,
-    width: 36,
+    top: -1,
+    width: 32,
     height: 3,
-    borderRadius: 2,
+    borderRadius: 3,
     backgroundColor: lifeTheme.colors.primary
+  },
+  tabIcon: { fontSize: 21 },
+  tabLabel: {
+    color: lifeTheme.colors.muted,
+    fontSize: 10,
+    fontWeight: '600'
+  },
+  tabLabelActive: {
+    color: lifeTheme.colors.primary,
+    fontWeight: '800'
   }
 });

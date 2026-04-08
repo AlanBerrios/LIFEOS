@@ -7,16 +7,8 @@ import { createId } from '../utils/ids';
 import { MINUTE_MS } from '../utils/time';
 import { cancelAllNotifications, scheduleTaskNotifications } from '../services/notifications';
 import { toDate, toDateRequired } from '../utils/date';
-import type {
-  AppSettings,
-  DailySession,
-  DEFAULT_SETTINGS as SettingsDefaults,
-  LifeTimer,
-  ScheduleBlock,
-  Task,
-  TaskStatus
-} from '../types';
 import { DEFAULT_SETTINGS } from '../types';
+import type { AppSettings, DailySession, LifeTimer, ScheduleBlock, Task, TaskStatus } from '../types';
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
@@ -53,6 +45,12 @@ interface LifeStore {
   activeTimer: LifeTimer | null;
   sessions: DailySession[];
   settings: AppSettings;
+  habits: import('../types').Habit[];
+  notes: import('../types').QuickNote[];
+  alarms: import('../types').Alarm[];
+  events: import('../types').StaticEvent[];
+  routines: import('../types').DailyRoutine[];
+  travelLogs: import('../types').TravelLog[];
   lastEngine: SchedulerEngine;
   lastSolverStatus: string;
   isGenerating: boolean;
@@ -68,6 +66,7 @@ interface LifeStore {
   setTimeline: (blocks: ScheduleBlock[]) => void;
   moveBlock: (blockId: string, direction: 'up' | 'down') => void;
   updateBreakDuration: (blockId: string, newMinutes: number) => void;
+  deleteBlock: (blockId: string) => void;
 
   // Timer
   startMealTimer: () => Promise<void>;
@@ -80,6 +79,30 @@ interface LifeStore {
   // Data management
   clearOldSessions: () => void;
   clearAllData: () => void;
+
+  addHabit: (h: { name: string; emoji: string; goalValue: number; goalUnit: string; color?: string }) => void;
+  logHabit: (id: string, value: number) => void;
+  deleteHabit: (id: string) => void;
+
+  // Notes
+  addNote: (n: { title: string; content: string; reminderIntervalMinutes?: number; reminderAt?: string }) => void;
+  deleteNote: (id: string) => void;
+
+  // Alarms
+  addAlarm: (a: { time: string; label: string; days: number[] }) => void;
+  toggleAlarm: (id: string, enabled: boolean) => void;
+  deleteAlarm: (id: string) => void;
+
+  // Events (Static / Calendar ICS)
+  addEvent: (e: Omit<import('../types').StaticEvent, 'id'>) => void;
+  setEvents: (events: import('../types').StaticEvent[]) => void;
+  deleteEvent: (id: string) => void;
+
+  // Routines
+  updateRoutineDay: (dayOfWeek: number, updates: Partial<import('../types').DailyRoutine>) => void;
+
+  // Geofencing / Travel Logging
+  addTravelLog: (type: 'leave_home' | 'arrive_uni' | 'leave_uni' | 'arrive_home') => void;
 }
 
 // ─── Timer helpers ────────────────────────────────────────────────────────────
@@ -175,6 +198,16 @@ function scheduleMealTimeout(getState: GetFn, setState: SetFn): void {
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
+const DEFAULT_ROUTINES = Array.from({ length: 7 }).map((_, i) => ({
+  dayOfWeek: i,
+  sleepStart: '23:00',
+  sleepEnd: '07:00',
+  meals: [
+    { id: createId('meal'), type: 'desayuno', time: '08:00', durationMinutes: 30 },
+    { id: createId('meal'), type: 'almuerzo', time: '13:30', durationMinutes: 60 }
+  ]
+}));
+
 export const useLifeStore = create<LifeStore>()(
   persist(
     (set, get) => ({
@@ -183,6 +216,12 @@ export const useLifeStore = create<LifeStore>()(
       activeTimer: null,
       sessions: [],
       settings: DEFAULT_SETTINGS,
+      habits: [],
+      notes: [],
+      alarms: [],
+      events: [],
+      routines: DEFAULT_ROUTINES as any,
+      travelLogs: [],
       lastEngine: 'idle',
       lastSolverStatus: '',
       isGenerating: false,
@@ -275,7 +314,7 @@ export const useLifeStore = create<LifeStore>()(
           solverStatus = meta.solver_status;
         } catch (err) {
           console.warn('[LifeOS] Backend no disponible, usando scheduler local.', err instanceof SchedulerApiError ? err.message : err);
-          newBlocks = buildTimelineLocal(schedulableTasks, startTime, settings);
+          newBlocks = buildTimelineLocal(schedulableTasks, get().events, get().routines, startTime, settings);
           engine = 'local-ts';
           solverStatus = 'LOCAL_FALLBACK';
         }
@@ -365,6 +404,27 @@ export const useLifeStore = create<LifeStore>()(
         });
       },
 
+      deleteBlock: (blockId) => {
+        set((state) => {
+          const idx = state.timeline.findIndex((b) => b.id === blockId);
+          if (idx < 0) return state;
+          const blocks = [...state.timeline];
+          const block = blocks[idx];
+          const duration = block.end_time.getTime() - block.start_time.getTime();
+          
+          blocks.splice(idx, 1);
+          // Shift all subsequent blocks backwards to fill the gap
+          for (let i = idx; i < blocks.length; i++) {
+            blocks[i] = {
+              ...blocks[i],
+              start_time: new Date(blocks[i].start_time.getTime() - duration),
+              end_time: new Date(blocks[i].end_time.getTime() - duration)
+            };
+          }
+          return { timeline: blocks };
+        });
+      },
+
       // ── Meal timer ─────────────────────────────────────────────────────────
       startMealTimer: async () => {
         clearMealTimeout();
@@ -418,9 +478,146 @@ export const useLifeStore = create<LifeStore>()(
           sessions: [],
           activeTimer: null,
           lastEngine: 'idle',
-          lastSolverStatus: ''
+          lastSolverStatus: '',
+          habits: []
         });
         void cancelAllNotifications();
+      },
+
+      // ── Habits ─────────────────────────────────────────────────────────────
+      addHabit: (h) => {
+        set((state) => ({
+          habits: [
+            ...state.habits,
+            {
+              id: createId('habit'),
+              ...h,
+              logs: [],
+              streak: 0
+            }
+          ]
+        }));
+      },
+
+      logHabit: (id, value) => {
+        set((state) => {
+          const habits = state.habits.map((habit) => {
+            if (habit.id !== id) return habit;
+            const now = new Date();
+            const today = now.toISOString().slice(0, 10);
+            
+            // Check if already logged today
+            const alreadyLoggedToday = habit.lastCompletedDate === today;
+            const newLogs = [...habit.logs, { timestamp: now, value }];
+            
+            let newStreak = habit.streak;
+            if (!alreadyLoggedToday) {
+              const yesterday = new Date(now);
+              yesterday.setDate(yesterday.getDate() - 1);
+              const yesterdayStr = yesterday.toISOString().slice(0, 10);
+              
+              if (habit.lastCompletedDate === yesterdayStr) {
+                newStreak += 1;
+              } else {
+                newStreak = 1;
+              }
+            }
+
+            return {
+              ...habit,
+              logs: newLogs,
+              streak: newStreak,
+              lastCompletedDate: today
+            };
+          });
+          return { habits };
+        });
+      },
+
+      deleteHabit: (id) => {
+        set((state) => ({
+          habits: state.habits.filter((h) => h.id !== id)
+        }));
+      },
+
+      // ── Notes ──────────────────────────────────────────────────────────────
+      addNote: (n) => {
+        set((state) => ({
+          notes: [
+            ...state.notes,
+            {
+              id: createId('note'),
+              ...n,
+              createdAt: new Date()
+            }
+          ]
+        }));
+      },
+
+      deleteNote: (id) => {
+        set((state) => ({
+          notes: state.notes.filter((n) => n.id !== id)
+        }));
+      },
+
+      // ── Alarms ─────────────────────────────────────────────────────────────
+      addAlarm: (a) => {
+        set((state) => ({
+          alarms: [
+            ...state.alarms,
+            { id: createId('alarm'), ...a, enabled: true }
+          ]
+        }));
+      },
+      toggleAlarm: (id, enabled) => {
+        set((state) => ({
+          alarms: state.alarms.map(a => a.id === id ? { ...a, enabled } : a)
+        }));
+      },
+      deleteAlarm: (id) => {
+        set((state) => ({ alarms: state.alarms.filter(a => a.id !== id) }));
+      },
+
+      // ── Events ─────────────────────────────────────────────────────────────
+      addEvent: (e) => {
+        set((state) => ({
+          events: [...state.events, { id: createId('evt'), ...e }]
+        }));
+      },
+      setEvents: (events) => {
+        set(() => ({ events }));
+      },
+      deleteEvent: (id) => {
+        set((state) => ({ events: state.events.filter(e => e.id !== id) }));
+      },
+
+      // ── Routines ─────────────────────────────────────────────────────────────
+      updateRoutineDay: (dayOfWeek, updates) => {
+        set((state) => ({
+          routines: state.routines.map(r => r.dayOfWeek === dayOfWeek ? { ...r, ...updates } : r)
+        }));
+      },
+
+      // ── Travel Logging ─────────────────────────────────────────────────────
+      addTravelLog: (type) => {
+        set((state) => {
+          const now = new Date();
+          const lastLog = state.travelLogs[state.travelLogs.length - 1];
+          let durationMinutes: number | undefined;
+
+          if (lastLog && lastLog.timestamp) {
+            durationMinutes = Math.round((now.getTime() - lastLog.timestamp.getTime()) / 60_000);
+          }
+
+          const newLog = {
+            id: createId('travel'),
+            type,
+            timestamp: now,
+            durationMinutes
+          };
+
+          return { travelLogs: [...state.travelLogs, newLog] };
+        });
       }
     }),
 
@@ -434,6 +631,12 @@ export const useLifeStore = create<LifeStore>()(
         activeTimer: state.activeTimer,
         sessions: state.sessions,
         settings: state.settings,
+        habits: state.habits,
+        notes: state.notes,
+        alarms: state.alarms,
+        events: state.events,
+        routines: state.routines,
+        travelLogs: state.travelLogs,
         lastEngine: state.lastEngine,
         lastSolverStatus: state.lastSolverStatus
       }),
@@ -446,6 +649,12 @@ export const useLifeStore = create<LifeStore>()(
           activeTimer: reviveTimer(snap?.activeTimer ?? null),
           sessions: snap?.sessions ?? [],
           settings: { ...DEFAULT_SETTINGS, ...(snap?.settings ?? {}) },
+          habits: snap?.habits ?? [],
+          notes: (snap?.notes ?? []).map((n: any) => ({ ...n, createdAt: new Date(n.createdAt) })),
+          alarms: snap?.alarms ?? [],
+          events: (snap?.events ?? []).map((e: any) => ({ ...e, startTime: new Date(e.startTime), endTime: new Date(e.endTime) })),
+          routines: snap?.routines ?? DEFAULT_ROUTINES as any,
+          travelLogs: (snap?.travelLogs ?? []).map((t: any) => ({ ...t, timestamp: new Date(t.timestamp) })),
           lastEngine: snap?.lastEngine ?? 'idle',
           lastSolverStatus: snap?.lastSolverStatus ?? ''
         };

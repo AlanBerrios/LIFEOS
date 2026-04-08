@@ -28,8 +28,8 @@ export interface Task {
 }
 
 export interface ScheduleBlock {
-  id: string;
-  type: 'task' | 'rest' | 'meal';
+  id: string; // Puede ser de una tarea o generado (ej. "rest-1")
+  type: 'task' | 'rest' | 'meal' | 'sleep';
   task_id?: string;
   title: string;
   start_time: Date;
@@ -38,6 +38,32 @@ export interface ScheduleBlock {
   cognitive_drain?: number;
   /** Si true, el usuario movió este bloque manualmente */
   pinned?: boolean;
+  /** Background styling specific to events vs tasks */
+  isStaticEvent?: boolean;
+}
+
+export interface StaticEvent {
+  id: string;
+  title: string;
+  startTime: Date;
+  endTime: Date;
+  color?: string;
+  location?: string;
+  isRecurring?: boolean;
+}
+
+export interface MealRoutine {
+  id: string;
+  type: string;
+  time: string; // HH:mm
+  durationMinutes: number;
+}
+
+export interface DailyRoutine {
+  dayOfWeek: number; // 0=Sun ... 6=Sat
+  sleepStart: string; // HH:mm
+  sleepEnd: string; // HH:mm
+  meals: MealRoutine[];
 }
 
 export interface LifeTimer {
@@ -79,6 +105,68 @@ export interface AppSettings {
   notifyImportantUnfinished: boolean;
   /** Minutos antes del inicio de la tarea para notificar (default: 5) */
   notifyTaskStartLeadMinutes: number;
+  // --- V2.1 Expansion ---
+  /** Hora de dormir (HH:mm) */
+  sleepTimeStart: string;
+  /** Hora de despertar (HH:mm) */
+  sleepTimeEnd: string;
+  /** Ubicación de casa (Geofencing) */
+  homeLocation?: { latitude: number; longitude: number };
+  /** Ubicación de universidad/trabajo */
+  workLocation?: { latitude: number; longitude: number };
+  /** Habilitar rastreo de transporte */
+  enableGeofencing: boolean;
+  /** Minutos fuera de la app antes de enviar reto de distracción */
+  distractionTimeoutMinutes: number;
+  /** Max allowed minutes in social media apps before alert */
+  maxSocialMinutes: number;
+  /** Force alarms to bypass silent mode */
+  alarmsBypassSilent: boolean;
+  /** URL pública de calendario compartida en formato .ics */
+  icsCalendarUrl?: string;
+}
+
+export interface TravelLog {
+  id: string;
+  type: 'leave_home' | 'arrive_uni' | 'leave_uni' | 'arrive_home';
+  timestamp: Date;
+  /** Tiempo transcurrido desde el último estado, ej: de leave_home a arrive_uni */
+  durationMinutes?: number;
+}
+
+export interface Alarm {
+  id: string;
+  time: string; // HH:mm
+  label: string;
+  /** Array de días donde 0=Dom, 1=Lun... 6=Sab */
+  days: number[];
+  enabled: boolean;
+}
+
+export interface HabitLog {
+  timestamp: Date;
+  value: number; // 1 for boolean, or specific amount like 0.5 (liters)
+}
+
+export interface Habit {
+  id: string;
+  name: string;
+  emoji: string;
+  goalValue: number; // e.g. 2.0
+  goalUnit: string; // e.g. "litros", "min", "check"
+  logs: HabitLog[];
+  streak: number;
+  lastCompletedDate?: string; // YYYY-MM-DD
+  color?: string;
+}
+
+export interface QuickNote {
+  id: string;
+  title: string;
+  content: string;
+  reminderIntervalMinutes?: number;
+  reminderAt?: string; // HH:mm
+  createdAt: Date;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -88,5 +176,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   notifyTaskStart: true,
   notifyPendingIntervalMinutes: 0,
   notifyImportantUnfinished: true,
-  notifyTaskStartLeadMinutes: 5
+  notifyTaskStartLeadMinutes: 5,
+  sleepTimeStart: '23:00',
+  sleepTimeEnd: '07:00',
+  enableGeofencing: false,
+  distractionTimeoutMinutes: 5,
+  maxSocialMinutes: 20,
+  alarmsBypassSilent: true
 };

@@ -107,6 +107,8 @@ function simulatedAnnealing(sequence: Task[], now: Date): Task[] {
 
 export function generateTimeline(
   tasks: Task[],
+  events: import('../types').StaticEvent[] = [],
+  routines: import('../types').DailyRoutine[] = [],
   now: Date,
   settings?: Partial<AppSettings>
 ): ScheduleBlock[] {
@@ -163,27 +165,163 @@ export function generateTimeline(
     now
   );
 
+  function mergeRestBlocks(unmerged: ScheduleBlock[]): ScheduleBlock[] {
+    if (unmerged.length < 2) return unmerged;
+    const merged: ScheduleBlock[] = [];
+    for (const block of unmerged) {
+      const last = merged[merged.length - 1];
+      if (last && (last.type === 'rest' || last.type === 'meal') && (block.type === 'rest' || block.type === 'meal')) {
+        last.end_time = block.end_time;
+        if (block.type === 'meal') last.type = 'meal'; // Meal takes precedence
+        if (block.title.includes('Recarga') || block.title.includes('Almuerzo')) last.title = block.title;
+      } else {
+        merged.push({ ...block });
+      }
+    }
+    return merged;
+  }
+
   // ── Build timeline blocks ─────────────────────────────────────────────────
   const blocks: ScheduleBlock[] = [];
   let cursor = new Date(now);
+  const sleepStart = settings?.sleepTimeStart ?? '23:00';
+  const sleepEnd = settings?.sleepTimeEnd ?? '07:00';
+
+  const [sH, sM] = sleepStart.split(':').map(Number);
+  const [eH, eM] = sleepEnd.split(':').map(Number);
+
+  function isSleepTime(dt: Date): boolean {
+    const dayOfWeek = dt.getDay(); // 0 is Sunday
+    const routine = routines.find(r => r.dayOfWeek === dayOfWeek);
+    if (!routine || !routine.sleepStart || !routine.sleepEnd) return false;
+
+    const currentMin = dt.getHours() * 60 + dt.getMinutes();
+    const [sH, sM] = routine.sleepStart.split(':').map(Number);
+    const [eH, eM] = routine.sleepEnd.split(':').map(Number);
+    const startMin = sH * 60 + sM;
+    const endMin = eH * 60 + eM;
+
+    if (startMin > endMin) {
+      return currentMin >= startMin || currentMin < endMin;
+    }
+    return currentMin >= startMin && currentMin < endMin;
+  }
+
+  function getSleepEnd(dt: Date): Date {
+    const dayOfWeek = dt.getDay();
+    const routine = routines.find(r => r.dayOfWeek === dayOfWeek);
+    const sleepEnd = routine?.sleepEnd || '07:00';
+    const [eH, eM] = sleepEnd.split(':').map(Number);
+    const sleepDate = new Date(dt);
+    if (dt.getHours() >= 12) { // It's late evening, sleep ends next morning
+      sleepDate.setDate(sleepDate.getDate() + 1);
+    }
+    sleepDate.setHours(eH, eM, 0, 0);
+    return sleepDate;
+  }
+
+  function getNextMeal(dt: Date): import('../types').MealRoutine | null {
+    const dayOfWeek = dt.getDay();
+    const routine = routines.find(r => r.dayOfWeek === dayOfWeek);
+    if (!routine || !routine.meals) return null;
+    
+    const curMin = dt.getHours() * 60 + dt.getMinutes();
+    
+    // Sort meals contextually
+    const upcoming = routine.meals.filter(m => {
+      const [h, min] = m.time.split(':').map(Number);
+      const mMin = h * 60 + min;
+      return mMin > curMin && (mMin - curMin < 60); // only trigger if within 1 hour radius
+    }).sort((a,b) => {
+       const aMin = Number(a.time.substring(0,2))*60 + Number(a.time.substring(3));
+       const bMin = Number(b.time.substring(0,2))*60 + Number(b.time.substring(3));
+       return aMin - bMin;
+    });
+
+    return upcoming[0] || null;
+  }
+
   let workStreakMinutes = 0;
   let cognitiveUsed = 0;
 
+  // Clone and sort events to consume them chronologically
+  const upcomingEvents = [...events]
+    .filter(e => e.endTime > now)
+    .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
   for (const task of finalSequence) {
-    // Si la tarea tiene hora fija, insertar descanso hasta ese momento
+    let taskPlaced = false;
+
+    while (!taskPlaced) {
+      // 1. Process passing Events
+      if (upcomingEvents.length > 0 && upcomingEvents[0].startTime <= cursor) {
+        const evt = upcomingEvents.shift()!;
+        if (evt.endTime > cursor) {
+          blocks.push({
+            id: evt.id,
+            type: 'task', // Render as task but visually we'll know it's static
+            title: `📍 ${evt.title}`,
+            start_time: new Date(Math.max(cursor.getTime(), evt.startTime.getTime())),
+            end_time: evt.endTime,
+            isStaticEvent: true,
+            pinned: true
+          });
+          cursor = evt.endTime;
+          workStreakMinutes = 0;
+          continue; // Re-evaluate task
+        }
+      }
+
+      // Si la tarea tiene hora fija, insertar descanso hasta ese momento
     if (task.fixed_start && task.fixed_start > cursor) {
       const waitMinutes = (task.fixed_start.getTime() - cursor.getTime()) / 60_000;
       if (waitMinutes > 2) {
         blocks.push({
           id: createId('rest'),
           type: 'rest',
-          title: 'Espera',
+          title: 'Espera / Descanso',
           start_time: new Date(cursor),
           end_time: new Date(task.fixed_start)
         });
       }
       cursor = new Date(task.fixed_start);
       workStreakMinutes = 0;
+    }
+
+    // Menú de Comidas cercano
+    const nextMeal = getNextMeal(cursor);
+    if (nextMeal) {
+      const [mH, mM] = nextMeal.time.split(':').map(Number);
+      const mealStart = new Date(cursor);
+      mealStart.setHours(mH, mM, 0, 0);
+      const mealEnd = new Date(mealStart.getTime() + nextMeal.durationMinutes * 60000);
+      
+      blocks.push({
+        id: createId('rest'),
+        type: 'meal',
+        title: `🍔 ${nextMeal.type}`,
+        start_time: mealStart,
+        end_time: mealEnd
+      });
+      cursor = mealEnd;
+      workStreakMinutes = 0;
+      continue;
+    }
+
+    // Saltar tiempo de sueño si el cursor cae ahí
+    if (isSleepTime(cursor)) {
+      const sleepDate = getSleepEnd(cursor);
+      
+      blocks.push({
+        id: createId('rest'),
+        type: 'sleep',
+        title: 'Descanso nocturno 😴',
+        start_time: new Date(cursor),
+        end_time: sleepDate
+      });
+      cursor = new Date(sleepDate);
+      workStreakMinutes = 0;
+      continue; // Re-evaluate task
     }
 
     // Descanso por racha de trabajo
@@ -244,7 +382,36 @@ export function generateTimeline(
       end_time: shortBreakEnd
     });
     cursor = shortBreakEnd;
+    taskPlaced = true;
+    } // Ends while(!taskPlaced)
+  } // Ends for(const task of finalSequence)
+
+  // Add any remaining events for the day
+  while (upcomingEvents.length > 0) {
+    const evt = upcomingEvents.shift()!;
+    // Only add if it's within 24hs to avoid infinite timeline blowing up memory
+    if (evt.startTime.getTime() - now.getTime() < 24 * HOUR_MS) {
+      if (evt.startTime > cursor) {
+         blocks.push({
+           id: createId('rest'),
+           type: 'rest',
+           title: 'Libre',
+           start_time: new Date(cursor),
+           end_time: evt.startTime
+         });
+      }
+      blocks.push({
+        id: evt.id,
+        type: 'task',
+        title: `📍 ${evt.title}`,
+        start_time: evt.startTime,
+        end_time: evt.endTime,
+        isStaticEvent: true,
+        pinned: true
+      });
+      cursor = evt.endTime;
+    }
   }
 
-  return blocks;
+  return mergeRestBlocks(blocks);
 }

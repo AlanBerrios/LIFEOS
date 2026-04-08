@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
-  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,7 +12,7 @@ import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { lifeTheme } from '../../src/theme';
-import type { Task } from '../../src/types';
+import type { Task, StaticEvent } from '../../src/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -65,7 +64,7 @@ function urgencyColor(task: Task): string {
 
 // ─── Day Tasks Panel ──────────────────────────────────────────────────────────
 
-function DayTasksPanel({ date, tasks }: { date: Date; tasks: Task[] }): ReactElement {
+function DayTasksPanel({ date, tasks, events }: { date: Date; tasks: Task[]; events: StaticEvent[] }): ReactElement {
   const dayTasks = tasks.filter((t) => {
     if (t.fixed_start && sameDay(t.fixed_start, date)) return true;
     if (t.deadline && sameDay(t.deadline, date)) return true;
@@ -73,15 +72,30 @@ function DayTasksPanel({ date, tasks }: { date: Date; tasks: Task[] }): ReactEle
     return false;
   });
 
+  const dayEvents = events.filter((e) => sameDay(e.startTime, date));
+
   return (
     <View style={styles.dayPanel}>
       <Text style={styles.dayPanelTitle}>
         {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
       </Text>
-      {dayTasks.length === 0 ? (
-        <Text style={styles.dayPanelEmpty}>Sin tareas para este día</Text>
+      {dayTasks.length === 0 && dayEvents.length === 0 ? (
+        <Text style={styles.dayPanelEmpty}>Sin eventos ni tareas para este día</Text>
       ) : (
-        dayTasks.map((task) => (
+        <>
+        {dayEvents.map((evt) => (
+          <View key={evt.id} style={styles.dayTask}>
+            <Text style={{fontSize: 16}}>📌</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.dayTaskTitle, { color: '#8b5cf6' }]}>{evt.title}</Text>
+              <Text style={styles.dayTaskMeta}>
+                Evento Fijo · {evt.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {evt.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {evt.location ? ` · ${evt.location}` : ''}
+              </Text>
+            </View>
+          </View>
+        ))}
+        {dayTasks.map((task) => (
           <View key={task.id} style={styles.dayTask}>
             <View style={[styles.urgencyDot, { backgroundColor: urgencyColor(task) }]} />
             <View style={{ flex: 1 }}>
@@ -93,7 +107,8 @@ function DayTasksPanel({ date, tasks }: { date: Date; tasks: Task[] }): ReactEle
             </View>
             <View style={[styles.statusDot, task.status === 'completed' ? styles.statusDone : styles.statusPending]} />
           </View>
-        ))
+        ))}
+        </>
       )}
     </View>
   );
@@ -101,10 +116,11 @@ function DayTasksPanel({ date, tasks }: { date: Date; tasks: Task[] }): ReactEle
 
 // ─── Month View ───────────────────────────────────────────────────────────────
 
-function MonthView({ currentDate, selectedDay, tasks, onSelectDay }: {
+function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
   currentDate: Date;
   selectedDay: Date;
   tasks: Task[];
+  events: StaticEvent[];
   onSelectDay: (d: Date) => void;
 }): ReactElement {
   const year = currentDate.getFullYear();
@@ -123,6 +139,7 @@ function MonthView({ currentDate, selectedDay, tasks, onSelectDay }: {
   while (cells.length % 7 !== 0) cells.push(null);
 
   function hasTaskOn(date: Date): string | null {
+    if (events.some(e => sameDay(e.startTime, date))) return '#8b5cf6'; // Event color
     const relevant = tasks.filter((t) => {
       if (t.fixed_start && sameDay(t.fixed_start, date)) return true;
       if (t.deadline && sameDay(t.deadline, date)) return true;
@@ -173,10 +190,11 @@ function MonthView({ currentDate, selectedDay, tasks, onSelectDay }: {
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 
-function WeekView({ currentDate, selectedDay, tasks, onSelectDay }: {
+function WeekView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
   currentDate: Date;
   selectedDay: Date;
   tasks: Task[];
+  events: StaticEvent[];
   onSelectDay: (d: Date) => void;
 }): ReactElement {
   const weekStart = startOfWeek(currentDate);
@@ -184,13 +202,15 @@ function WeekView({ currentDate, selectedDay, tasks, onSelectDay }: {
 
   return (
     <View>
-      <ScrollView style={styles.weekScroll} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.weekScroll} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
         {days.map((day) => {
           const isToday = sameDay(day, new Date());
           const isSelected = sameDay(day, selectedDay);
+          const dayEvents = events.filter(e => sameDay(e.startTime, day));
           const dayTasks = tasks.filter((t) =>
             (t.fixed_start && sameDay(t.fixed_start, day)) ||
-            (t.deadline && sameDay(t.deadline, day))
+            (t.deadline && sameDay(t.deadline, day)) ||
+            ((t as any).urgency === 'today' && sameDay(day, new Date()))
           );
           return (
             <Pressable
@@ -207,15 +227,20 @@ function WeekView({ currentDate, selectedDay, tasks, onSelectDay }: {
                 </Text>
               </View>
               <View style={styles.weekTasks}>
+                {dayEvents.slice(0, 2).map((e) => (
+                  <View key={e.id} style={[styles.weekTaskChip, { borderLeftColor: '#8b5cf6', backgroundColor: '#8b5cf615' }]}>
+                    <Text style={[styles.weekTaskText, { color: '#8b5cf6', fontWeight: 'bold' }]} numberOfLines={1}>{e.title}</Text>
+                  </View>
+                ))}
                 {dayTasks.slice(0, 3).map((t) => (
                   <View key={t.id} style={[styles.weekTaskChip, { borderLeftColor: urgencyColor(t) }]}>
                     <Text style={styles.weekTaskText} numberOfLines={1}>{t.title}</Text>
                   </View>
                 ))}
-                {dayTasks.length > 3 && (
-                  <Text style={styles.moreText}>+{dayTasks.length - 3} más</Text>
+                {dayTasks.length + dayEvents.length > 5 && (
+                  <Text style={styles.moreText}>+{dayTasks.length + dayEvents.length - 5} más</Text>
                 )}
-                {dayTasks.length === 0 && (
+                {dayTasks.length === 0 && dayEvents.length === 0 && (
                   <Text style={styles.emptyDayText}>—</Text>
                 )}
               </View>
@@ -229,24 +254,34 @@ function WeekView({ currentDate, selectedDay, tasks, onSelectDay }: {
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
-function DayView({ date, tasks }: { date: Date; tasks: Task[] }): ReactElement {
+function DayView({ date, tasks, events }: { date: Date; tasks: Task[]; events: StaticEvent[] }): ReactElement {
   const hours = Array.from({ length: 16 }, (_, i) => i + 7); // 7:00 — 22:00
 
   function tasksAt(hour: number): Task[] {
     return tasks.filter((t) => {
       if (!t.fixed_start) return false;
-      return t.fixed_start.getHours() === hour;
+      return t.fixed_start.getHours() === hour && sameDay(t.fixed_start, date);
     });
+  }
+  function eventsAt(hour: number): StaticEvent[] {
+    return events.filter(e => e.startTime.getHours() === hour && sameDay(e.startTime, date));
   }
 
   return (
-    <ScrollView style={styles.dayScroll} showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.dayScroll} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
       {hours.map((hour) => {
         const hourTasks = tasksAt(hour);
+        const hourEvents = eventsAt(hour);
         return (
           <View key={hour} style={styles.hourRow}>
             <Text style={styles.hourLabel}>{String(hour).padStart(2, '0')}:00</Text>
             <View style={styles.hourContent}>
+              {hourEvents.map((e) => (
+                <View key={e.id} style={[styles.hourTask, { borderLeftColor: '#8b5cf6', backgroundColor: '#8b5cf610' }]}>
+                  <Text style={[styles.hourTaskTitle, { color: '#8b5cf6' }]}>{e.title}</Text>
+                  <Text style={styles.hourTaskMeta}>Evento Fijo</Text>
+                </View>
+              ))}
               {hourTasks.map((t) => (
                 <View key={t.id} style={[styles.hourTask, { borderLeftColor: urgencyColor(t) }]}>
                   <Text style={styles.hourTaskTitle}>{t.title}</Text>
@@ -268,6 +303,7 @@ type CalendarView = 'month' | 'week' | 'day';
 export default function CalendarScreen(): ReactElement {
   const insets = useSafeAreaInsets();
   const tasks = useLifeStore((s) => s.tasks);
+  const events = useLifeStore((s) => s.events);
 
   const [view, setView] = useState<CalendarView>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -294,7 +330,7 @@ export default function CalendarScreen(): ReactElement {
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={[styles.screen, { paddingTop: insets.top + 4 }]}>
       {/* Top bar */}
       <View style={styles.topBar}>
         <Pressable style={styles.navBtn} onPress={() => navigate(-1)}>
@@ -328,6 +364,7 @@ export default function CalendarScreen(): ReactElement {
             currentDate={currentDate}
             selectedDay={selectedDay}
             tasks={activeTasks}
+            events={events}
             onSelectDay={setSelectedDay}
           />
         )}
@@ -336,17 +373,18 @@ export default function CalendarScreen(): ReactElement {
             currentDate={currentDate}
             selectedDay={selectedDay}
             tasks={activeTasks}
+            events={events}
             onSelectDay={setSelectedDay}
           />
         )}
         {view === 'day' && (
-          <DayView date={currentDate} tasks={activeTasks} />
+          <DayView date={currentDate} tasks={activeTasks} events={events} />
         )}
       </View>
 
       {/* Selected day info */}
       {view !== 'day' && (
-        <DayTasksPanel date={selectedDay} tasks={activeTasks} />
+        <DayTasksPanel date={selectedDay} tasks={activeTasks} events={events} />
       )}
     </View>
   );
