@@ -14,15 +14,29 @@ import { checkGeofenceState } from '../src/services/location';
 import { checkScreenTimeDistraction, registerScreenTimeBackgroundTask } from '../src/services/screenTime';
 import { lifeTheme } from '../src/theme';
 
-// Init notification handler as early as possible
-initNotifications();
+try {
+  initNotifications();
+} catch (e) {
+  console.log('Error initNotifications:', e);
+}
 
 export default function RootLayout(): ReactElement {
 
   useEffect(() => {
-    void requestNotificationPermission();
-    void registerScreenTimeBackgroundTask();
-    useLifeStore.getState().restoreMealTimer();
+    const initApp = async () => {
+      try {
+        await requestNotificationPermission();
+      } catch(e) { console.log(e); }
+      
+      try {
+        await registerScreenTimeBackgroundTask();
+      } catch(e) { console.log(e); }
+
+      try {
+        useLifeStore.getState().restoreMealTimer();
+      } catch(e) { console.log(e); }
+    };
+    initApp();
 
     const importNotifs = async () => {
       const Notifications = await import('expo-notifications');
@@ -44,8 +58,8 @@ export default function RootLayout(): ReactElement {
     // Escuchar el estado de la app (foreground/background) para tracker Nativo
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        void checkScreenTimeDistraction(nextState);
-        void checkGeofenceState();
+        try { checkScreenTimeDistraction(nextState); } catch(e){}
+        try { checkGeofenceState(); } catch(e){}
       }
     });
 

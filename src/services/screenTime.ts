@@ -97,16 +97,20 @@ export async function checkScreenTimeDistraction(appState: AppStateStatus) {
   }
 }
 
-// Define the global background task logic
-TaskManager.defineTask(SCREEN_TIME_TASK, async () => {
-  try {
-    await checkScreenTimeDistraction('active'); // pass 'active' to force check inside background context
-    return BackgroundFetch.BackgroundFetchResult.NewData;
-  } catch (error) {
-    console.error('Background fetch failed:', error);
-    return BackgroundFetch.BackgroundFetchResult.Failed;
-  }
-});
+// Define the global background task logic safely
+try {
+  TaskManager.defineTask(SCREEN_TIME_TASK, async () => {
+    try {
+      await checkScreenTimeDistraction('active'); // pass 'active' to force check inside background context
+      return BackgroundFetch.BackgroundFetchResult.NewData;
+    } catch (error) {
+      console.error('Background fetch failed:', error);
+      return BackgroundFetch.BackgroundFetchResult.Failed;
+    }
+  });
+} catch (e) {
+  console.log('Error defining task manager:', e);
+}
 
 export async function registerScreenTimeBackgroundTask() {
   if (Platform.OS !== 'android') return;

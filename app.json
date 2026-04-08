@@ -11,7 +11,10 @@
     ],
     "plugins": [
       "expo-router",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-task-manager",
+      "expo-location",
+      "expo-background-fetch"
     ],
     "experiments": {
       "typedRoutes": true
