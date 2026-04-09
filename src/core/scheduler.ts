@@ -5,7 +5,8 @@
 
 import { createId } from '../utils/ids';
 import { HOUR_MS } from '../utils/time';
-import type { AppSettings, ScheduleBlock, Task, TaskUrgency } from '../types';
+import { getEventsForDate } from '../utils/events';
+import type { AppSettings, ScheduleBlock, Task, TaskUrgency, StaticEvent } from '../types';
 
 const URGENCY_BONUS: Record<TaskUrgency, number> = {
   today: 50,
@@ -244,8 +245,11 @@ export function generateTimeline(
   let workStreakMinutes = 0;
   let cognitiveUsed = 0;
 
+  // expansion logic for recurring events
+  const dailyEvents = getEventsForDate(events, now);
+
   // Clone and sort events to consume them chronologically
-  const upcomingEvents = [...events]
+  const upcomingEvents = dailyEvents
     .filter(e => e.endTime > now)
     .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 

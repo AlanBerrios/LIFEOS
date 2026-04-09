@@ -79,6 +79,8 @@ export default function SettingsScreen(): ReactElement {
   const updateSettings = useLifeStore((s) => s.updateSettings);
   const clearAllData = useLifeStore((s) => s.clearAllData);
   const tasks = useLifeStore((s) => s.tasks);
+  const lastEngine = useLifeStore((s) => s.lastEngine);
+  const lastSolverStatus = useLifeStore((s) => s.lastSolverStatus);
 
   const [icsUrl, setIcsUrl] = useState('');
 
@@ -352,6 +354,28 @@ export default function SettingsScreen(): ReactElement {
           </Pressable>
         </View>
       </Accordion>
+
+      <View style={styles.footer}>
+        <Text style={styles.footerTitle}>Sistema y Optimizador</Text>
+        <View
+          style={[
+            styles.engineBadge,
+            lastEngine === 'ortools-cpsat' ? styles.badgeGreen :
+            lastEngine === 'greedy-fallback' ? styles.badgeYellow : styles.badgePurple
+          ]}
+        >
+          <Text style={[
+            styles.engineText,
+            lastEngine === 'ortools-cpsat' ? { color: lifeTheme.colors.success } :
+            lastEngine === 'greedy-fallback' ? { color: '#f59e0b' } : { color: lifeTheme.colors.primary }
+          ]}>
+            {lastEngine === 'ortools-cpsat' ? `🔬 OR-Tools (Nube) · ${lastSolverStatus}` :
+             lastEngine === 'greedy-fallback' ? `⚠️ Greedy Alg.` :
+             '📱 Planificador local'}
+          </Text>
+        </View>
+        <Text style={styles.buildInfo}>LifeOS v2.0.4 · Production Build</Text>
+      </View>
 
       <View style={styles.footerInfo}>
         <Text style={styles.footerText}>LifeOS v2.0 "Nexus" | Desarrollado por Alan Berrios Estay (aka BlitZx)</Text>

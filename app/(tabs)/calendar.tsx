@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Alert,
@@ -16,7 +16,8 @@ import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { lifeTheme } from '../../src/theme';
-import type { Task, StaticEvent, ScheduleBlock } from '../../src/types';
+import { getEventsForDate } from '../../src/utils/events';
+import type { Task, StaticEvent, ScheduleBlock, RecurrenceFrequency } from '../../src/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -144,7 +145,11 @@ function SafeDatePicker({
 
 // ─── Day Tasks Panel ──────────────────────────────────────────────────────────
 
-function DayTasksPanel({ date, tasks, events }: { date: Date; tasks: Task[]; events: StaticEvent[] }): ReactElement {
+function DayTasksPanel({ 
+  date, tasks, events, onEditEvent 
+}: { 
+  date: Date; tasks: Task[]; events: StaticEvent[]; onEditEvent: (id: string) => void 
+}): ReactElement {
   const dayTasks = tasks.filter((t) => {
     if (t.fixed_start && sameDay(t.fixed_start, date)) return true;
     if (t.deadline && sameDay(t.deadline, date)) return true;
@@ -152,28 +157,29 @@ function DayTasksPanel({ date, tasks, events }: { date: Date; tasks: Task[]; eve
     return false;
   });
 
-  const dayEvents = events.filter((e) => sameDay(e.startTime, date));
+  const dayEvents = getEventsForDate(events, date);
 
   return (
     <View style={styles.dayPanel}>
       <Text style={styles.dayPanelTitle}>
         {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
       </Text>
+      <ScrollView>
       {dayTasks.length === 0 && dayEvents.length === 0 ? (
         <Text style={styles.dayPanelEmpty}>Sin eventos ni tareas para este día</Text>
       ) : (
-        <>
+        <View style={{ gap: 8 }}>
         {dayEvents.map((evt) => (
-          <View key={evt.id} style={styles.dayTask}>
+          <Pressable key={evt.id} style={styles.dayTask} onPress={() => onEditEvent(evt.id)}>
             <Text style={{fontSize: 16}}>📌</Text>
             <View style={{ flex: 1 }}>
               <Text style={[styles.dayTaskTitle, { color: '#8b5cf6' }]}>{evt.title}</Text>
               <Text style={styles.dayTaskMeta}>
                 Evento Fijo · {evt.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {evt.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                {evt.location ? ` · ${evt.location}` : ''}
+                {evt.reminderMinutes ? ` · Alerta: ${evt.reminderMinutes}m antes` : ''}
               </Text>
             </View>
-          </View>
+          </Pressable>
         ))}
         {dayTasks.map((task) => (
           <View key={task.id} style={styles.dayTask}>
@@ -188,8 +194,9 @@ function DayTasksPanel({ date, tasks, events }: { date: Date; tasks: Task[]; eve
             <View style={[styles.statusDot, task.status === 'completed' ? styles.statusDone : styles.statusPending]} />
           </View>
         ))}
-        </>
+        </View>
       )}
+      </ScrollView>
     </View>
   );
 }
@@ -219,7 +226,8 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
   while (cells.length % 7 !== 0) cells.push(null);
 
   function hasTaskOn(date: Date): string | null {
-    if (events.some(e => sameDay(e.startTime, date))) return '#8b5cf6'; // Event color
+    const dayEvents = getEventsForDate(events, date);
+    if (dayEvents.length > 0) return '#8b5cf6'; // Event color
     const relevant = tasks.filter((t) => {
       if (t.fixed_start && sameDay(t.fixed_start, date)) return true;
       if (t.deadline && sameDay(t.deadline, date)) return true;
@@ -286,7 +294,7 @@ function WeekView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
         {days.map((day) => {
           const isToday = sameDay(day, new Date());
           const isSelected = sameDay(day, selectedDay);
-          const dayEvents = events.filter(e => sameDay(e.startTime, day));
+          const dayEvents = getEventsForDate(events, day);
           const dayTasks = tasks.filter((t) =>
             (t.fixed_start && sameDay(t.fixed_start, day)) ||
             (t.deadline && sameDay(t.deadline, day)) ||
@@ -334,7 +342,9 @@ function WeekView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
-function DayView({ date, tasks, events, timeline }: { date: Date; tasks: Task[]; events: StaticEvent[]; timeline: ScheduleBlock[] }): ReactElement {
+function DayView({ date, tasks, events, timeline, onEditEvent }: { 
+  date: Date; tasks: Task[]; events: StaticEvent[]; timeline: ScheduleBlock[]; onEditEvent: (id: string) => void 
+}): ReactElement {
   const hours = Array.from({ length: 16 }, (_, i) => i + 7); // 7:00 — 22:00
 
   // Combine timeline blocks & standalone events for that day
@@ -344,8 +354,11 @@ function DayView({ date, tasks, events, timeline }: { date: Date; tasks: Task[];
     // Timeline blocks that fall into this hour
     const tb = timeline.filter(b => b.start_time.getHours() === hour && sameDay(b.start_time, date));
     
+    // expansion logic for recurring events
+    const dailyEvents = getEventsForDate(events, date);
+    
     // Events not in the timeline (for future/past days, or unmerged)
-    const ev = events.filter(e => e.startTime.getHours() === hour && sameDay(e.startTime, date) && !tb.some(b => b.id === e.id));
+    const ev = dailyEvents.filter(e => e.startTime.getHours() === hour && sameDay(e.startTime, date) && !tb.some(b => b.id === e.id));
     
     return { tb, ev };
   }
@@ -361,10 +374,10 @@ function DayView({ date, tasks, events, timeline }: { date: Date; tasks: Task[];
             <Text style={styles.hourLabel}>{String(hour).padStart(2, '0')}:00</Text>
             <View style={styles.hourContent}>
               {ev.map((e) => (
-                <View key={e.id} style={[styles.hourTask, { borderLeftColor: '#8b5cf6', backgroundColor: '#8b5cf610' }]}>
+                <Pressable key={e.id} style={[styles.hourTask, { borderLeftColor: '#8b5cf6', backgroundColor: '#8b5cf610' }]} onPress={() => onEditEvent(e.id)}>
                   <Text style={[styles.hourTaskTitle, { color: '#8b5cf6' }]}>{e.title}</Text>
                   <Text style={styles.hourTaskMeta}>Evento Fijo</Text>
-                </View>
+                </Pressable>
               ))}
               {tb.map((b) => {
                 let brdColor = lifeTheme.colors.border;
@@ -385,12 +398,16 @@ function DayView({ date, tasks, events, timeline }: { date: Date; tasks: Task[];
                 }
 
                 return (
-                  <View key={`${b.id}-${b.start_time.getTime()}`} style={[styles.hourTask, { borderLeftColor: brdColor }, bgStyle]}>
+                  <Pressable 
+                    key={`${b.id}-${b.start_time.getTime()}`} 
+                    style={[styles.hourTask, { borderLeftColor: brdColor }, bgStyle]}
+                    onPress={() => b.isStaticEvent && onEditEvent(b.id)}
+                  >
                     <Text style={[styles.hourTaskTitle, b.isStaticEvent && { color: '#8b5cf6' }]}>{b.title}</Text>
                     <Text style={styles.hourTaskMeta}>
                       {fmt(b.start_time)} - {fmt(b.end_time)} ({durMinutes} min)
                     </Text>
-                  </View>
+                  </Pressable>
                 );
               })}
             </View>
@@ -405,13 +422,48 @@ function fmt(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// ─── Add Event Modal ──────────────────────────────────────────────────────────
+// ─── Add/Edit Event Modal ──────────────────────────────────────────────────────────
 
-function EventModal({ visible, onClose }: { visible: boolean; onClose: () => void; }): ReactElement {
+function EventModal({ 
+  visible, editId, onClose 
+}: { 
+  visible: boolean; editId?: string | null; onClose: () => void; 
+}): ReactElement {
   const addEvent = useLifeStore(s => s.addEvent);
+  const updateEvent = useLifeStore(s => s.updateEvent);
+  const deleteEvent = useLifeStore(s => s.deleteEvent);
+  const events = useLifeStore(s => s.events);
+
   const [title, setTitle] = useState('');
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [endTime, setEndTime] = useState<Date | null>(null);
+  const [remindMin, setRemindMin] = useState(10);
+  const [frequency, setFrequency] = useState<RecurrenceFrequency>('none');
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+
+  useEffect(() => {
+    if (visible && editId) {
+      const e = events.find(ev => ev.id === editId);
+      if (e) {
+        setTitle(e.title);
+        setStartTime(e.startTime);
+        setEndTime(e.endTime);
+        setRemindMin(e.reminderMinutes || 0);
+        setFrequency(e.recurrence?.frequency || 'none');
+        setDaysOfWeek(e.recurrence?.daysOfWeek || []);
+        setEndDate(e.recurrence?.endDate ? new Date(e.recurrence.endDate) : null);
+      }
+    } else if (visible) {
+      setTitle('');
+      setStartTime(null);
+      setEndTime(null);
+      setRemindMin(10);
+      setFrequency('none');
+      setDaysOfWeek([]);
+      setEndDate(null);
+    }
+  }, [visible, editId, events]);
 
   function handleSave() {
     if (!title.trim() || !startTime || !endTime) {
@@ -422,22 +474,36 @@ function EventModal({ visible, onClose }: { visible: boolean; onClose: () => voi
       Alert.alert('Error', 'La hora de fin debe ser posterior a la de inicio.');
       return;
     }
-    addEvent({
+
+    const payload: any = {
       title: title.trim(),
       startTime,
-      endTime
-    });
-    setTitle('');
-    setStartTime(null);
-    setEndTime(null);
+      endTime,
+      reminderMinutes: remindMin,
+      recurrence: frequency !== 'none' ? { frequency, daysOfWeek, endDate: endDate || undefined } : undefined
+    };
+
+    if (editId) {
+      updateEvent(editId, payload);
+    } else {
+      addEvent(payload);
+    }
     onClose();
+  }
+
+  function handleDelete() {
+    if (!editId) return;
+    Alert.alert('Eliminar Evento', '¿Estás seguro de que quieres eliminar este evento?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Eliminar', style: 'destructive', onPress: () => { deleteEvent(editId); onClose(); } }
+    ]);
   }
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <Pressable style={styles.modalCard} onPress={undefined}>
-          <Text style={styles.modalTitle}>Nuevo Evento Fijo</Text>
+          <Text style={styles.modalTitle}>{editId ? 'Editar Evento' : 'Nuevo Evento Fijo'}</Text>
           <Text style={styles.modalSub}>Clases, reuniones, compromisos inamovibles.</Text>
           
           <Text style={styles.modalLabel}>Título del Evento</Text>
@@ -463,14 +529,80 @@ function EventModal({ visible, onClose }: { visible: boolean; onClose: () => voi
             onConfirm={setEndTime}
           />
 
+          <View style={{ gap: 8 }}>
+            <Text style={styles.modalLabel}>Repetir</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['none', 'daily', 'weekly', 'monthly'] as RecurrenceFrequency[]).map(f => (
+                <Pressable
+                  key={f}
+                  onPress={() => setFrequency(f)}
+                  style={[styles.freqChip, frequency === f && styles.freqChipActive]}
+                >
+                  <Text style={[styles.freqChipText, frequency === f && styles.freqChipTextActive]}>
+                    {f === 'none' ? 'No' : f === 'daily' ? 'Diario' : f === 'weekly' ? 'Semanal' : 'Mensual'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          {frequency === 'weekly' && (
+            <View style={{ gap: 8 }}>
+              <Text style={styles.modalLabel}>Días de la semana</Text>
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                {['D','L','M','X','J','V','S'].map((day, i) => {
+                  const active = daysOfWeek.includes(i);
+                  return (
+                    <Pressable
+                      key={day}
+                      onPress={() => {
+                        setDaysOfWeek(prev => 
+                          active ? prev.filter(d => d !== i) : [...prev, i]
+                        );
+                      }}
+                      style={[styles.daySelectChip, active && styles.daySelectChipActive]}
+                    >
+                      <Text style={[styles.daySelectText, active && styles.daySelectTextActive]}>{day}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {frequency !== 'none' && (
+            <SafeDatePicker
+              label="Finalizar repetición (opcional)"
+              value={endDate}
+              onClear={() => setEndDate(null)}
+              onConfirm={setEndDate}
+            />
+          )}
+
+          <View style={{ gap: 6 }}>
+            <Text style={styles.modalLabel}>Recordatorio (minutos antes)</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={String(remindMin)}
+              onChangeText={v => setRemindMin(Number(v) || 0)}
+              keyboardType="number-pad"
+            />
+          </View>
+
           <View style={styles.modalBtns}>
             <Pressable style={styles.cancelBtn} onPress={onClose}>
               <Text style={styles.cancelBtnText}>Cancelar</Text>
             </Pressable>
             <Pressable style={styles.saveBtn} onPress={handleSave}>
-              <Text style={styles.saveBtnText}>Guardar Evento</Text>
+              <Text style={styles.saveBtnText}>{editId ? 'Guardar' : 'Crear'}</Text>
             </Pressable>
           </View>
+
+          {editId && (
+            <Pressable style={[styles.cancelBtn, { borderColor: lifeTheme.colors.alert, marginTop: 4 }]} onPress={handleDelete}>
+              <Text style={[styles.cancelBtnText, { color: lifeTheme.colors.alert }]}>Eliminar Evento</Text>
+            </Pressable>
+          )}
         </Pressable>
       </Pressable>
     </Modal>
@@ -491,8 +623,19 @@ export default function CalendarScreen(): ReactElement {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(new Date());
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const activeTasks = tasks.filter((t) => t.status !== 'completed');
+
+  function onEditEvent(id: string) {
+    setEditingId(id);
+    setModalVisible(true);
+  }
+
+  function onAddEvent() {
+    setEditingId(null);
+    setModalVisible(true);
+  }
 
   function navigate(direction: -1 | 1) {
     const d = new Date(currentDate);
@@ -561,21 +704,21 @@ export default function CalendarScreen(): ReactElement {
           />
         )}
         {view === 'day' && (
-          <DayView date={currentDate} tasks={activeTasks} events={events} timeline={timeline} />
+          <DayView date={currentDate} tasks={activeTasks} events={events} timeline={timeline} onEditEvent={onEditEvent} />
         )}
       </View>
 
       {/* Selected day info */}
       {view !== 'day' && (
-        <DayTasksPanel date={selectedDay} tasks={activeTasks} events={events} />
+        <DayTasksPanel date={selectedDay} tasks={activeTasks} events={events} onEditEvent={onEditEvent} />
       )}
 
       {/* FAB */}
-      <Pressable style={[styles.fab, { bottom: 16 }]} onPress={() => setModalVisible(true)}>
+      <Pressable style={[styles.fab, { bottom: 16 }]} onPress={onAddEvent}>
         <Text style={styles.fabText}>+ Evento</Text>
       </Pressable>
 
-      <EventModal visible={modalVisible} onClose={() => setModalVisible(false)} />
+      <EventModal visible={modalVisible} editId={editingId} onClose={() => setModalVisible(false)} />
     </View>
   );
 }
@@ -720,5 +863,15 @@ const styles = StyleSheet.create({
 
   // FAB
   fab: { position: 'absolute', right: 20, backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 30, elevation: 5, shadowColor: '#000', shadowOffset: {width:0, height:3}, shadowOpacity: 0.3, shadowRadius: 5 },
-  fabText: { color: '#fff', fontWeight: '900', fontSize: 14 }
+  fabText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+
+  freqChip: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: lifeTheme.colors.border, backgroundColor: lifeTheme.colors.surfaceAlt },
+  freqChipActive: { backgroundColor: lifeTheme.colors.primary, borderColor: lifeTheme.colors.primary },
+  freqChipText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '700' },
+  freqChipTextActive: { color: '#fff' },
+
+  daySelectChip: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border, backgroundColor: lifeTheme.colors.surfaceAlt },
+  daySelectChipActive: { backgroundColor: lifeTheme.colors.primary, borderColor: lifeTheme.colors.primary },
+  daySelectText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '700' },
+  daySelectTextActive: { color: '#fff' }
 });

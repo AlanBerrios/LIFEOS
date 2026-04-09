@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Alert,
   Modal,
@@ -14,11 +14,18 @@ import Animated, { FadeInDown, FadeOutUp, Layout } from 'react-native-reanimated
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
+import { getTodayStr } from '../../src/utils/date';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { lifeTheme } from '../../src/theme';
 import type { TaskUrgency } from '../../src/types';
-import { useEffect } from 'react';
 import { createId } from '../../src/utils/ids';
+import { 
+  UtensilsCrossed, 
+  Plus, 
+  CalendarPlus, 
+  FileText,
+  SquareTerminator
+} from 'lucide-react-native';
 
 function fmt(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -107,6 +114,129 @@ function QuickTaskModal({
             </Pressable>
             <Pressable style={styles.saveBtn} onPress={handleSave}>
               <Text style={styles.saveBtnText}>Guardar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ─── Quick Event Modal ────────────────────────────────────────────────────────
+
+function QuickEventModal({
+  visible,
+  onClose
+}: {
+  visible: boolean;
+  onClose: () => void;
+}): ReactElement {
+  const addEvent = useLifeStore((s) => s.addEvent);
+  const [title, setTitle] = useState('');
+  const [startTime, setStartTime] = useState<Date | null>(null);
+  const [endTime, setEndTime] = useState<Date | null>(null);
+  const [remindMin, setRemindMin] = useState(10);
+
+  function handleSave() {
+    if (!title.trim() || !startTime || !endTime) {
+      Alert.alert('Faltan datos', 'Título y horarios son obligatorios.');
+      return;
+    }
+    addEvent({
+      title: title.trim(),
+      startTime,
+      endTime,
+      reminderMinutes: remindMin
+    });
+    setTitle('');
+    setStartTime(null);
+    setEndTime(null);
+    onClose();
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="slide">
+      <Pressable style={styles.overlay} onPress={onClose}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Rápido: Nuevo Evento</Text>
+          
+          <TextInput
+            style={[styles.modalInput, { fontSize: 16, textAlign: 'left' }]}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Nombre del evento"
+            placeholderTextColor={lifeTheme.colors.muted}
+            autoFocus
+          />
+
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+             <View style={{ flex: 1 }}>
+                <Text style={styles.modalLabel}>Recordatorio (min)</Text>
+                <TextInput
+                  style={[styles.modalInput, { fontSize: 16, padding: 10 }]}
+                  value={String(remindMin)}
+                  onChangeText={(v) => setRemindMin(Number(v) || 0)}
+                  keyboardType="number-pad"
+                />
+             </View>
+          </View>
+
+          <View style={styles.modalBtns}>
+            <Pressable style={styles.cancelBtn} onPress={onClose}>
+              <Text style={styles.cancelBtnText}>Cerrar</Text>
+            </Pressable>
+            <Pressable style={styles.saveBtn} onPress={handleSave}>
+              <Text style={styles.saveBtnText}>Guardar</Text>
+            </Pressable>
+          </View>
+          <Text style={{ color: lifeTheme.colors.muted, fontSize: 10, textAlign: 'center' }}>
+            * Usa el Calendario para configurar horas exactas.
+          </Text>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+// ─── Quick Note Modal ─────────────────────────────────────────────────────────
+
+function QuickNoteModal({
+  visible,
+  onClose
+}: {
+  visible: boolean;
+  onClose: () => void;
+}): ReactElement {
+  const addNote = useLifeStore((s) => s.addNote);
+  const [content, setContent] = useState('');
+
+  function handleSave() {
+    if (!content.trim()) return;
+    addNote({ content: content.trim() });
+    setContent('');
+    onClose();
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="slide">
+      <Pressable style={styles.overlay} onPress={onClose}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Nueva anotación</Text>
+          <TextInput
+            style={[styles.modalInput, { fontSize: 16, textAlign: 'left', height: 120 }]}
+            value={content}
+            onChangeText={setContent}
+            placeholder="Escribe algo rápido..."
+            placeholderTextColor={lifeTheme.colors.muted}
+            multiline
+            autoFocus
+          />
+          <View style={styles.modalBtns}>
+            <Pressable style={styles.cancelBtn} onPress={onClose}>
+              <Text style={styles.cancelBtnText}>Cerrar</Text>
+            </Pressable>
+            <Pressable style={styles.saveBtn} onPress={handleSave}>
+              <Text style={styles.saveBtnText}>Guardar Nota</Text>
             </Pressable>
           </View>
         </View>
@@ -290,6 +420,8 @@ export default function DashboardScreen(): ReactElement {
 
   const [editBreak, setEditBreak] = useState<{ id: string; minutes: number } | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
+  const [quickEventVisible, setQuickEventVisible] = useState(false);
+  const [quickNoteVisible, setQuickNoteVisible] = useState(false);
   const [timeLeft, setTimeLeft] = useState<string>('');
 
   useEffect(() => {
@@ -333,7 +465,10 @@ export default function DashboardScreen(): ReactElement {
               {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
             </Text>
           </View>
-          <View style={styles.statsRow}>
+          <Pressable 
+            style={styles.statsRow}
+            onPress={() => router.push('/analytics' as any)}
+          >
             <View style={styles.statChip}>
               <Text style={styles.statNum}>{taskBlocks}</Text>
               <Text style={styles.statLbl}>plan.</Text>
@@ -346,87 +481,19 @@ export default function DashboardScreen(): ReactElement {
               <Text style={[styles.statNum, { color: lifeTheme.colors.success }]}>{completedCount}</Text>
               <Text style={styles.statLbl}>✓</Text>
             </View>
-          </View>
-        </Animated.View>
-
-        {/* Action Row */}
-        <Animated.View entering={FadeInDown.delay(100).duration(300)} style={styles.headerActionRow}>
-          <Pressable onPress={() => router.push('/analytics' as any)} style={styles.analyticsBtn}>
-            <Text style={styles.analyticsBtnIcon}>📈</Text>
-            <Text style={styles.analyticsBtnLabel}>Maestría Personal</Text>
           </Pressable>
         </Animated.View>
 
-        {/* Engine badge */}
-        {lastEngine !== 'idle' && (
-          <Animated.View
-            entering={FadeInDown.delay(100).duration(280)}
-            style={[
-              styles.engineBadge,
-              lastEngine === 'ortools-cpsat' ? styles.badgeGreen :
-              lastEngine === 'greedy-fallback' ? styles.badgeYellow : styles.badgePurple
-            ]}
-          >
-            <Text style={[
-              styles.engineText,
-              lastEngine === 'ortools-cpsat' ? { color: lifeTheme.colors.success } :
-              lastEngine === 'greedy-fallback' ? { color: '#f59e0b' } : { color: lifeTheme.colors.primary }
-            ]}>
-              {lastEngine === 'ortools-cpsat' ? `🔬 OR-Tools · ${lastSolverStatus}` :
-               lastEngine === 'greedy-fallback' ? `⚠️ Greedy · ${lastSolverStatus}` :
-               '📱 Scheduler local (offline)'}
-            </Text>
-          </Animated.View>
-        )}
+        {/* Action Row Removed - Navigation moved to stats chips */}
 
-        <Animated.View entering={FadeInDown.delay(150).duration(320)} style={styles.actionsCard}>
-          <Pressable
-            style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed, isGenerating && styles.disabled]}
-            onPress={() => void generateTimeline(new Date())}
-            disabled={isGenerating}
-          >
-            <Text style={styles.primaryBtnText}>
-              {isGenerating ? '⏳ Optimizando...' : '⚡ Organizar mi día'}
-            </Text>
-          </Pressable>
-
-          <View style={styles.secondaryActionsRow}>
-            {activeTimer ? (
-              <Pressable
-                style={({ pressed }) => [styles.secondaryBtn, styles.flex1, pressed && styles.pressed]}
-                onPress={() => void stopTimer()}
-              >
-                <View style={styles.timerContent}>
-                  <Text style={styles.secondaryBtnText}>⏹ Terminar</Text>
-                  <Text style={styles.timerDigits}>{timeLeft}</Text>
-                </View>
-              </Pressable>
-            ) : (
-              <Pressable
-                style={({ pressed }) => [styles.secondaryBtn, styles.flex1, pressed && styles.pressed]}
-                onPress={() => void startMealTimer()}
-              >
-                <Text style={styles.secondaryBtnText}>🍽 Almuerzo</Text>
-              </Pressable>
-            )}
-
-            <Pressable
-              style={({ pressed }) => [styles.secondaryBtn, styles.flex1, pressed && styles.pressed]}
-              onPress={() => setQuickAddVisible(true)}
-            >
-              <Text style={styles.secondaryBtnText}>➕ Nueva Tarea</Text>
-            </Pressable>
-          </View>
-        </Animated.View>
-
-        <QuickTaskModal visible={quickAddVisible} onClose={() => setQuickAddVisible(false)} />
+        {/* Engine badge removed - moved to settings */}
 
         {/* --- HABIT QUICK ACTIONS --- */}
-        <View style={styles.habitsRow}>
+        <Animated.View entering={FadeInDown.delay(120).duration(300)} style={styles.habitsRow}>
           <Text style={styles.habitsTitle}>🌟 Hábitos de hoy</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.habitsList}>
             {habits.map((habit) => {
-              const isDone = habit.lastCompletedDate === new Date().toISOString().slice(0, 10);
+              const isDone = habit.lastCompletedDate === getTodayStr();
               return (
                 <Pressable
                   key={habit.id}
@@ -446,7 +513,79 @@ export default function DashboardScreen(): ReactElement {
               <Text style={styles.habitName}>Añadir</Text>
             </Pressable>
           </ScrollView>
-        </View>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(180).duration(320)} style={styles.actionsCard}>
+          <Pressable
+            style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed, isGenerating && styles.disabled]}
+            onPress={() => void generateTimeline(new Date())}
+            disabled={isGenerating}
+          >
+            <Text style={styles.primaryBtnText}>
+              {isGenerating ? '⏳ Optimizando...' : '⚡ Organizar mi día'}
+            </Text>
+          </Pressable>
+
+          <View style={styles.secondaryActionsRow}>
+            {activeTimer ? (
+              <Pressable
+                style={({ pressed }) => [styles.secondaryBtn, styles.flex1, pressed && styles.pressed]}
+                onPress={() => void stopTimer()}
+              >
+                <View style={styles.actionBtnInner}>
+                  <Text style={styles.timerDigitsSmall}>{timeLeft}</Text>
+                  <Text style={styles.actionBtnLabel}>Terminar</Text>
+                </View>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={({ pressed }) => [styles.secondaryBtn, styles.flex1, pressed && styles.pressed]}
+                onPress={() => void startMealTimer()}
+              >
+                <View style={styles.actionBtnInner}>
+                  <UtensilsCrossed size={18} color={lifeTheme.colors.text} />
+                  <Text style={styles.actionBtnLabel}>Almuerzo</Text>
+                </View>
+              </Pressable>
+            )}
+
+            <Pressable
+              style={({ pressed }) => [styles.secondaryBtn, styles.flex1, pressed && styles.pressed]}
+              onPress={() => setQuickAddVisible(true)}
+            >
+              <View style={styles.actionBtnInner}>
+                <Plus size={20} color={lifeTheme.colors.text} />
+                <Text style={styles.actionBtnLabel}>Tarea</Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.secondaryBtn, styles.flex1, pressed && styles.pressed]}
+              onPress={() => setQuickEventVisible(true)}
+            >
+              <View style={styles.actionBtnInner}>
+                <CalendarPlus size={18} color={lifeTheme.colors.text} />
+                <Text style={styles.actionBtnLabel}>Evento</Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.secondaryBtn, styles.flex1, pressed && styles.pressed]}
+              onPress={() => setQuickNoteVisible(true)}
+            >
+              <View style={styles.actionBtnInner}>
+                <FileText size={18} color={lifeTheme.colors.text} />
+                <Text style={styles.actionBtnLabel}>Nota</Text>
+              </View>
+            </Pressable>
+          </View>
+        </Animated.View>
+
+        <QuickTaskModal visible={quickAddVisible} onClose={() => setQuickAddVisible(false)} />
+        <QuickEventModal visible={quickEventVisible} onClose={() => setQuickEventVisible(false)} />
+        <QuickNoteModal visible={quickNoteVisible} onClose={() => setQuickNoteVisible(false)} />
+
+
 
         {/* Timeline */}
         {timeline.length > 0 ? (
@@ -536,9 +675,16 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   secondaryBtn: {
     backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12,
-    paddingVertical: 12, alignItems: 'center',
-    borderWidth: 1, borderColor: lifeTheme.colors.border
+    paddingVertical: 10, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: lifeTheme.colors.border,
+    height: 60
   },
+  actionBtnInner: {
+    alignItems: 'center',
+    gap: 4
+  },
+  actionBtnLabel: { color: lifeTheme.colors.text, fontSize: 10, fontWeight: '700' },
+  timerDigitsSmall: { color: lifeTheme.colors.primary, fontSize: 13, fontWeight: '900', fontFamily: 'monospace' },
   secondaryBtnText: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '600' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.975 }] },
   disabled: { opacity: 0.5 },
@@ -623,12 +769,12 @@ const styles = StyleSheet.create({
   habitsTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800', marginLeft: 4 },
   habitsList: { gap: 10, paddingRight: 16, paddingTop: 6 },
   habitBubble: {
-    backgroundColor: lifeTheme.colors.surface, borderRadius: 18,
+    backgroundColor: lifeTheme.colors.surface, borderRadius: 14,
     borderWidth: 1, borderColor: lifeTheme.colors.border,
-    padding: 10, alignItems: 'center', minWidth: 64, gap: 4
+    paddingHorizontal: 8, paddingVertical: 6, alignItems: 'center', minWidth: 50, gap: 2
   },
-  habitEmoji: { fontSize: 20 },
-  habitName: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '700' },
+  habitEmoji: { fontSize: 16 },
+  habitName: { color: lifeTheme.colors.muted, fontSize: 9, fontWeight: '700' },
   habitBubbleDone: { backgroundColor: 'rgba(108,252,184,0.1)', borderColor: lifeTheme.colors.success },
   habitNameDone: { color: lifeTheme.colors.success },
   habitDoneCheck: {

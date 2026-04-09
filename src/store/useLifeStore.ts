@@ -6,7 +6,7 @@ import { callSchedulerApi, SchedulerApiError } from '../services/schedulerApi';
 import { createId } from '../utils/ids';
 import { MINUTE_MS } from '../utils/time';
 import { cancelAllNotifications, scheduleTaskNotifications } from '../services/notifications';
-import { toDate, toDateRequired } from '../utils/date';
+import { getTodayStr, toDate, toDateRequired } from '../utils/date';
 import { DEFAULT_SETTINGS } from '../types';
 import type { AppSettings, DailySession, LifeTimer, ScheduleBlock, Task, TaskStatus } from '../types';
 
@@ -55,9 +55,13 @@ interface LifeStore {
   lastSolverStatus: string;
   isGenerating: boolean;
 
-  // Tasks
-  addTask: (task: TaskDraft) => void;
-  updateTask: (id: string, updates: TaskUpdate) => void;
+  // Habits
+  addHabit: (h: Omit<import('../types').Habit, 'id' | 'logs' | 'streak'>) => void;
+  logHabit: (id: string, value: number) => void;
+  updateHabit: (id: string, updates: Partial<import('../types').Habit>) => void;
+  deleteHabit: (id: string) => void;
+  
+  // Notes
   deleteTask: (id: string) => void;
   completeTask: (id: string) => void;
 
@@ -80,9 +84,7 @@ interface LifeStore {
   clearOldSessions: () => void;
   clearAllData: () => void;
 
-  addHabit: (h: { name: string; emoji: string; goalValue: number; goalUnit: string; color?: string }) => void;
-  logHabit: (id: string, value: number) => void;
-  deleteHabit: (id: string) => void;
+
 
   // Notes
   addNote: (n: { title: string; content: string; reminderIntervalMinutes?: number; reminderAt?: string }) => void;
@@ -95,6 +97,7 @@ interface LifeStore {
 
   // Events (Static / Calendar ICS)
   addEvent: (e: Omit<import('../types').StaticEvent, 'id'>) => void;
+  updateEvent: (id: string, updates: Partial<import('../types').StaticEvent>) => void;
   setEvents: (events: import('../types').StaticEvent[]) => void;
   deleteEvent: (id: string) => void;
 
@@ -511,34 +514,71 @@ export const useLifeStore = create<LifeStore>()(
           const habits = state.habits.map((habit) => {
             if (habit.id !== id) return habit;
             const now = new Date();
-            const today = now.toISOString().slice(0, 10);
+            const todayStr = getTodayStr();
             
-            // Check if already logged today
-            const alreadyLoggedToday = habit.lastCompletedDate === today;
-            const newLogs = [...habit.logs, { timestamp: now, value }];
+            // Toggle: si ya se completó hoy, desmarcarlo
+            const isUnmarking = habit.lastCompletedDate === todayStr;
             
-            let newStreak = habit.streak;
-            if (!alreadyLoggedToday) {
-              const yesterday = new Date(now);
-              yesterday.setDate(yesterday.getDate() - 1);
-              const yesterdayStr = yesterday.toISOString().slice(0, 10);
-              
-              if (habit.lastCompletedDate === yesterdayStr) {
-                newStreak += 1;
+            let newLogs = [...habit.logs];
+            let newLastDate = habit.lastCompletedDate;
+
+            if (isUnmarking) {
+              newLogs = newLogs.filter(log => {
+                const logDate = new Date(log.timestamp).toISOString().slice(0, 10);
+                return logDate !== todayStr;
+              });
+              if (newLogs.length > 0) {
+                const sorted = newLogs.map(l => new Date(l.timestamp).toISOString().slice(0, 10)).sort();
+                newLastDate = sorted[sorted.length - 1];
               } else {
+                newLastDate = undefined;
+              }
+            } else {
+              newLogs.push({ timestamp: now, value });
+              newLastDate = todayStr;
+            }
+
+            // Recalcular racha basada en el historial de logs
+            let newStreak = 0;
+            if (newLogs.length > 0) {
+              const uniqueDates = Array.from(new Set(
+                newLogs.map(l => new Date(l.timestamp).toISOString().slice(0, 10))
+              )).sort().reverse();
+
+              const mostRecent = uniqueDates[0];
+              const checkDate = new Date(todayStr);
+              const yesterday = new Date(checkDate);
+              yesterday.setDate(yesterday.getDate() - 1);
+              const yY = yesterday.getFullYear();
+              const yM = String(yesterday.getMonth() + 1).padStart(2, '0');
+              const yD = String(yesterday.getDate()).padStart(2, '0');
+              const yesterdayStr = `${yY}-${yM}-${yD}`;
+
+              // Solo contar racha si el último log es hoy o ayer
+              if (mostRecent === todayStr || mostRecent === yesterdayStr) {
                 newStreak = 1;
+                let current = new Date(mostRecent);
+                for (let i = 1; i < uniqueDates.length; i++) {
+                   current.setDate(current.getDate() - 1);
+                   if (uniqueDates[i] === current.toISOString().slice(0, 10)) {
+                     newStreak++;
+                   } else {
+                     break;
+                   }
+                }
               }
             }
 
-            return {
-              ...habit,
-              logs: newLogs,
-              streak: newStreak,
-              lastCompletedDate: today
-            };
+            return { ...habit, logs: newLogs, lastCompletedDate: newLastDate, streak: newStreak };
           });
           return { habits };
         });
+      },
+
+      updateHabit: (id, updates) => {
+        set((state) => ({
+          habits: state.habits.map(h => h.id === id ? { ...h, ...updates } : h)
+        }));
       },
 
       deleteHabit: (id) => {
@@ -589,6 +629,11 @@ export const useLifeStore = create<LifeStore>()(
       addEvent: (e) => {
         set((state) => ({
           events: [...state.events, { id: createId('evt'), ...e }]
+        }));
+      },
+      updateEvent: (id, updates) => {
+        set((state) => ({
+          events: state.events.map(e => e.id === id ? { ...e, ...updates } : e)
         }));
       },
       setEvents: (events) => {

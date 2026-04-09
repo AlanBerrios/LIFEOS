@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getTodayStr } from '../../src/utils/date';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { lifeTheme } from '../../src/theme';
 
@@ -30,9 +31,12 @@ export default function HabitsScreen(): ReactElement {
   const habits = useLifeStore((s) => s.habits);
   const addHabit = useLifeStore((s) => s.addHabit);
   const deleteHabit = useLifeStore((s) => s.deleteHabit);
+  const updateHabit = useLifeStore((s) => s.updateHabit);
   const logHabit = useLifeStore((s) => s.logHabit);
 
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
+  
   const [newHabit, setNewHabit] = useState({
     name: '',
     emoji: '✨',
@@ -40,15 +44,36 @@ export default function HabitsScreen(): ReactElement {
     goalUnit: 'check'
   });
 
-  function handleCreate() {
+  function handleSave() {
     if (!newHabit.name.trim()) return;
-    addHabit({
-      ...newHabit,
-      name: newHabit.name.trim(),
-      color: lifeTheme.colors.primary
-    });
+    
+    if (editingHabitId) {
+      updateHabit(editingHabitId, {
+        ...newHabit,
+        name: newHabit.name.trim()
+      });
+      setEditingHabitId(null);
+    } else {
+      addHabit({
+        ...newHabit,
+        name: newHabit.name.trim(),
+        color: lifeTheme.colors.primary
+      });
+    }
+    
     setModalVisible(false);
     setNewHabit({ name: '', emoji: '✨', goalValue: 1, goalUnit: 'check' });
+  }
+
+  function handleEdit(habit: any) {
+    setEditingHabitId(habit.id);
+    setNewHabit({
+      name: habit.name,
+      emoji: habit.emoji,
+      goalValue: habit.goalValue,
+      goalUnit: habit.goalUnit
+    });
+    setModalVisible(true);
   }
 
   function handleLog(id: string) {
@@ -63,10 +88,39 @@ export default function HabitsScreen(): ReactElement {
     >
       <View style={styles.hdr}>
         <Text style={styles.title}>🌟 Mis Hábitos</Text>
-        <Pressable style={styles.addBtn} onPress={() => setModalVisible(true)}>
+        <Pressable style={styles.addBtn} onPress={() => { setEditingHabitId(null); setModalVisible(true); }}>
           <Text style={styles.addBtnText}>+ Nuevo</Text>
         </Pressable>
       </View>
+
+      {/* Visualizador de Rachas (Gráfico de Barras Lateral) */}
+      {habits.length > 0 && (() => {
+        const maxStreak = Math.max(...habits.map(h => h.streak), 7);
+        return (
+          <View style={styles.streakPanel}>
+            <Text style={styles.sectLabel}>Rachas Actuales</Text>
+            <View style={styles.streakChart}>
+              {habits.map(h => (
+                <View key={h.id} style={styles.streakRow}>
+                  <Text style={styles.streakRowEmoji}>{h.emoji}</Text>
+                  <View style={styles.streakBarTrack}>
+                    <View 
+                      style={[
+                        styles.streakBarFill, 
+                        { 
+                          width: `${(h.streak / maxStreak) * 100}%`,
+                          backgroundColor: h.streak > 0 ? lifeTheme.colors.alert : lifeTheme.colors.border
+                        }
+                      ]} 
+                    />
+                  </View>
+                  <Text style={styles.streakRowVal}>🔥 {h.streak}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        );
+      })()}
 
       <View style={styles.list}>
         {habits.length === 0 ? (
@@ -97,14 +151,22 @@ export default function HabitsScreen(): ReactElement {
                   style={({ pressed }) => [
                     styles.logBtn,
                     pressed && { opacity: 0.7 },
-                    habit.lastCompletedDate === new Date().toISOString().slice(0, 10) && styles.logBtnDone
+                    habit.lastCompletedDate === getTodayStr() && styles.logBtnDone
                   ]}
                   onPress={() => handleLog(habit.id)}
                 >
                   <Text style={styles.logBtnText}>
-                    {habit.lastCompletedDate === new Date().toISOString().slice(0, 10) ? '✅ Hecho' : '💪 Marcar'}
+                    {habit.lastCompletedDate === getTodayStr() ? '✅ Hecho' : '💪 Marcar'}
                   </Text>
                 </Pressable>
+                
+                <Pressable
+                   style={styles.editBtn}
+                   onPress={() => handleEdit(habit)}
+                >
+                   <Text style={styles.delBtnText}>✏️</Text>
+                </Pressable>
+
                 <Pressable
                   style={styles.delBtn}
                   onPress={() => {
@@ -192,11 +254,11 @@ export default function HabitsScreen(): ReactElement {
             </View>
 
             <View style={styles.modalBtns}>
-              <Pressable style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
+              <Pressable style={styles.cancelBtn} onPress={() => { setModalVisible(false); setEditingHabitId(null); }}>
                 <Text style={styles.cancelBtnText}>Cancelar</Text>
               </Pressable>
-              <Pressable style={styles.saveBtn} onPress={handleCreate}>
-                <Text style={styles.saveBtnText}>Crear Hábito</Text>
+              <Pressable style={styles.saveBtn} onPress={handleSave}>
+                <Text style={styles.saveBtnText}>{editingHabitId ? 'Guardar Cambios' : 'Crear Hábito'}</Text>
               </Pressable>
             </View>
           </View>
@@ -231,23 +293,39 @@ const styles = StyleSheet.create({
   },
   suggestionEmojiSmall: { fontSize: 14 },
   suggestionNameSmall: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
-  list: { gap: 12 },
-  habitCard: {
-    backgroundColor: lifeTheme.colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: lifeTheme.colors.border, padding: 16, gap: 14
+  streakPanel: { 
+    backgroundColor: lifeTheme.colors.surface, 
+    borderRadius: 20, 
+    padding: 16, 
+    borderWidth: 1, 
+    borderColor: lifeTheme.colors.border,
+    marginBottom: 10,
+    gap: 12
   },
-  habitMain: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  habitEmoji: { fontSize: 32 },
-  habitName: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '800' },
+  streakChart: { gap: 8 },
+  streakRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  streakRowEmoji: { fontSize: 16, width: 24, textAlign: 'center' },
+  streakBarTrack: { flex: 1, height: 8, backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 4, overflow: 'hidden' },
+  streakBarFill: { height: '100%', borderRadius: 4 },
+  streakRowVal: { color: lifeTheme.colors.text, fontWeight: '900', fontSize: 12, width: 34, textAlign: 'right' },
+  list: { gap: 10 },
+  habitCard: {
+    backgroundColor: lifeTheme.colors.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: lifeTheme.colors.border, padding: 12, gap: 12
+  },
+  habitMain: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  habitEmoji: { fontSize: 24 },
+  habitName: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800' },
   habitGoal: { color: lifeTheme.colors.muted, fontSize: 12 },
-  streakBadge: { backgroundColor: 'rgba(252,108,143,0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
-  streakText: { color: lifeTheme.colors.alert, fontWeight: '900', fontSize: 13 },
-  habitActions: { flexDirection: 'row', gap: 10 },
-  logBtn: { flex: 1, backgroundColor: lifeTheme.colors.primary, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  streakBadge: { backgroundColor: 'rgba(252,108,143,0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  streakText: { color: lifeTheme.colors.alert, fontWeight: '900', fontSize: 12 },
+  habitActions: { flexDirection: 'row', gap: 8 },
+  logBtn: { flex: 1, backgroundColor: lifeTheme.colors.primary, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   logBtnDone: { backgroundColor: lifeTheme.colors.success },
-  logBtnText: { color: '#fff', fontWeight: '800' },
-  delBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 14, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
-  delBtnText: { fontSize: 16 },
+  logBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  editBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
+  delBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
+  delBtnText: { fontSize: 14 },
   emptyCard: { padding: 40, alignItems: 'center' },
   emptyText: { color: lifeTheme.colors.muted, textAlign: 'center', lineHeight: 22 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },

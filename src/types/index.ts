@@ -42,6 +42,8 @@ export interface ScheduleBlock {
   isStaticEvent?: boolean;
 }
 
+export type RecurrenceFrequency = 'none' | 'daily' | 'weekly' | 'monthly';
+
 export interface StaticEvent {
   id: string;
   title: string;
@@ -50,6 +52,15 @@ export interface StaticEvent {
   color?: string;
   location?: string;
   isRecurring?: boolean;
+  /** Minutos de antelación para el recordatorio */
+  reminderMinutes?: number;
+  /** Regla de repetición */
+  recurrence?: {
+    frequency: RecurrenceFrequency;
+    daysOfWeek?: number[]; // 0=Domingo, 1=Lunes...
+    interval?: number;     // Cada X semanas/meses
+    endDate?: Date;
+  };
 }
 
 export interface MealRoutine {

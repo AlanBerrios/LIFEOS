@@ -1,11 +1,12 @@
-﻿import type { ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { lifeTheme } from '../../src/theme';
 import type { DailySession } from '../../src/types';
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatMinutes(mins: number): string {
   if (mins < 60) return `${mins}m`;
@@ -33,19 +34,23 @@ function getShortDay(iso: string): string {
   return d.toLocaleDateString('es', { weekday: 'short' }).slice(0, 3);
 }
 
-// â”€â”€â”€ Sub-componentes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Sub-componentes ──────────────────────────────────────────────────────────
 
 interface StatCardProps {
   label: string;
   value: string;
+  icon?: string;
   accent?: string;
   delay?: number;
 }
 
-function StatCard({ label, value, accent = lifeTheme.colors.primary, delay = 0 }: StatCardProps): ReactElement {
+function StatCard({ label, value, icon, accent = lifeTheme.colors.primary, delay = 0 }: StatCardProps): ReactElement {
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(300)} style={styles.statCard}>
-      <Text style={[styles.statValue, { color: accent, fontFamily: 'monospace' }]}>{value}</Text>
+      <View style={styles.statCardHeader}>
+        <Text style={[styles.statValue, { color: accent, fontFamily: 'monospace' }]}>{value}</Text>
+        {icon && <Text style={styles.statIcon}>{icon}</Text>}
+      </View>
       <Text style={styles.statLabel}>{label}</Text>
     </Animated.View>
   );
@@ -71,9 +76,10 @@ function HBar({ progress, color, label, count, delay = 0 }: BarProps): ReactElem
   );
 }
 
-// â”€â”€â”€ Pantalla principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Pantalla principal ───────────────────────────────────────────────────────
 
 export default function StatsScreen(): ReactElement {
+  const insets = useSafeAreaInsets();
   const tasks = useLifeStore((s) => s.tasks);
   const timeline = useLifeStore((s) => s.timeline);
   const sessions = useLifeStore((s) => s.sessions);
@@ -83,22 +89,22 @@ export default function StatsScreen(): ReactElement {
   const last7 = getLast7Days();
   const sessionMap = Object.fromEntries(sessions.map((s) => [s.date, s]));
 
-  // â”€â”€ MÃ©tricas del dÃ­a actual â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Métricas del día actual ──────────────────────────────────────────────────
   const completedToday = tasks.filter((t) => t.status === 'completed').length;
   const scheduledToday = timeline.filter((b) => b.type === 'task').length;
   const totalWork = todaySession?.totalWorkMinutes ?? 0;
   const totalDrain = todaySession?.totalCognitiveDrain ?? 0;
 
-  // EnergÃ­a cognitiva: escalar (600 = 1 sesiÃ³n completa, mÃºltiplos posibles)
+  // Energía cognitiva: escalar (600 = 1 sesión completa, múltiplos posibles)
   const drainPercent = Math.min(100, Math.round((totalDrain / 600) * 100));
 
-  // â”€â”€ Pool breakdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Pool breakdown ──────────────────────────────────────────────────────────
   const poolCount = tasks.filter((t) => t.status === 'pool').length;
   const scheduledCount = tasks.filter((t) => t.status === 'scheduled').length;
   const completedCount = tasks.filter((t) => t.status === 'completed').length;
   const totalTasks = tasks.length || 1;
 
-  // â”€â”€ Carga cognitiva por categorÃ­a â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Carga cognitiva por categoría ───────────────────────────────────────────
   const taskBlocks = timeline.filter((b) => b.type === 'task');
   const taskDetailMap = Object.fromEntries(tasks.map((t) => [t.id, t]));
 
@@ -112,19 +118,29 @@ export default function StatsScreen(): ReactElement {
   }
   const maxLoad = Math.max(lowLoad, midLoad, highLoad, 1);
 
-  // â”€â”€ HistÃ³rico sparkline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Histórico sparkline ─────────────────────────────────────────────────────────
   const maxCompleted = Math.max(1, ...last7.map((d) => sessionMap[d]?.tasksCompleted ?? 0));
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView 
+      style={styles.screen} 
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}
+      showsVerticalScrollIndicator={false}
+    >
 
       {/* Hero */}
       <Animated.View entering={FadeInDown.duration(350)} style={styles.hero}>
         <View style={styles.glowAccent} />
+        
+        <View style={styles.maestriaBadge}>
+          <Text style={styles.maestriaIcon}>📈</Text>
+          <Text style={styles.maestriaText}>Maestría Personal</Text>
+        </View>
+
         <Text style={styles.kicker}>Sistema Operativo Personal</Text>
-        <Text style={styles.heroTitle}>EstadÃ­sticas</Text>
+        <Text style={styles.heroTitle}>Estadísticas</Text>
         <Text style={styles.heroSub}>
-          Un vistazo a tu productividad cognitiva de hoy y los Ãºltimos 7 dÃ­as.
+          Un vistazo a tu productividad cognitiva de hoy y los últimos 7 días.
         </Text>
       </Animated.View>
 
@@ -135,18 +151,21 @@ export default function StatsScreen(): ReactElement {
           <StatCard
             label="Completadas"
             value={`${completedToday}`}
+            icon="✅"
             accent={lifeTheme.colors.success}
             delay={100}
           />
           <StatCard
             label="Planificadas"
             value={`${scheduledToday}`}
+            icon="⚡"
             accent={lifeTheme.colors.primary}
             delay={160}
           />
           <StatCard
             label="Trabajo total"
             value={formatMinutes(totalWork)}
+            icon="⏲️"
             accent={lifeTheme.colors.text}
             delay={220}
           />
@@ -156,7 +175,7 @@ export default function StatsScreen(): ReactElement {
         {scheduledToday > 0 && (
           <Animated.View entering={FadeInDown.delay(280).duration(300)} style={styles.progressBlock}>
             <View style={styles.progressLabelRow}>
-              <Text style={styles.progressLabel}>Progreso del dÃ­a</Text>
+              <Text style={styles.progressLabel}>Progreso del día</Text>
               <Text style={[styles.progressPct, { fontFamily: 'monospace' }]}>
                 {completedToday}/{scheduledToday}
               </Text>
@@ -178,7 +197,15 @@ export default function StatsScreen(): ReactElement {
 
       {/* EnergÃ­a cognitiva */}
       <Animated.View entering={FadeInDown.delay(180).duration(300)} style={styles.section}>
-        <Text style={styles.sectionTitle}>EnergÃ­a Cognitiva</Text>
+        <Text style={styles.sectionTitle}>Energía Cognitiva</Text>
+        
+        {/* Explicación Técnica */}
+        <View style={styles.infoCard}>
+          <Text style={styles.infoText}>
+            Tu cerebro tiene un presupuesto diario estimado de <Text style={{ fontWeight: '900', color: lifeTheme.colors.primary }}>600 unidades</Text> de energía. Cada tarea consume este presupuesto según su dificultad. Gestiona tus esfuerzos para evitar el agotamiento mental.
+          </Text>
+        </View>
+
         <View style={styles.energyRow}>
           <View style={styles.energyGauge}>
             <View
@@ -202,10 +229,10 @@ export default function StatsScreen(): ReactElement {
           {totalDrain} unidades drenadas Â· Presupuesto diario: 600
         </Text>
 
-        {/* DistribuciÃ³n de tareas por carga */}
+        {/* Distribución de tareas por carga */}
         <View style={styles.loadBars}>
           <HBar
-            label="FÃ¡cil (1-3)"
+            label="Fácil (1-3)"
             progress={lowLoad / maxLoad}
             color={lifeTheme.colors.success}
             count={lowLoad}
@@ -230,7 +257,7 @@ export default function StatsScreen(): ReactElement {
 
       {/* Historial 7 dÃ­as */}
       <Animated.View entering={FadeInDown.delay(280).duration(300)} style={styles.section}>
-        <Text style={styles.sectionTitle}>Ãšltimos 7 DÃ­as</Text>
+        <Text style={styles.sectionTitle}>Últimos 7 Días</Text>
         <View style={styles.sparklineRow}>
           {last7.map((date, i) => {
             const s = sessionMap[date];
@@ -318,6 +345,25 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     gap: 8
   },
+  maestriaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: `${lifeTheme.colors.primary}15`,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: `${lifeTheme.colors.primary}30`
+  },
+  maestriaIcon: { fontSize: 18 },
+  maestriaText: { 
+    color: lifeTheme.colors.primary, 
+    fontSize: 14, 
+    fontWeight: '800'
+  },
   glowAccent: {
     position: 'absolute',
     right: -30,
@@ -364,15 +410,24 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     backgroundColor: lifeTheme.colors.surfaceAlt,
-    borderRadius: lifeTheme.radius.sm,
+    borderRadius: lifeTheme.radius.md,
     borderWidth: 1,
     borderColor: lifeTheme.colors.border,
     padding: 14,
     gap: 4
   },
+  statCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  statIcon: {
+    fontSize: 14,
+    opacity: 0.8
+  },
   statValue: {
     fontSize: 22,
-    fontWeight: '800'
+    fontWeight: '900'
   },
   statLabel: {
     color: lifeTheme.colors.muted,
@@ -406,6 +461,20 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     borderRadius: 999
+  },
+  infoCard: {
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: lifeTheme.radius.md,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    marginBottom: 4
+  },
+  infoText: {
+    color: lifeTheme.colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontStyle: 'italic'
   },
   energyRow: {
     flexDirection: 'row',

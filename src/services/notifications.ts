@@ -106,16 +106,20 @@ export async function scheduleTaskNotifications(
     if (secondsFromNow <= 0) continue;
 
     const isImportant = (task?.priority ?? 0) >= 4;
+    
+    // Usar Date trigger para precisión absoluta
     await Notifications.scheduleNotificationAsync({
       content: {
         title: isImportant ? '🔴 Tarea importante' : '📌 Tarea programada',
         body: `En ${leadMinutes} min: ${block.title}`,
-        sound: true
+        sound: true,
+        priority: Notifications.AndroidNotificationPriority.MAX,
       },
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-        seconds: Math.max(1, Math.floor(secondsFromNow))
-      }
+        date: notifyAt,
+        exact: true, // Requerido para puntualidad en Android
+        channelId: 'default'
+      } as any // Force any due to complex TriggerInput union
     });
   }
 }
@@ -233,26 +237,34 @@ export async function syncRoutineAlarms(routines: import('../types').DailyRoutin
   const granted = await requestNotificationPermission();
   if (!granted) return;
 
-  // We tag routine notifications with a specific logic if we wanted, 
-  // but for now we'll naively cancel old "Routines" and set new ones.
-  // To avoid destroying task notifications, we could just clear all and re-hook tasks separately,
-  // but let's just schedule them broadly. (In a perfect world we cache IDs and remove them specifically).
+  // Clear everything first to ensure a clean sync state
+  await cancelAllNotifications();
   
   // Just schedule the next 7 days statically for simplicity, or use WEEKLY.
   for (const routine of routines) {
-    const expoWeekday = routine.dayOfWeek + 1; // 1-7
+    const expoWeekday = routine.dayOfWeek + 1; // 1-7 (Sun=1)
     
+    // 🛌 Sleep Notification
     const [sH, sM] = routine.sleepStart.split(':').map(Number);
     await Notifications.scheduleNotificationAsync({
-       content: { title: '🌙 Es hora de relajarse', body: 'Tu config de sueño indica que debes dormir ya.', sound: true },
+       content: { 
+         title: '🌙 Preparación para el sueño', 
+         body: 'Es hora de empezar a desconectar para descansar bien.', 
+         sound: true 
+       },
        trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: expoWeekday, hour: sH, minute: sM }
     });
 
+    // 🍽️ Meal Notifications
     for (const meal of routine.meals) {
       if (!meal.time) continue;
       const [mH, mM] = meal.time.split(':').map(Number);
       await Notifications.scheduleNotificationAsync({
-         content: { title: `🍽️ Es hora de: ${meal.type}`, body: `¡Tómate un respiro! Tienes ${meal.durationMinutes} min para comer.`, sound: true },
+         content: { 
+           title: `🍴 Momento de: ${meal.type}`, 
+           body: `Bloque de comida de ${meal.durationMinutes} min. ¡Aprovecha el descanso!`, 
+           sound: true 
+         },
          trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: expoWeekday, hour: mH, minute: mM }
       });
     }
