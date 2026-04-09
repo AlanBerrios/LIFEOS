@@ -17,6 +17,14 @@ import { lifeTheme } from '../../src/theme';
 
 const EMOJI_OPTIONS = ['💧', '🏃', '🥗', '🧘', '📚', '💊', '🍎', '💤', '🚶', '💪', '🧠', '✨'];
 
+const SUGGESTIONS = [
+  { name: 'Meditar', emoji: '🧘', goalValue: 10, goalUnit: 'min', color: '#a78bfa' },
+  { name: 'Leer', emoji: '📖', goalValue: 20, goalUnit: 'páginas', color: '#fbbf24' },
+  { name: 'Comer sano', emoji: '🥗', goalValue: 3, goalUnit: 'comidas', color: '#34d399' },
+  { name: 'Dormir 8h', emoji: '💤', goalValue: 8, goalUnit: 'horas', color: '#60a5fa' },
+  { name: 'Sin Cafeína', emoji: '☕', goalValue: 1, goalUnit: 'día', color: '#f87171' }
+];
+
 export default function HabitsScreen(): ReactElement {
   const insets = useSafeAreaInsets();
   const habits = useLifeStore((s) => s.habits);
@@ -58,6 +66,22 @@ export default function HabitsScreen(): ReactElement {
         <Pressable style={styles.addBtn} onPress={() => setModalVisible(true)}>
           <Text style={styles.addBtnText}>+ Nuevo</Text>
         </Pressable>
+      </View>
+
+      <View style={styles.suggestionsSect}>
+        <Text style={styles.sectLabel}>Sugerencias rápidas</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionList}>
+          {SUGGESTIONS.map((s, i) => (
+            <Pressable 
+              key={i} 
+              style={styles.suggestionItem}
+              onPress={() => addHabit(s)}
+            >
+              <Text style={styles.suggestionEmoji}>{s.emoji}</Text>
+              <Text style={styles.suggestionName}>{s.name}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
       </View>
 
       <View style={styles.list}>
@@ -186,6 +210,22 @@ const styles = StyleSheet.create({
   title: { color: lifeTheme.colors.text, fontSize: 24, fontWeight: '900' },
   addBtn: { backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
   addBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  suggestionsSect: { gap: 8 },
+  sectLabel: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginLeft: 4 },
+  suggestionList: { gap: 10, paddingRight: 40 },
+  suggestionItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 12, 
+    paddingVertical: 10, 
+    borderRadius: 14, 
+    backgroundColor: lifeTheme.colors.surface, 
+    borderWidth: 1, 
+    borderColor: lifeTheme.colors.border,
+    gap: 8
+  },
+  suggestionEmoji: { fontSize: 18 },
+  suggestionName: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
   list: { gap: 12 },
   habitCard: {
     backgroundColor: lifeTheme.colors.surface, borderRadius: 16,

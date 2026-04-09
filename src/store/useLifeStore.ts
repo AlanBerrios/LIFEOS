@@ -198,6 +198,13 @@ function scheduleMealTimeout(getState: GetFn, setState: SetFn): void {
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
+const DEFAULT_HABITS = [
+  { id: createId('habit'), name: 'Tomar agua', emoji: '💧', goalValue: 2, goalUnit: 'litros', logs: [], streak: 0, color: '#38bdf8' },
+  { id: createId('habit'), name: 'Hacer ejercicio', emoji: '💪', goalValue: 30, goalUnit: 'min', logs: [], streak: 0, color: '#fb7185' },
+  { id: createId('habit'), name: 'Estudiar', emoji: '📚', goalValue: 60, goalUnit: 'min', logs: [], streak: 0, color: '#818cf8' },
+  { id: createId('habit'), name: 'Caminar 5km', emoji: '🚶', goalValue: 5, goalUnit: 'km', logs: [], streak: 0, color: '#4ade80' }
+];
+
 const DEFAULT_ROUTINES = Array.from({ length: 7 }).map((_, i) => ({
   dayOfWeek: i,
   sleepStart: '23:00',
@@ -216,7 +223,7 @@ export const useLifeStore = create<LifeStore>()(
       activeTimer: null,
       sessions: [],
       settings: DEFAULT_SETTINGS,
-      habits: [],
+      habits: DEFAULT_HABITS,
       notes: [],
       alarms: [],
       events: [],
