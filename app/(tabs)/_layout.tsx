@@ -7,14 +7,14 @@ import { lifeTheme } from '../../src/theme';
 import { Zap, Calendar, CheckCircle, ListTodo, Clock, Settings, Book, BarChart } from 'lucide-react-native';
 
 const TABS = [
-  { name: 'index',    label: 'Hoy',     IconComponent: Zap },
-  { name: 'calendar', label: 'Cal.',    IconComponent: Calendar },
-  { name: 'pool',     label: 'Tareas',  IconComponent: ListTodo },
-  { name: 'habits',   label: 'Hábitos', IconComponent: CheckCircle },
-  { name: 'routines', label: 'Rutinas', IconComponent: Clock },
-  { name: 'notes',    label: 'Notas',   IconComponent: Book },
-  { name: 'stats',    label: 'Stats',   IconComponent: BarChart },
-  { name: 'settings', label: 'Config',  IconComponent: Settings }
+  { name: 'index',    label: 'Hoy',        IconComponent: Zap },
+  { name: 'calendar', label: 'Calendario', IconComponent: Calendar },
+  { name: 'pool',     label: 'Tareas',     IconComponent: ListTodo },
+  { name: 'habits',   label: 'Hábitos',    IconComponent: CheckCircle },
+  { name: 'routines', label: 'Rutinas',    IconComponent: Clock },
+  { name: 'notes',    label: 'Notas',      IconComponent: Book },
+  { name: 'stats',    label: 'Métricas',   IconComponent: BarChart },
+  { name: 'settings', label: 'Ajustes',    IconComponent: Settings }
 ];
 
 export default function TabLayout(): ReactElement {
@@ -50,7 +50,13 @@ export default function TabLayout(): ReactElement {
       })}
     >
       {TABS.map((tab) => (
-        <Tabs.Screen key={tab.name} name={tab.name} />
+        <Tabs.Screen 
+          key={tab.name} 
+          name={tab.name} 
+          options={{
+            tabBarLabel: tab.label
+          }}
+        />
       ))}
     </Tabs>
   );
