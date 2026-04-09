@@ -483,9 +483,9 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
   saveBtn: { flex: 1, backgroundColor: lifeTheme.colors.primary, borderRadius: 12, padding: 13, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontWeight: '800' },
-  habitsRow: { gap: 12, marginTop: 6 },
+  habitsRow: { gap: 8, marginTop: 4 },
   habitsTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800', marginLeft: 4 },
-  habitsList: { gap: 10, paddingRight: 16 },
+  habitsList: { gap: 10, paddingRight: 16, paddingTop: 6 },
   habitBubble: {
     backgroundColor: lifeTheme.colors.surface, borderRadius: 18,
     borderWidth: 1, borderColor: lifeTheme.colors.border,
