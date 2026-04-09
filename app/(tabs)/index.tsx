@@ -10,14 +10,109 @@ import {
   TextInput,
   View
 } from 'react-native';
-import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeOutUp, Layout } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Slider from '@react-native-community/slider';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { lifeTheme } from '../../src/theme';
+import type { TaskUrgency } from '../../src/types';
+import { useEffect } from 'react';
+import { createId } from '../../src/utils/ids';
 
 function fmt(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// ─── Quick Task Modal ─────────────────────────────────────────────────────────
+
+function QuickTaskModal({
+  visible,
+  onClose
+}: {
+  visible: boolean;
+  onClose: () => void;
+}): ReactElement {
+  const addTask = useLifeStore((s) => s.addTask);
+  const [title, setTitle] = useState('');
+  const [urgency, setUrgency] = useState<TaskUrgency>('today');
+  const [eta, setEta] = useState(30);
+
+  function handleSave() {
+    if (!title.trim()) {
+      Alert.alert('Error', 'El título es obligatorio');
+      return;
+    }
+    addTask({
+      title: title.trim(),
+      urgency,
+      eta_minutes: eta,
+      priority: 3,
+      cognitive_load: 5
+    });
+    setTitle('');
+    onClose();
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.overlay} onPress={onClose}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Nueva tarea rápida</Text>
+          
+          <TextInput
+            style={[styles.modalInput, { fontSize: 16, textAlign: 'left' }]}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="¿Qué hay que hacer?"
+            placeholderTextColor={lifeTheme.colors.muted}
+            autoFocus
+          />
+
+          <View style={{ gap: 8 }}>
+            <Text style={styles.modalLabel}>Urgencia</Text>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {(['today', 'this_week', 'someday'] as TaskUrgency[]).map((u) => (
+                <Pressable
+                  key={u}
+                  style={[
+                    styles.urgencyMiniChip,
+                    urgency === u && styles.urgencyMiniChipActive
+                  ]}
+                  onPress={() => setUrgency(u)}
+                >
+                  <Text style={[styles.urgencyMiniText, urgency === u && { color: '#fff' }]}>
+                    {u === 'today' ? 'Hoy' : u === 'this_week' ? 'Semana' : 'Pool'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          <View style={{ gap: 4 }}>
+            <Text style={styles.modalLabel}>Tiempo: {eta} min</Text>
+            <Slider
+              style={{ width: '100%', height: 40 }}
+              minimumValue={5} maximumValue={120} step={5}
+              value={eta} onValueChange={setEta}
+              minimumTrackTintColor={lifeTheme.colors.primary}
+              maximumTrackTintColor={lifeTheme.colors.border}
+              thumbTintColor={lifeTheme.colors.primary}
+            />
+          </View>
+
+          <View style={styles.modalBtns}>
+            <Pressable style={styles.cancelBtn} onPress={onClose}>
+              <Text style={styles.cancelBtnText}>Cancelar</Text>
+            </Pressable>
+            <Pressable style={styles.saveBtn} onPress={handleSave}>
+              <Text style={styles.saveBtnText}>Guardar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Pressable>
+    </Modal>
+  );
 }
 
 // ─── Break Edit Modal ─────────────────────────────────────────────────────────
@@ -194,6 +289,25 @@ export default function DashboardScreen(): ReactElement {
   const activeTimer = useLifeStore((s) => s.activeTimer);
 
   const [editBreak, setEditBreak] = useState<{ id: string; minutes: number } | null>(null);
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
+  const [timeLeft, setTimeLeft] = useState<string>('');
+
+  useEffect(() => {
+    if (!activeTimer) return;
+    const itv = setInterval(() => {
+      const now = Date.now();
+      const diff = activeTimer.endsAt.getTime() - now;
+      if (diff <= 0) {
+        setTimeLeft('00:00');
+        clearInterval(itv);
+        return;
+      }
+      const m = Math.floor(diff / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setTimeLeft(`${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    }, 1000);
+    return () => clearInterval(itv);
+  }, [activeTimer]);
 
   const poolCount = tasks.filter((t) => t.status === 'pool').length;
   const todayCount = tasks.filter((t) => (t as any).urgency === 'today' && t.status !== 'completed').length;
@@ -276,22 +390,36 @@ export default function DashboardScreen(): ReactElement {
             </Text>
           </Pressable>
 
-          {activeTimer ? (
+          <View style={styles.secondaryActionsRow}>
+            {activeTimer ? (
+              <Pressable
+                style={({ pressed }) => [styles.secondaryBtn, styles.flex1, pressed && styles.pressed]}
+                onPress={() => void stopTimer()}
+              >
+                <View style={styles.timerContent}>
+                  <Text style={styles.secondaryBtnText}>⏹ Terminar</Text>
+                  <Text style={styles.timerDigits}>{timeLeft}</Text>
+                </View>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={({ pressed }) => [styles.secondaryBtn, styles.flex1, pressed && styles.pressed]}
+                onPress={() => void startMealTimer()}
+              >
+                <Text style={styles.secondaryBtnText}>🍽 Almuerzo</Text>
+              </Pressable>
+            )}
+
             <Pressable
-              style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
-              onPress={() => void stopTimer()}
+              style={({ pressed }) => [styles.secondaryBtn, styles.flex1, pressed && styles.pressed]}
+              onPress={() => setQuickAddVisible(true)}
             >
-              <Text style={styles.secondaryBtnText}>⏹ Terminar pausa de almuerzo</Text>
+              <Text style={styles.secondaryBtnText}>➕ Nueva Tarea</Text>
             </Pressable>
-          ) : (
-            <Pressable
-              style={({ pressed }) => [styles.secondaryBtn, pressed && styles.pressed]}
-              onPress={() => void startMealTimer()}
-            >
-              <Text style={styles.secondaryBtnText}>🍽 Pausa almuerzo (90 min)</Text>
-            </Pressable>
-          )}
+          </View>
         </Animated.View>
+
+        <QuickTaskModal visible={quickAddVisible} onClose={() => setQuickAddVisible(false)} />
 
         {/* --- HABIT QUICK ACTIONS --- */}
         <View style={styles.habitsRow}>
@@ -483,6 +611,14 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
   saveBtn: { flex: 1, backgroundColor: lifeTheme.colors.primary, borderRadius: 12, padding: 13, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontWeight: '800' },
+  // Actions Grid
+  secondaryActionsRow: { flexDirection: 'row', gap: 10 },
+  flex1: { flex: 1 },
+  timerContent: { alignItems: 'center', gap: 2 },
+  timerDigits: { color: lifeTheme.colors.primary, fontSize: 10, fontWeight: '800', fontFamily: 'monospace' },
+  urgencyMiniChip: { flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: lifeTheme.colors.surfaceAlt, alignItems: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
+  urgencyMiniChipActive: { backgroundColor: lifeTheme.colors.primary, borderColor: lifeTheme.colors.primary },
+  urgencyMiniText: { fontSize: 11, fontWeight: '700', color: lifeTheme.colors.muted },
   habitsRow: { gap: 8, marginTop: 4 },
   habitsTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800', marginLeft: 4 },
   habitsList: { gap: 10, paddingRight: 16, paddingTop: 6 },
