@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { MaterialTabs } from '../../src/components/MaterialTabs';
 import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,9 +22,11 @@ export default function TabLayout(): ReactElement {
   const barHeight = 64 + Math.max(insets.bottom, 12);
 
   return (
-    <Tabs
+    <MaterialTabs
+      tabBarPosition="bottom"
+      keyboardDismissMode="on-drag"
       screenOptions={({ route }) => ({
-        headerShown: false,
+        tabBarIndicatorStyle: { height: 0 }, // Hide the default top indicator
         tabBarStyle: [styles.tabBar, { height: barHeight }],
         tabBarActiveTintColor: lifeTheme.colors.primary,
         tabBarInactiveTintColor: lifeTheme.colors.muted,
@@ -32,6 +34,7 @@ export default function TabLayout(): ReactElement {
         tabBarLabelStyle: {
           fontSize: 9,
           fontWeight: '700',
+          textTransform: 'none',
           marginBottom: Math.max(insets.bottom / 2, 4)
         },
         tabBarItemStyle: { padding: 0 },
@@ -50,7 +53,7 @@ export default function TabLayout(): ReactElement {
       })}
     >
       {TABS.map((tab) => (
-        <Tabs.Screen 
+        <MaterialTabs.Screen 
           key={tab.name} 
           name={tab.name} 
           options={{
@@ -58,7 +61,7 @@ export default function TabLayout(): ReactElement {
           }}
         />
       ))}
-    </Tabs>
+    </MaterialTabs>
   );
 }
 
