@@ -27,6 +27,7 @@ export default function TabLayout(): ReactElement {
         tabBarActiveTintColor: lifeTheme.colors.primary,
         tabBarInactiveTintColor: lifeTheme.colors.muted,
         tabBarShowLabel: false,
+        tabBarItemStyle: { flex: 1, padding: 0 },
         tabBarIcon: ({ focused }) => {
           const tab = TABS.find((t) => t.name === route.name);
           if (!tab) return null;
@@ -65,12 +66,14 @@ const styles = StyleSheet.create({
     shadowRadius: 4
   },
   tabItem: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
     position: 'relative',
-    paddingTop: 12,
-    width: 64
+    paddingTop: 12
   },
   activePill: {
     position: 'absolute',
