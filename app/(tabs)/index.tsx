@@ -201,7 +201,7 @@ export default function DashboardScreen(): ReactElement {
   const taskBlocks = timeline.filter((b) => b.type === 'task').length;
 
   const hour = new Date().getHours();
-  const greeting = hour >= 6 && hour < 12 ? 'Buenos días ☀️' : hour >= 12 && hour < 18 ? 'Buenas tardes 🌤' : 'Buenas noches 🌙';
+  const greeting = hour >= 6 && hour < 12 ? 'Buenos días ☀️' : hour >= 12 && hour < 20 ? 'Buenas tardes 🌤' : 'Buenas noches 🌙';
 
   return (
     <>
