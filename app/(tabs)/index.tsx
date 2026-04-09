@@ -217,7 +217,8 @@ export default function DashboardScreen(): ReactElement {
             <View style={styles.headerTitleRow}>
               <Text style={styles.greeting}>{greeting}</Text>
               <Pressable onPress={() => router.push('/analytics' as any)} style={styles.analyticsBtn}>
-                <Text style={styles.analyticsBtnText}>📈</Text>
+                <Text style={styles.analyticsBtnIcon}>📈</Text>
+                <Text style={styles.analyticsBtnLabel}>Maestría</Text>
               </Pressable>
             </View>
             <Text style={styles.dateText}>
@@ -366,8 +367,19 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   greeting: { color: lifeTheme.colors.muted, fontSize: 16, fontWeight: '600' },
-  analyticsBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, padding: 8, borderRadius: 12 },
-  analyticsBtnText: { fontSize: 16 },
+  analyticsBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6, 
+    backgroundColor: `${lifeTheme.colors.primary}20`, 
+    paddingHorizontal: 12, 
+    paddingVertical: 8, 
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: `${lifeTheme.colors.primary}40`
+  },
+  analyticsBtnIcon: { fontSize: 16 },
+  analyticsBtnLabel: { color: lifeTheme.colors.primary, fontSize: 12, fontWeight: '800' },
   dateText: { color: lifeTheme.colors.text, fontSize: 24, fontWeight: '900', marginTop: 4, textTransform: 'capitalize' },
   statsRow: { flexDirection: 'row', gap: 6 },
   statChip: {

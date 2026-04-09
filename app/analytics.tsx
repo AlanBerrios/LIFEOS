@@ -33,6 +33,7 @@ export default function AnalyticsScreen(): ReactElement {
         
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Tasa de Finalización de Tareas</Text>
+          <Text style={styles.cardDesc}>Mide el porcentaje de tareas concluidas frente al total programado hoy. Refleja tu efectividad inmediata.</Text>
           <View style={styles.barCont}>
             <View style={[styles.barFill, { width: `${completionRate}%` }]} />
           </View>
@@ -43,14 +44,17 @@ export default function AnalyticsScreen(): ReactElement {
           <View style={styles.metricSquare}>
             <Text style={styles.metricVal}>{stats.completed}</Text>
             <Text style={styles.metricLabel}>Concluidas</Text>
+            <Text style={styles.metricDesc}>Tareas que ya no están pendientes.</Text>
           </View>
           <View style={styles.metricSquare}>
             <Text style={styles.metricVal}>{stats.pending}</Text>
             <Text style={styles.metricLabel}>Pendientes</Text>
+            <Text style={styles.metricDesc}>Lo que falta para ganar el día.</Text>
           </View>
           <View style={styles.metricSquare}>
             <Text style={styles.metricVal}>{stats.focusZons}</Text>
             <Text style={styles.metricLabel}>Zonas Focus</Text>
+            <Text style={styles.metricDesc}>Veces que has llegado a la Univ. o zonas de estudio.</Text>
           </View>
         </View>
 
@@ -74,5 +78,7 @@ const styles = StyleSheet.create({
   metricsGrid: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
   metricSquare: { flex: 1, minWidth: '30%', backgroundColor: lifeTheme.colors.surface, padding: 16, borderRadius: 16, alignItems: 'center', borderColor: lifeTheme.colors.border, borderWidth: 1 },
   metricVal: { fontSize: 32, fontWeight: '900', color: lifeTheme.colors.primary, marginBottom: 4 },
-  metricLabel: { fontSize: 13, color: lifeTheme.colors.muted, fontWeight: '700' }
+  metricLabel: { fontSize: 13, color: lifeTheme.colors.text, fontWeight: '700' },
+  metricDesc: { fontSize: 10, color: lifeTheme.colors.muted, textAlign: 'center', marginTop: 4 },
+  cardDesc: { color: lifeTheme.colors.muted, fontSize: 12, marginBottom: 16, lineHeight: 18 }
 });
