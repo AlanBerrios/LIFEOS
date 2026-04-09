@@ -4,13 +4,15 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lifeTheme } from '../../src/theme';
 
+import { Zap, Calendar, CheckCircle, ListTodo, Clock, Settings } from 'lucide-react-native';
+
 const TABS = [
-  { name: 'index',    label: 'Hoy',     icon: '⚡' },
-  { name: 'calendar', label: 'Cal.',    icon: '📅' },
-  { name: 'habits',   label: 'Hábitos', icon: '🌟' },
-  { name: 'pool',     label: 'Tareas',  icon: '📋' },
-  { name: 'routines', label: 'Rutinas', icon: '⏰' },
-  { name: 'settings', label: 'Config',  icon: '⚙️' }
+  { name: 'index',    label: 'Hoy',     IconComponent: Zap },
+  { name: 'calendar', label: 'Cal.',    IconComponent: Calendar },
+  { name: 'habits',   label: 'Hábitos', IconComponent: CheckCircle },
+  { name: 'pool',     label: 'Tareas',  IconComponent: ListTodo },
+  { name: 'routines', label: 'Rutinas', IconComponent: Clock },
+  { name: 'settings', label: 'Config',  IconComponent: Settings }
 ];
 
 export default function TabLayout(): ReactElement {
@@ -31,7 +33,9 @@ export default function TabLayout(): ReactElement {
           return (
             <View style={[styles.tabItem, { paddingBottom: Math.max(insets.bottom / 2, 4) }]}>
               {focused && <View style={styles.activePill} />}
-              <Text style={[styles.tabIcon, focused && { transform: [{ scale: 1.1 }] }]}>{tab.icon}</Text>
+              <View style={[styles.iconContainer, focused && { transform: [{ scale: 1.1 }] }]}>
+                <tab.IconComponent size={24} color={focused ? lifeTheme.colors.primary : lifeTheme.colors.muted} strokeWidth={focused ? 2.5 : 2} />
+              </View>
               <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
                 {tab.label}
               </Text>
@@ -76,7 +80,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: lifeTheme.colors.primary
   },
-  tabIcon: { fontSize: 21 },
+  iconContainer: { marginBottom: 2 },
   tabLabel: {
     color: lifeTheme.colors.muted,
     fontSize: 10,
