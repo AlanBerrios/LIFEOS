@@ -214,13 +214,7 @@ export default function DashboardScreen(): ReactElement {
         {/* Header */}
         <Animated.View entering={FadeInDown.duration(350)} style={styles.header}>
           <View style={{ flex: 1 }}>
-            <View style={styles.headerTitleRow}>
-              <Text style={styles.greeting}>{greeting}</Text>
-              <Pressable onPress={() => router.push('/analytics' as any)} style={styles.analyticsBtn}>
-                <Text style={styles.analyticsBtnIcon}>📈</Text>
-                <Text style={styles.analyticsBtnLabel}>Maestría</Text>
-              </Pressable>
-            </View>
+            <Text style={styles.greeting}>{greeting}</Text>
             <Text style={styles.dateText}>
               {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
             </Text>
@@ -239,6 +233,14 @@ export default function DashboardScreen(): ReactElement {
               <Text style={styles.statLbl}>✓</Text>
             </View>
           </View>
+        </Animated.View>
+
+        {/* Action Row */}
+        <Animated.View entering={FadeInDown.delay(100).duration(300)} style={styles.headerActionRow}>
+          <Pressable onPress={() => router.push('/analytics' as any)} style={styles.analyticsBtn}>
+            <Text style={styles.analyticsBtnIcon}>📈</Text>
+            <Text style={styles.analyticsBtnLabel}>Maestría Personal</Text>
+          </Pressable>
         </Animated.View>
 
         {/* Engine badge */}
@@ -364,24 +366,25 @@ export default function DashboardScreen(): ReactElement {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
   content: { paddingHorizontal: 16, gap: 14, paddingBottom: 32 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 },
-  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  headerActionRow: { flexDirection: 'row', gap: 10, marginTop: -4 },
   greeting: { color: lifeTheme.colors.muted, fontSize: 16, fontWeight: '600' },
   analyticsBtn: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: 6, 
-    backgroundColor: `${lifeTheme.colors.primary}20`, 
+    gap: 8, 
+    backgroundColor: `${lifeTheme.colors.primary}15`, 
     paddingHorizontal: 12, 
-    paddingVertical: 8, 
+    paddingVertical: 10, 
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: `${lifeTheme.colors.primary}40`
+    borderColor: `${lifeTheme.colors.primary}30`,
+    flex: 1
   },
-  analyticsBtnIcon: { fontSize: 16 },
-  analyticsBtnLabel: { color: lifeTheme.colors.primary, fontSize: 12, fontWeight: '800' },
-  dateText: { color: lifeTheme.colors.text, fontSize: 24, fontWeight: '900', marginTop: 4, textTransform: 'capitalize' },
-  statsRow: { flexDirection: 'row', gap: 6 },
+  analyticsBtnIcon: { fontSize: 18 },
+  analyticsBtnLabel: { color: lifeTheme.colors.primary, fontSize: 14, fontWeight: '800' },
+  dateText: { color: lifeTheme.colors.text, fontSize: 24, fontWeight: '900', marginTop: 2, textTransform: 'capitalize' },
+  statsRow: { flexDirection: 'row', gap: 6, marginTop: 4 },
   statChip: {
     backgroundColor: lifeTheme.colors.surface, borderRadius: 10,
     paddingHorizontal: 9, paddingVertical: 5, alignItems: 'center',
