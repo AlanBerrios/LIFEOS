@@ -249,8 +249,51 @@ export function generateTimeline(
     .filter(e => e.endTime > now)
     .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
-  for (const task of finalSequence) {
+  function pushOpportunisticRest(start: Date, durationMin: number, title: string, type: 'rest' | 'meal' | 'sleep' = 'rest', nextFixedTaskStart?: Date) {
+    let allowMin = durationMin;
+    
+    // Check next static event
+    if (upcomingEvents.length > 0) {
+      const nextEvt = upcomingEvents[0].startTime;
+      if (nextEvt >= start) {
+        const span = (nextEvt.getTime() - start.getTime()) / 60000;
+        if (span < allowMin) allowMin = Math.max(0, span);
+      }
+    }
+    
+    // Check next fixed task
+    if (nextFixedTaskStart && nextFixedTaskStart >= start) {
+      const span = (nextFixedTaskStart.getTime() - start.getTime()) / 60000;
+      if (span < allowMin) allowMin = Math.max(0, span);
+    }
+    
+    // We can also check sleep/meal, but typically they act as their own hard boundaries.
+    
+    if (allowMin >= 2) { // Only push break if there's at least 2 minutes of buffer
+      const end = new Date(start.getTime() + allowMin * 60000);
+      blocks.push({
+        id: createId('rest'),
+        type,
+        title,
+        start_time: start,
+        end_time: end
+      });
+      cursor = end;
+    }
+  }
+
+  for (let idx = 0; idx < finalSequence.length; idx++) {
+    const task = finalSequence[idx];
     let taskPlaced = false;
+
+    // Peek ahead for the next fixed task to avoid pushing breaks into it
+    let nextFixed: Date | undefined;
+    for (let k = idx + 1; k < finalSequence.length; k++) {
+      if (finalSequence[k].fixed_start) {
+        nextFixed = finalSequence[k].fixed_start;
+        break;
+      }
+    }
 
     while (!taskPlaced) {
       // 1. Process passing Events
@@ -326,31 +369,13 @@ export function generateTimeline(
 
     // Descanso por racha de trabajo
     if (workStreakMinutes >= streakLimit) {
-      const breakStart = new Date(cursor);
-      const breakEnd = new Date(cursor.getTime() + breakMin * 60_000);
-      blocks.push({
-        id: createId('rest'),
-        type: 'rest',
-        title: 'Descanso',
-        start_time: breakStart,
-        end_time: breakEnd
-      });
-      cursor = breakEnd;
+      pushOpportunisticRest(new Date(cursor), breakMin, 'Descanso', 'rest', nextFixed);
       workStreakMinutes = 0;
     }
 
     // Descanso cognitivo
     if (cognitiveUsed >= cognitiveBudget) {
-      const breakStart = new Date(cursor);
-      const breakEnd = new Date(cursor.getTime() + longBreakMin * 60_000);
-      blocks.push({
-        id: createId('rest'),
-        type: 'rest',
-        title: 'Recarga mental',
-        start_time: breakStart,
-        end_time: breakEnd
-      });
-      cursor = breakEnd;
+      pushOpportunisticRest(new Date(cursor), longBreakMin, 'Recarga mental', 'rest', nextFixed);
       cognitiveUsed = 0;
     }
 
@@ -372,19 +397,12 @@ export function generateTimeline(
     workStreakMinutes += task.eta_minutes;
     cognitiveUsed += drain;
 
-    // Descanso corto entre tareas (siempre)
-    const shortBreakEnd = new Date(cursor.getTime() + breakMin * 60_000);
-    blocks.push({
-      id: createId('rest'),
-      type: 'rest',
-      title: 'Descanso',
-      start_time: new Date(cursor),
-      end_time: shortBreakEnd
-    });
-    cursor = shortBreakEnd;
+    // Descanso corto entre tareas (siempre intenta)
+    pushOpportunisticRest(new Date(cursor), breakMin, 'Descanso', 'rest', nextFixed);
+    
     taskPlaced = true;
     } // Ends while(!taskPlaced)
-  } // Ends for(const task of finalSequence)
+  } // Ends for loop
 
   // Add any remaining events for the day
   while (upcomingEvents.length > 0) {

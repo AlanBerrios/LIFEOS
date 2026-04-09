@@ -1,18 +1,22 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
+  Alert,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
+  TextInput,
   View
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { lifeTheme } from '../../src/theme';
-import type { Task, StaticEvent } from '../../src/types';
+import type { Task, StaticEvent, ScheduleBlock } from '../../src/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,11 +59,87 @@ const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-function urgencyColor(task: Task): string {
+function urgencyColor(task?: Task): string {
+  if (!task) return lifeTheme.colors.muted;
   if (task.urgency === 'today') return lifeTheme.colors.alert;
   if (task.urgency === 'this_week') return '#f59e0b';
   if (task.urgency === 'this_month') return lifeTheme.colors.primary;
   return lifeTheme.colors.muted;
+}
+
+// ─── Android-safe DatePicker ──────────────────────────────────────────────────
+
+function SafeDatePicker({
+  label,
+  value,
+  onClear,
+  onConfirm
+}: {
+  label: string;
+  value: Date | null;
+  onClear: () => void;
+  onConfirm: (d: Date) => void;
+}): ReactElement {
+  const [showDate, setShowDate] = useState(false);
+  const [showTime, setShowTime] = useState(false);
+  const [pendingDate, setPendingDate] = useState<Date | null>(null);
+
+  function handleDateChange(_evt: unknown, selected?: Date) {
+    setShowDate(false);
+    if (selected == null) return;
+    if (Platform.OS === 'android') {
+      setPendingDate(selected);
+      setShowTime(true);
+    } else {
+      onConfirm(selected);
+    }
+  }
+
+  function handleTimeChange(_evt: unknown, selected?: Date) {
+    setShowTime(false);
+    if (selected == null || pendingDate == null) { setPendingDate(null); return; }
+    const combined = new Date(pendingDate);
+    combined.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+    setPendingDate(null);
+    onConfirm(combined);
+  }
+
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={styles.modalLabel}>{label}</Text>
+      <Pressable style={styles.dateBtn} onPress={() => setShowDate(true)}>
+        <Text style={[styles.dateBtnText, value ? styles.dateBtnTextActive : null]}>
+          {value
+            ? `📅 ${value.toLocaleDateString('es-ES')}  ${value.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+            : '+ Seleccionar'}
+        </Text>
+        {value && (
+          <Pressable hitSlop={12} onPress={(e) => { e.stopPropagation(); onClear(); }}>
+            <Text style={styles.dateClear}>✕</Text>
+          </Pressable>
+        )}
+      </Pressable>
+
+      {showDate && (
+        <DateTimePicker
+          value={value ?? new Date()}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'inline' : 'default'}
+          onChange={handleDateChange}
+          themeVariant="dark"
+        />
+      )}
+      {showTime && (
+        <DateTimePicker
+          value={pendingDate ?? new Date()}
+          mode="time"
+          display={Platform.OS === 'ios' ? 'inline' : 'default'}
+          onChange={handleTimeChange}
+          themeVariant="dark"
+        />
+      )}
+    </View>
+  );
 }
 
 // ─── Day Tasks Panel ──────────────────────────────────────────────────────────
@@ -254,45 +334,146 @@ function WeekView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
-function DayView({ date, tasks, events }: { date: Date; tasks: Task[]; events: StaticEvent[] }): ReactElement {
+function DayView({ date, tasks, events, timeline }: { date: Date; tasks: Task[]; events: StaticEvent[]; timeline: ScheduleBlock[] }): ReactElement {
   const hours = Array.from({ length: 16 }, (_, i) => i + 7); // 7:00 — 22:00
 
-  function tasksAt(hour: number): Task[] {
-    return tasks.filter((t) => {
-      if (!t.fixed_start) return false;
-      return t.fixed_start.getHours() === hour && sameDay(t.fixed_start, date);
-    });
-  }
-  function eventsAt(hour: number): StaticEvent[] {
-    return events.filter(e => e.startTime.getHours() === hour && sameDay(e.startTime, date));
+  // Combine timeline blocks & standalone events for that day
+  function blocksAt(hour: number) {
+    const isToday = sameDay(date, new Date());
+    
+    // Timeline blocks that fall into this hour
+    const tb = timeline.filter(b => b.start_time.getHours() === hour && sameDay(b.start_time, date));
+    
+    // Events not in the timeline (for future/past days, or unmerged)
+    const ev = events.filter(e => e.startTime.getHours() === hour && sameDay(e.startTime, date) && !tb.some(b => b.id === e.id));
+    
+    return { tb, ev };
   }
 
   return (
     <ScrollView style={styles.dayScroll} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
       {hours.map((hour) => {
-        const hourTasks = tasksAt(hour);
-        const hourEvents = eventsAt(hour);
+        const { tb, ev } = blocksAt(hour);
+        const hasContent = tb.length > 0 || ev.length > 0;
+        
         return (
-          <View key={hour} style={styles.hourRow}>
+          <View key={hour} style={[styles.hourRow, hasContent && { minHeight: 64 }]}>
             <Text style={styles.hourLabel}>{String(hour).padStart(2, '0')}:00</Text>
             <View style={styles.hourContent}>
-              {hourEvents.map((e) => (
+              {ev.map((e) => (
                 <View key={e.id} style={[styles.hourTask, { borderLeftColor: '#8b5cf6', backgroundColor: '#8b5cf610' }]}>
                   <Text style={[styles.hourTaskTitle, { color: '#8b5cf6' }]}>{e.title}</Text>
                   <Text style={styles.hourTaskMeta}>Evento Fijo</Text>
                 </View>
               ))}
-              {hourTasks.map((t) => (
-                <View key={t.id} style={[styles.hourTask, { borderLeftColor: urgencyColor(t) }]}>
-                  <Text style={styles.hourTaskTitle}>{t.title}</Text>
-                  <Text style={styles.hourTaskMeta}>{t.eta_minutes} min</Text>
-                </View>
-              ))}
+              {tb.map((b) => {
+                let brdColor = lifeTheme.colors.border;
+                let bgStyle: any = null;
+                const durMinutes = Math.round((b.end_time.getTime() - b.start_time.getTime()) / 60000);
+                
+                if (b.type === 'task') {
+                  const t = tasks.find(tsk => tsk.id === b.task_id);
+                  brdColor = urgencyColor(t);
+                  bgStyle = { backgroundColor: lifeTheme.colors.surface };
+                } else if (b.type === 'rest' || b.type === 'meal') {
+                  brdColor = lifeTheme.colors.muted;
+                  bgStyle = { backgroundColor: `${lifeTheme.colors.surfaceAlt}88`, borderStyle: 'dashed' as const };
+                  if (b.type === 'meal') brdColor = lifeTheme.colors.alert;
+                } else if (b.isStaticEvent) {
+                  brdColor = '#8b5cf6';
+                  bgStyle = { backgroundColor: '#8b5cf610' };
+                }
+
+                return (
+                  <View key={`${b.id}-${b.start_time.getTime()}`} style={[styles.hourTask, { borderLeftColor: brdColor }, bgStyle]}>
+                    <Text style={[styles.hourTaskTitle, b.isStaticEvent && { color: '#8b5cf6' }]}>{b.title}</Text>
+                    <Text style={styles.hourTaskMeta}>
+                      {fmt(b.start_time)} - {fmt(b.end_time)} ({durMinutes} min)
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
           </View>
         );
       })}
     </ScrollView>
+  );
+}
+
+function fmt(date: Date): string {
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// ─── Add Event Modal ──────────────────────────────────────────────────────────
+
+function EventModal({ visible, onClose }: { visible: boolean; onClose: () => void; }): ReactElement {
+  const addEvent = useLifeStore(s => s.addEvent);
+  const [title, setTitle] = useState('');
+  const [startTime, setStartTime] = useState<Date | null>(null);
+  const [endTime, setEndTime] = useState<Date | null>(null);
+
+  function handleSave() {
+    if (!title.trim() || !startTime || !endTime) {
+      Alert.alert('Faltan datos', 'El título y las horas son obligatorios.');
+      return;
+    }
+    if (endTime <= startTime) {
+      Alert.alert('Error', 'La hora de fin debe ser posterior a la de inicio.');
+      return;
+    }
+    addEvent({
+      title: title.trim(),
+      startTime,
+      endTime
+    });
+    setTitle('');
+    setStartTime(null);
+    setEndTime(null);
+    onClose();
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.modalCard} onPress={undefined}>
+          <Text style={styles.modalTitle}>Nuevo Evento Fijo</Text>
+          <Text style={styles.modalSub}>Clases, reuniones, compromisos inamovibles.</Text>
+          
+          <Text style={styles.modalLabel}>Título del Evento</Text>
+          <TextInput
+            style={styles.modalInput}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Ej: Clase de Programación"
+            placeholderTextColor={lifeTheme.colors.muted}
+          />
+
+          <SafeDatePicker
+            label="Hora de Inicio"
+            value={startTime}
+            onClear={() => setStartTime(null)}
+            onConfirm={setStartTime}
+          />
+
+          <SafeDatePicker
+            label="Hora de Fin"
+            value={endTime}
+            onClear={() => setEndTime(null)}
+            onConfirm={setEndTime}
+          />
+
+          <View style={styles.modalBtns}>
+            <Pressable style={styles.cancelBtn} onPress={onClose}>
+              <Text style={styles.cancelBtnText}>Cancelar</Text>
+            </Pressable>
+            <Pressable style={styles.saveBtn} onPress={handleSave}>
+              <Text style={styles.saveBtnText}>Guardar Evento</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -304,10 +485,12 @@ export default function CalendarScreen(): ReactElement {
   const insets = useSafeAreaInsets();
   const tasks = useLifeStore((s) => s.tasks);
   const events = useLifeStore((s) => s.events);
+  const timeline = useLifeStore((s) => s.timeline);
 
   const [view, setView] = useState<CalendarView>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(new Date());
+  const [modalVisible, setModalVisible] = useState(false);
 
   const activeTasks = tasks.filter((t) => t.status !== 'completed');
 
@@ -378,7 +561,7 @@ export default function CalendarScreen(): ReactElement {
           />
         )}
         {view === 'day' && (
-          <DayView date={currentDate} tasks={activeTasks} events={events} />
+          <DayView date={currentDate} tasks={activeTasks} events={events} timeline={timeline} />
         )}
       </View>
 
@@ -386,6 +569,13 @@ export default function CalendarScreen(): ReactElement {
       {view !== 'day' && (
         <DayTasksPanel date={selectedDay} tasks={activeTasks} events={events} />
       )}
+
+      {/* FAB */}
+      <Pressable style={[styles.fab, { bottom: 16 }]} onPress={() => setModalVisible(true)}>
+        <Text style={styles.fabText}>+ Evento</Text>
+      </Pressable>
+
+      <EventModal visible={modalVisible} onClose={() => setModalVisible(false)} />
     </View>
   );
 }
@@ -508,5 +698,27 @@ const styles = StyleSheet.create({
   dayTaskMeta: { color: lifeTheme.colors.muted, fontSize: 11 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusDone: { backgroundColor: lifeTheme.colors.success },
-  statusPending: { backgroundColor: lifeTheme.colors.border }
+  statusPending: { backgroundColor: lifeTheme.colors.border },
+  
+  // Modal & Forms
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: 20 },
+  modalCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: 20, padding: 24, gap: 14, borderWidth: 1, borderColor: lifeTheme.colors.border },
+  modalTitle: { color: lifeTheme.colors.text, fontSize: 18, fontWeight: '800' },
+  modalSub: { color: lifeTheme.colors.muted, fontSize: 12, marginTop: -8 },
+  modalLabel: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  modalInput: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12, borderWidth: 1, borderColor: lifeTheme.colors.border, color: lifeTheme.colors.text, fontSize: 15, padding: 12 },
+  modalBtns: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  cancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: lifeTheme.colors.border },
+  cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
+  saveBtn: { flex: 2, paddingVertical: 14, alignItems: 'center', borderRadius: 12, backgroundColor: lifeTheme.colors.primary },
+  saveBtnText: { color: '#fff', fontWeight: '800' },
+  
+  dateBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: lifeTheme.colors.surfaceAlt, borderColor: lifeTheme.colors.border, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  dateBtnText: { color: lifeTheme.colors.muted, fontSize: 13, flex: 1 },
+  dateBtnTextActive: { color: lifeTheme.colors.text, fontWeight: '600' },
+  dateClear: { color: lifeTheme.colors.alert, fontSize: 16, paddingLeft: 8 },
+
+  // FAB
+  fab: { position: 'absolute', right: 20, backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 30, elevation: 5, shadowColor: '#000', shadowOffset: {width:0, height:3}, shadowOpacity: 0.3, shadowRadius: 5 },
+  fabText: { color: '#fff', fontWeight: '900', fontSize: 14 }
 });
