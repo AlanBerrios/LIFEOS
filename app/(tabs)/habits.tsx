@@ -68,22 +68,6 @@ export default function HabitsScreen(): ReactElement {
         </Pressable>
       </View>
 
-      <View style={styles.suggestionsSect}>
-        <Text style={styles.sectLabel}>Sugerencias rápidas</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionList}>
-          {SUGGESTIONS.map((s, i) => (
-            <Pressable 
-              key={i} 
-              style={styles.suggestionItem}
-              onPress={() => addHabit(s)}
-            >
-              <Text style={styles.suggestionEmoji}>{s.emoji}</Text>
-              <Text style={styles.suggestionName}>{s.name}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
-
       <View style={styles.list}>
         {habits.length === 0 ? (
           <View style={styles.emptyCard}>
@@ -142,6 +126,27 @@ export default function HabitsScreen(): ReactElement {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Nuevo Hábito</Text>
+
+            <View style={styles.modalSuggestions}>
+              <Text style={styles.label}>Sugerencias rápidas</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionList}>
+                {SUGGESTIONS.map((s, i) => (
+                  <Pressable 
+                    key={i} 
+                    style={styles.suggestionItemSmall}
+                    onPress={() => setNewHabit({ 
+                      name: s.name, 
+                      emoji: s.emoji, 
+                      goalValue: s.goalValue, 
+                      goalUnit: s.goalUnit 
+                    })}
+                  >
+                    <Text style={styles.suggestionEmojiSmall}>{s.emoji}</Text>
+                    <Text style={styles.suggestionNameSmall}>{s.name}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
             
             <Text style={styles.label}>Nombre</Text>
             <TextInput
@@ -210,22 +215,22 @@ const styles = StyleSheet.create({
   title: { color: lifeTheme.colors.text, fontSize: 24, fontWeight: '900' },
   addBtn: { backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
   addBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  suggestionsSect: { gap: 8 },
+  modalSuggestions: { gap: 8, marginBottom: 8 },
   sectLabel: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginLeft: 4 },
   suggestionList: { gap: 10, paddingRight: 40 },
-  suggestionItem: { 
+  suggestionItemSmall: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    paddingHorizontal: 12, 
-    paddingVertical: 10, 
-    borderRadius: 14, 
-    backgroundColor: lifeTheme.colors.surface, 
+    paddingHorizontal: 10, 
+    paddingVertical: 8, 
+    borderRadius: 12, 
+    backgroundColor: lifeTheme.colors.surfaceAlt, 
     borderWidth: 1, 
     borderColor: lifeTheme.colors.border,
-    gap: 8
+    gap: 6
   },
-  suggestionEmoji: { fontSize: 18 },
-  suggestionName: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
+  suggestionEmojiSmall: { fontSize: 14 },
+  suggestionNameSmall: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
   list: { gap: 12 },
   habitCard: {
     backgroundColor: lifeTheme.colors.surface, borderRadius: 16,

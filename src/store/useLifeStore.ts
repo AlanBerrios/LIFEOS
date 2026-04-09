@@ -656,7 +656,7 @@ export const useLifeStore = create<LifeStore>()(
           activeTimer: reviveTimer(snap?.activeTimer ?? null),
           sessions: snap?.sessions ?? [],
           settings: { ...DEFAULT_SETTINGS, ...(snap?.settings ?? {}) },
-          habits: snap?.habits ?? [],
+          habits: (snap?.habits && snap.habits.length > 0) ? snap.habits : DEFAULT_HABITS,
           notes: (snap?.notes ?? []).map((n: any) => ({ ...n, createdAt: new Date(n.createdAt) })),
           alarms: snap?.alarms ?? [],
           events: (snap?.events ?? []).map((e: any) => ({ ...e, startTime: new Date(e.startTime), endTime: new Date(e.endTime) })),
