@@ -4,14 +4,16 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lifeTheme } from '../../src/theme';
 
-import { Zap, Calendar, CheckCircle, ListTodo, Clock, Settings } from 'lucide-react-native';
+import { Zap, Calendar, CheckCircle, ListTodo, Clock, Settings, Book, BarChart } from 'lucide-react-native';
 
 const TABS = [
   { name: 'index',    label: 'Hoy',     IconComponent: Zap },
   { name: 'calendar', label: 'Cal.',    IconComponent: Calendar },
-  { name: 'habits',   label: 'Hábitos', IconComponent: CheckCircle },
   { name: 'pool',     label: 'Tareas',  IconComponent: ListTodo },
+  { name: 'habits',   label: 'Hábitos', IconComponent: CheckCircle },
   { name: 'routines', label: 'Rutinas', IconComponent: Clock },
+  { name: 'notes',    label: 'Notas',   IconComponent: Book },
+  { name: 'stats',    label: 'Stats',   IconComponent: BarChart },
   { name: 'settings', label: 'Config',  IconComponent: Settings }
 ];
 
@@ -26,20 +28,22 @@ export default function TabLayout(): ReactElement {
         tabBarStyle: [styles.tabBar, { height: barHeight }],
         tabBarActiveTintColor: lifeTheme.colors.primary,
         tabBarInactiveTintColor: lifeTheme.colors.muted,
-        tabBarShowLabel: false,
-        tabBarItemStyle: { flex: 1, padding: 0 },
+        tabBarShowLabel: true,
+        tabBarLabelStyle: {
+          fontSize: 9,
+          fontWeight: '700',
+          marginBottom: Math.max(insets.bottom / 2, 4)
+        },
+        tabBarItemStyle: { padding: 0 },
         tabBarIcon: ({ focused }) => {
           const tab = TABS.find((t) => t.name === route.name);
           if (!tab) return null;
           return (
-            <View style={[styles.tabItem, { paddingBottom: Math.max(insets.bottom / 2, 4) }]}>
+            <View style={styles.iconContainer}>
               {focused && <View style={styles.activePill} />}
-              <View style={[styles.iconContainer, focused && { transform: [{ scale: 1.1 }] }]}>
-                <tab.IconComponent size={24} color={focused ? lifeTheme.colors.primary : lifeTheme.colors.muted} strokeWidth={focused ? 2.5 : 2} />
+              <View style={focused && { transform: [{ scale: 1.1 }] }}>
+                <tab.IconComponent size={22} color={focused ? lifeTheme.colors.primary : lifeTheme.colors.muted} strokeWidth={focused ? 2.5 : 2} />
               </View>
-              <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
-                {tab.label}
-              </Text>
             </View>
           );
         }
@@ -65,32 +69,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4
   },
-  tabItem: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
+  iconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
-    position: 'relative',
-    paddingTop: 12
+    paddingTop: 8,
+    width: 48,
+    overflow: 'visible'
   },
   activePill: {
     position: 'absolute',
-    top: -1,
-    width: 32,
+    top: -4,
+    width: 28,
     height: 3,
     borderRadius: 3,
     backgroundColor: lifeTheme.colors.primary
-  },
-  iconContainer: { marginBottom: 2 },
-  tabLabel: {
-    color: lifeTheme.colors.muted,
-    fontSize: 10,
-    fontWeight: '600'
-  },
-  tabLabelActive: {
-    color: lifeTheme.colors.primary,
-    fontWeight: '800'
   }
 });
