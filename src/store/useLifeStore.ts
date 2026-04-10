@@ -5,7 +5,7 @@ import { generateTimeline as buildTimelineLocal } from '../core/scheduler';
 import { callSchedulerApi, SchedulerApiError } from '../services/schedulerApi';
 import { createId } from '../utils/ids';
 import { MINUTE_MS } from '../utils/time';
-import { cancelAllNotifications, scheduleTaskNotifications } from '../services/notifications';
+import { rescheduleAll, cancelAllNotifications, scheduleTaskNotifications } from '../services/notifications';
 import { getTodayStr, toDate, toDateRequired } from '../utils/date';
 import { DEFAULT_SETTINGS } from '../types';
 import type { AppSettings, DailySession, LifeTimer, ScheduleBlock, Task, TaskStatus } from '../types';
@@ -63,7 +63,10 @@ interface LifeStore {
   
   // Notes
   deleteTask: (id: string) => void;
+  startTask: (id: string) => void;
   completeTask: (id: string) => void;
+  skipTask: (id: string) => void;
+  postponeTask: (id: string) => void;
 
   // Timeline
   generateTimeline: (startTime?: Date) => Promise<void>;
@@ -88,6 +91,7 @@ interface LifeStore {
 
   // Notes
   addNote: (n: { title: string; content: string; reminderIntervalMinutes?: number; reminderAt?: string }) => void;
+  updateNote: (id: string, updates: Partial<import('../types').QuickNote>) => void;
   deleteNote: (id: string) => void;
 
   // Alarms
@@ -295,7 +299,15 @@ export const useLifeStore = create<LifeStore>()(
         }));
       },
 
-      completeTask: (id) => {
+      startTask: (id: string) => {
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === id ? { ...t, status: 'in_progress' } : t
+          )
+        }));
+      },
+
+      completeTask: (id: string) => {
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === id ? { ...t, status: 'completed' } : t
@@ -304,12 +316,34 @@ export const useLifeStore = create<LifeStore>()(
         }));
       },
 
+      skipTask: (id: string) => {
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === id ? { ...t, status: 'skipped' } : t
+          ),
+          timeline: state.timeline.filter((b) => b.task_id !== id)
+        }));
+        void get().generateTimeline();
+      },
+
+      postponeTask: (id: string) => {
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === id ? { ...t, status: 'postponed' } : t
+          ),
+          timeline: state.timeline.filter((b) => b.task_id !== id)
+        }));
+        // Al posponer, simplemente se quita del timeline de hoy. 
+        // En el futuro el scheduler lo podría retomar si la fecha lo amerita.
+        void get().generateTimeline();
+      },
+
       // ── Timeline ───────────────────────────────────────────────────────────
       generateTimeline: async (startTime = new Date()) => {
         const { tasks, settings } = get();
-        // Solo re-planificar tareas que aún están en pool (no completadas)
+        // Solo re-planificar tareas que aún están en pool, programadas o en progreso
         const schedulableTasks = tasks.filter(
-          (t) => t.status === 'pool' || t.status === 'scheduled'
+          (t) => t.status === 'pool' || t.status === 'scheduled' || t.status === 'in_progress'
         );
         set({ isGenerating: true });
 
@@ -355,10 +389,8 @@ export const useLifeStore = create<LifeStore>()(
           };
         });
 
-        // Programar notificaciones para el nuevo timeline
-        if (settings.notifyTaskStart) {
-          void scheduleTaskNotifications(newBlocks, tasks, settings.notifyTaskStartLeadMinutes);
-        }
+        // Programar notificaciones para el nuevo timeline usando el coordinador central
+        void rescheduleAll(newBlocks, tasks, settings, get().routines, get().events, get().notes);
       },
 
       setTimeline: (blocks) => set({ timeline: blocks }),
@@ -436,18 +468,26 @@ export const useLifeStore = create<LifeStore>()(
       },
 
       // ── Meal timer ─────────────────────────────────────────────────────────
-      startMealTimer: async () => {
+      startMealTimer: async (duration?: number) => {
+        const { routines, settings } = get();
         clearMealTimeout();
         await cancelAllNotifications();
+
+        const today = new Date().getDay();
+        const routine = routines.find(r => r.dayOfWeek === today);
+        const routineLunch = routine?.meals.find(m => m.type.toLowerCase() === 'almuerzo');
+        
+        const finalDuration = duration ?? routineLunch?.durationMinutes ?? 60;
         const startedAt = new Date();
-        const endsAt = new Date(startedAt.getTime() + 90 * MINUTE_MS);
+        const endsAt = new Date(startedAt.getTime() + finalDuration * MINUTE_MS);
+
         set({
           activeTimer: {
             id: createId('timer'),
             label: 'meal',
             startedAt,
             endsAt,
-            durationMinutes: 90,
+            durationMinutes: finalDuration,
             active: true
           }
         });
@@ -598,6 +638,12 @@ export const useLifeStore = create<LifeStore>()(
               createdAt: new Date()
             }
           ]
+        }));
+      },
+
+      updateNote: (id, updates) => {
+        set((state) => ({
+          notes: state.notes.map((n) => (n.id === id ? { ...n, ...updates } : n))
         }));
       },
 

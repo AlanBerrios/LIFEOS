@@ -225,20 +225,26 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
   // Fill to complete last row
   while (cells.length % 7 !== 0) cells.push(null);
 
-  function hasTaskOn(date: Date): string | null {
+  function getTaskColorsOn(date: Date): string[] {
     const dayEvents = getEventsForDate(events, date);
-    if (dayEvents.length > 0) return '#8b5cf6'; // Event color
-    const relevant = tasks.filter((t) => {
+    const dayTasks = tasks.filter((t) => {
       if (t.fixed_start && sameDay(t.fixed_start, date)) return true;
       if (t.deadline && sameDay(t.deadline, date)) return true;
       return false;
     });
-    if (relevant.length === 0) return null;
-    const prio = relevant.sort((a, b) => {
-      const u = { today: 4, this_week: 3, this_month: 2, someday: 1 };
-      return u[b.urgency] - u[a.urgency];
-    })[0];
-    return urgencyColor(prio);
+
+    const colors: string[] = [];
+    if (dayEvents.length > 0) colors.push('#8b5cf6');
+    
+    // Get unique urgency colors from tasks
+    const urgencies = Array.from(new Set(dayTasks.map(t => t.urgency)));
+    urgencies.forEach(u => {
+      const dummyTask = { urgency: u } as any;
+      const color = urgencyColor(dummyTask);
+      if (!colors.includes(color)) colors.push(color);
+    });
+
+    return colors.slice(0, 3);
   }
 
   return (
@@ -268,7 +274,11 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
               isToday && styles.dayCellTextToday,
               isSelected && styles.dayCellTextSelected
             ]}>{date.getDate()}</Text>
-            {dotColor && <View style={[styles.calDot, { backgroundColor: dotColor }]} />}
+            <View style={styles.dotRow}>
+              {getTaskColorsOn(date).map((color, i) => (
+                <View key={i} style={[styles.calDot, { backgroundColor: color, position: 'relative', bottom: 0 }]} />
+              ))}
+            </View>
           </Pressable>
         );
       })}
@@ -278,7 +288,7 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 
-function WeekView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
+function WeekView({ currentDate, tasks, events, onSelectDay }: {
   currentDate: Date;
   selectedDay: Date;
   tasks: Task[];
@@ -287,58 +297,58 @@ function WeekView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
 }): ReactElement {
   const weekStart = startOfWeek(currentDate);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const hours = Array.from({ length: 24 }, (_, i) => i);
 
   return (
-    <View>
-      <ScrollView style={styles.weekScroll} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
-        {days.map((day) => {
-          const isToday = sameDay(day, new Date());
-          const isSelected = sameDay(day, selectedDay);
-          const dayEvents = getEventsForDate(events, day);
-          const dayTasks = tasks.filter((t) =>
-            (t.fixed_start && sameDay(t.fixed_start, day)) ||
-            (t.deadline && sameDay(t.deadline, day)) ||
-            ((t as any).urgency === 'today' && sameDay(day, new Date()))
-          );
-          return (
-            <Pressable
-              key={day.toISOString()}
-              style={[styles.weekRow, isSelected && styles.weekRowSelected]}
-              onPress={() => onSelectDay(day)}
-            >
-              <View style={[styles.weekDayLabel, isToday && styles.weekDayLabelToday]}>
-                <Text style={[styles.weekDayName, isToday && styles.weekDayNameToday]}>
-                  {WEEKDAYS[(day.getDay() + 6) % 7]}
-                </Text>
-                <Text style={[styles.weekDayNum, isToday && styles.weekDayNumToday]}>
-                  {day.getDate()}
-                </Text>
+    <View style={styles.weekContainer}>
+      <View style={styles.weekHdrRow}>
+        <View style={styles.hourColSpacer} />
+        {days.map((d, i) => (
+          <Pressable key={i} style={styles.weekHdrCell} onPress={() => onSelectDay(d)}>
+            <Text style={styles.weekHdrDay}>{WEEKDAYS[i]}</Text>
+            <Text style={styles.weekHdrNum}>{d.getDate()}</Text>
+          </Pressable>
+        ))}
+      </View>
+      
+      <ScrollView style={styles.weekGridScroll} showsVerticalScrollIndicator={false}>
+        <View style={styles.weekGridBody}>
+          <View style={styles.hourCol}>
+            {hours.map(h => (
+              <View key={h} style={styles.hourLabelCell}>
+                <Text style={styles.hourLabelText}>{String(h).padStart(2, '0')}:00</Text>
               </View>
-              <View style={styles.weekTasks}>
-                {dayEvents.slice(0, 2).map((e) => (
-                  <View key={e.id} style={[styles.weekTaskChip, { borderLeftColor: '#8b5cf6', backgroundColor: '#8b5cf615' }]}>
-                    <Text style={[styles.weekTaskText, { color: '#8b5cf6', fontWeight: 'bold' }]} numberOfLines={1}>{e.title}</Text>
-                  </View>
-                ))}
-                {dayTasks.slice(0, 3).map((t) => (
-                  <View key={t.id} style={[styles.weekTaskChip, { borderLeftColor: urgencyColor(t) }]}>
-                    <Text style={styles.weekTaskText} numberOfLines={1}>{t.title}</Text>
-                  </View>
-                ))}
-                {dayTasks.length + dayEvents.length > 5 && (
-                  <Text style={styles.moreText}>+{dayTasks.length + dayEvents.length - 5} más</Text>
-                )}
-                {dayTasks.length === 0 && dayEvents.length === 0 && (
-                  <Text style={styles.emptyDayText}>—</Text>
-                )}
+            ))}
+          </View>
+          
+          {days.map((day, dayIdx) => {
+            const dayEvents = getEventsForDate(events, day);
+            const dayTasks = tasks.filter(t => 
+              (t.fixed_start && sameDay(t.fixed_start, day)) ||
+              (t.deadline && sameDay(t.deadline, day))
+            );
+
+            return (
+              <View key={dayIdx} style={styles.dayCol}>
+                {hours.map(h => {
+                  const hasEvt = dayEvents.some(e => e.startTime.getHours() === h);
+                  const hasTsk = dayTasks.some(t => t.fixed_start?.getHours() === h);
+                  return (
+                    <View key={h} style={styles.slotCell}>
+                      {hasEvt && <View style={[styles.miniDot, { backgroundColor: '#8b5cf6' }]} />}
+                      {hasTsk && <View style={[styles.miniDot, { backgroundColor: lifeTheme.colors.primary }]} />}
+                    </View>
+                  );
+                })}
               </View>
-            </Pressable>
-          );
-        })}
+            );
+          })}
+        </View>
       </ScrollView>
     </View>
   );
 }
+
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
@@ -778,26 +788,25 @@ const styles = StyleSheet.create({
   dayCellText: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '600' },
   dayCellTextToday: { color: lifeTheme.colors.primary, fontWeight: '800' },
   dayCellTextSelected: { color: '#fff', fontWeight: '800' },
-  calDot: { width: 5, height: 5, borderRadius: 3, position: 'absolute', bottom: 4 },
-  // Week
-  weekScroll: { maxHeight: 340, paddingHorizontal: 12 },
-  weekRow: {
-    flexDirection: 'row',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: lifeTheme.colors.border,
-    alignItems: 'flex-start',
-    gap: 12
-  },
-  weekRowSelected: { backgroundColor: `${lifeTheme.colors.primary}11`, borderRadius: 10 },
-  weekDayLabel: { width: 40, alignItems: 'center' },
-  weekDayLabelToday: {
-    backgroundColor: lifeTheme.colors.primary,
-    borderRadius: 10,
-    paddingVertical: 4
-  },
-  weekDayName: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '700' },
-  weekDayNameToday: { color: '#fff' },
+  dotRow: { flexDirection: 'row', gap: 2, position: 'absolute', bottom: 4 },
+  calDot: { width: 4, height: 4, borderRadius: 2 },
+  // Week Vertical
+  weekContainer: { flex: 1 },
+  weekHdrRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: lifeTheme.colors.border, paddingBottom: 8 },
+  hourColSpacer: { width: 45 },
+  weekHdrCell: { flex: 1, alignItems: 'center' },
+  weekHdrDay: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '700' },
+  weekHdrNum: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '800' },
+  weekGridScroll: { flex: 1 },
+  weekGridBody: { flexDirection: 'row' },
+  hourCol: { width: 45 },
+  hourLabelCell: { height: 40, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: lifeTheme.colors.border },
+  hourLabelText: { color: lifeTheme.colors.muted, fontSize: 9, fontWeight: '600' },
+  dayCol: { flex: 1, borderRightWidth: 1, borderRightColor: `${lifeTheme.colors.border}44` },
+  slotCell: { height: 40, borderBottomWidth: 1, borderBottomColor: `${lifeTheme.colors.border}22`, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  miniDot: { width: 6, height: 6, borderRadius: 3 },
+  // View switches...
+
   weekDayNum: { color: lifeTheme.colors.text, fontSize: 18, fontWeight: '800' },
   weekDayNumToday: { color: '#fff' },
   weekTasks: { flex: 1, gap: 4 },

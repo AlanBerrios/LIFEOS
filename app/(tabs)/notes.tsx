@@ -19,19 +19,43 @@ export default function NotesScreen(): ReactElement {
   const insets = useSafeAreaInsets();
   const notes = useLifeStore((s) => s.notes);
   const addNote = useLifeStore((s) => s.addNote);
+  const updateNote = useLifeStore((s) => s.updateNote);
   const deleteNote = useLifeStore((s) => s.deleteNote);
 
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [newNote, setNewNote] = useState({ title: '', content: '', reminderAt: '' });
 
-  function handleCreate() {
+  function handleSave() {
     if (!newNote.title.trim() && !newNote.content.trim()) return;
-    addNote({
-      ...newNote,
-      title: newNote.title.trim() || 'Nota sin título'
-    });
+    
+    if (editingNoteId) {
+      updateNote(editingNoteId, {
+        title: newNote.title.trim() || 'Nota sin título',
+        content: newNote.content.trim()
+      });
+    } else {
+      addNote({
+        ...newNote,
+        title: newNote.title.trim() || 'Nota sin título'
+      });
+    }
+    
     setModalVisible(false);
+    setEditingNoteId(null);
     setNewNote({ title: '', content: '', reminderAt: '' });
+  }
+
+  function openEdit(note: any) {
+    setEditingNoteId(note.id);
+    setNewNote({ title: note.title, content: note.content, reminderAt: note.reminderAt || '' });
+    setModalVisible(true);
+  }
+
+  function openCreate() {
+    setEditingNoteId(null);
+    setNewNote({ title: '', content: '', reminderAt: '' });
+    setModalVisible(true);
   }
 
   return (
@@ -42,7 +66,7 @@ export default function NotesScreen(): ReactElement {
     >
       <View style={styles.hdr}>
         <Text style={styles.title}>📝 Bloc de Notas</Text>
-        <Pressable style={styles.addBtn} onPress={() => setModalVisible(true)}>
+        <Pressable style={styles.addBtn} onPress={openCreate}>
           <Text style={styles.addBtnText}>+ Nueva</Text>
         </Pressable>
       </View>
@@ -58,8 +82,8 @@ export default function NotesScreen(): ReactElement {
               key={note.id}
               entering={FadeInDown.delay(idx * 50)}
               layout={Layout.springify()}
-              style={styles.noteCard}
             >
+              <Pressable style={styles.noteCard} onPress={() => openEdit(note)}>
               <View style={styles.noteHdr}>
                 <Text style={styles.noteTitle}>{note.title}</Text>
                 <Pressable
@@ -84,7 +108,8 @@ export default function NotesScreen(): ReactElement {
                   </View>
                 )}
               </View>
-            </Animated.View>
+            </Pressable>
+          </Animated.View>
           ))
         )}
       </View>
@@ -92,7 +117,7 @@ export default function NotesScreen(): ReactElement {
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nueva Nota</Text>
+            <Text style={styles.modalTitle}>{editingNoteId ? 'Editar Nota' : 'Nueva Nota'}</Text>
             
             <TextInput
               style={styles.inputTitle}
@@ -128,8 +153,8 @@ export default function NotesScreen(): ReactElement {
               <Pressable style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
                 <Text style={styles.cancelBtnText}>Cancelar</Text>
               </Pressable>
-              <Pressable style={styles.saveBtn} onPress={handleCreate}>
-                <Text style={styles.saveBtnText}>Guardar</Text>
+              <Pressable style={styles.saveBtn} onPress={handleSave}>
+                <Text style={styles.saveBtnText}>{editingNoteId ? 'Guardar Cambios' : 'Guardar'}</Text>
               </Pressable>
             </View>
           </View>

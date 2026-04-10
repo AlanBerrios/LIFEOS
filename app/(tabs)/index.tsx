@@ -26,6 +26,7 @@ import {
   FileText,
   SquareTerminator
 } from 'lucide-react-native';
+import { TutorialOverlay } from '../../src/components/TutorialOverlay';
 
 function fmt(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -297,21 +298,81 @@ function BreakEditModal({
   );
 }
 
+function MealOptionsModal({
+  visible,
+  onClose
+}: {
+  visible: boolean;
+  onClose: () => void;
+}): ReactElement {
+  const startMealTimer = useLifeStore((s) => s.startMealTimer);
+  const routines = useLifeStore((s) => s.routines);
+  
+  const today = new Date().getDay();
+  const routine = routines.find(r => r.dayOfWeek === today);
+  const routineLunch = routine?.meals.find(m => m.type.toLowerCase() === 'almuerzo');
+
+  function handleStart(mins: number) {
+    void startMealTimer(mins);
+    onClose();
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <Pressable style={styles.overlay} onPress={onClose}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Opciones de Almuerzo</Text>
+          <Text style={styles.modalLabel}>¿Cuánto tiempo vas a almorzar?</Text>
+          
+          <View style={{ gap: 10, marginTop: 10 }}>
+            {routineLunch && (
+              <Pressable style={styles.saveBtn} onPress={() => handleStart(routineLunch.durationMinutes)}>
+                <Text style={styles.saveBtnText}>Según rutina ({routineLunch.durationMinutes} min)</Text>
+              </Pressable>
+            )}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {[30, 45, 60].map(m => (
+                <Pressable key={m} style={[styles.secondaryBtn, { flex: 1, height: 45 }]} onPress={() => handleStart(m)}>
+                  <Text style={styles.secondaryBtnText}>{m}m</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Pressable style={[styles.secondaryBtn, { height: 45 }]} onPress={() => handleStart(90)}>
+              <Text style={styles.secondaryBtnText}>90 minutos (Largo)</Text>
+            </Pressable>
+          </View>
+
+          <Pressable style={[styles.cancelBtn, { marginTop: 10 }]} onPress={onClose}>
+            <Text style={styles.cancelBtnText}>Cancelar</Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
 // ─── Timeline Block ───────────────────────────────────────────────────────────
 
 function BlockCard({
   block,
   index,
   total,
+  now,
   onEditBreak
 }: {
   block: ReturnType<typeof useLifeStore.getState>['timeline'][0];
   index: number;
   total: number;
+  now: Date;
   onEditBreak: (id: string, minutes: number) => void;
 }): ReactElement {
   const moveBlock = useLifeStore((s) => s.moveBlock);
   const completeTask = useLifeStore((s) => s.completeTask);
+  const skipTask = useLifeStore((s) => s.skipTask);
+  const postponeTask = useLifeStore((s) => s.postponeTask);
+  const tasks = useLifeStore((s) => s.tasks);
+  const task = block.task_id ? tasks.find(t => t.id === block.task_id) : null;
+  const isInProgress = task?.status === 'in_progress';
   const durationMin = Math.round((block.end_time.getTime() - block.start_time.getTime()) / 60_000);
   const isRest = block.type === 'rest' || block.type === 'meal' || block.type === 'sleep';
   const isMeal = block.type === 'meal';
@@ -322,6 +383,20 @@ function BlockCard({
   else if (isSleep) emoji = '🌙';
   else if (!isRest) emoji = '🔷';
 
+  // Liquid progress calculation
+  const startMs = block.start_time.getTime();
+  const endMs = block.end_time.getTime();
+  const nowMs = now.getTime();
+  let progress = 0;
+  if (nowMs >= startMs && nowMs <= endMs) {
+    progress = (nowMs - startMs) / (endMs - startMs);
+  } else if (nowMs > endMs) {
+    progress = 1;
+  }
+
+  const showProgress = progress > 0 && progress < 1;
+  const fillColor = isRest ? 'rgba(0,0,0,0.05)' : 'rgba(124,108,252,0.1)';
+
   return (
     <Animated.View
       entering={FadeInDown.duration(280)}
@@ -330,9 +405,20 @@ function BlockCard({
         styles.block, 
         isRest ? styles.blockRest : styles.blockTask,
         isMeal && styles.blockMeal,
-        isSleep && styles.blockSleep
+        isSleep && styles.blockSleep,
+        isInProgress && styles.blockInProgress
       ]}
     >
+      {/* Liquid Fill Overlay */}
+      {showProgress && (
+        <View 
+          style={[
+            styles.liquidFill, 
+            { width: `${progress * 100}%`, backgroundColor: fillColor }
+          ]} 
+        />
+      )}
+      
       <View style={styles.blockTimeCol}>
         <Text style={styles.blockTimeText}>{fmt(block.start_time)}</Text>
         <View style={[styles.blockLine, isRest ? styles.lineRest : styles.lineTask]} />
@@ -347,7 +433,14 @@ function BlockCard({
         ]} numberOfLines={2}>
           {emoji} {block.title}
         </Text>
-        <Text style={styles.blockDuration}>{durationMin} min</Text>
+        <View style={styles.blockMetaRow}>
+          <Text style={styles.blockDuration}>{durationMin} min</Text>
+          {isInProgress && (
+            <View style={styles.inProgressBadge}>
+              <Text style={styles.inProgressText}>EN CURSO</Text>
+            </View>
+          )}
+        </View>
       </View>
 
       <View style={styles.blockCtrl}>
@@ -369,15 +462,22 @@ function BlockCard({
             </Pressable>
             {block.task_id && (
               <Pressable
-                style={[styles.ctrlBtn, styles.ctrlBtnDone]}
+                style={[styles.ctrlBtn, styles.ctrlBtnDone, isInProgress && styles.ctrlBtnInProgress]}
                 onPress={() => {
-                  Alert.alert('Completar', `¿Marcar "${block.title}" como completada?`, [
-                    { text: 'No', style: 'cancel' },
-                    { text: 'Sí ✅', onPress: () => completeTask(block.task_id!) }
+                  Alert.alert('Gestión de Tarea', `¿Qué quieres hacer con "${block.title}"?`, [
+                    { text: 'X Cancelar', style: 'cancel' },
+                    { text: '⏭️ Saltar', onPress: () => skipTask(block.task_id!) },
+                    { text: '⏳ Posponer', onPress: () => postponeTask(block.task_id!) },
+                    { text: '✅ Completar', onPress: () => completeTask(block.task_id!) },
                   ]);
                 }}
+                onLongPress={() => {
+                   if (!isInProgress) {
+                     useLifeStore.getState().startTask(block.task_id!);
+                   }
+                }}
               >
-                <Text style={styles.ctrlIconDone}>✓</Text>
+                <Text style={styles.ctrlIconDone}>{isInProgress ? '⌛' : '✓'}</Text>
               </Pressable>
             )}
           </>
@@ -417,12 +517,21 @@ export default function DashboardScreen(): ReactElement {
   const startMealTimer = useLifeStore((s) => s.startMealTimer);
   const stopTimer = useLifeStore((s) => s.stopTimer);
   const activeTimer = useLifeStore((s) => s.activeTimer);
+  const settings = useLifeStore((s) => s.settings);
+  const updateSettings = useLifeStore((s) => s.updateSettings);
 
   const [editBreak, setEditBreak] = useState<{ id: string; minutes: number } | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [quickEventVisible, setQuickEventVisible] = useState(false);
   const [quickNoteVisible, setQuickNoteVisible] = useState(false);
+  const [mealOptionsVisible, setMealOptionsVisible] = useState(false);
   const [timeLeft, setTimeLeft] = useState<string>('');
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const itv = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(itv);
+  }, []);
 
   useEffect(() => {
     if (!activeTimer) return;
@@ -467,7 +576,7 @@ export default function DashboardScreen(): ReactElement {
           </View>
           <Pressable 
             style={styles.statsRow}
-            onPress={() => router.push('/analytics' as any)}
+            onPress={() => router.push('/(tabs)/stats' as any)}
           >
             <View style={styles.statChip}>
               <Text style={styles.statNum}>{taskBlocks}</Text>
@@ -540,7 +649,7 @@ export default function DashboardScreen(): ReactElement {
             ) : (
               <Pressable
                 style={({ pressed }) => [styles.secondaryBtn, styles.flex1, pressed && styles.pressed]}
-                onPress={() => void startMealTimer()}
+                onPress={() => setMealOptionsVisible(true)}
               >
                 <View style={styles.actionBtnInner}>
                   <UtensilsCrossed size={18} color={lifeTheme.colors.text} />
@@ -584,6 +693,11 @@ export default function DashboardScreen(): ReactElement {
         <QuickTaskModal visible={quickAddVisible} onClose={() => setQuickAddVisible(false)} />
         <QuickEventModal visible={quickEventVisible} onClose={() => setQuickEventVisible(false)} />
         <QuickNoteModal visible={quickNoteVisible} onClose={() => setQuickNoteVisible(false)} />
+        <MealOptionsModal visible={mealOptionsVisible} onClose={() => setMealOptionsVisible(false)} />
+        <TutorialOverlay 
+          visible={settings.showTutorial} 
+          onComplete={() => updateSettings({ showTutorial: false })} 
+        />
 
 
 
@@ -598,6 +712,7 @@ export default function DashboardScreen(): ReactElement {
                   block={block}
                   index={idx}
                   total={timeline.length}
+                  now={now}
                   onEditBreak={(id, mins) => setEditBreak({ id, minutes: mins })}
                 />
               ))}
@@ -695,20 +810,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row', borderRadius: 12, borderWidth: 1,
     padding: 10, gap: 10, alignItems: 'center'
   },
-  blockRest: { backgroundColor: `${lifeTheme.colors.surfaceAlt}88`, borderColor: `${lifeTheme.colors.muted}44`, borderStyle: 'dashed' },
-  blockMeal: { backgroundColor: `${lifeTheme.colors.alert}15`, borderColor: `${lifeTheme.colors.alert}55`, borderStyle: 'solid' },
-  blockSleep: { backgroundColor: '#1e1b4b', borderColor: '#4f46e5', borderStyle: 'solid', paddingVertical: 20 },
-  blockTask: { backgroundColor: lifeTheme.colors.surface, borderColor: `${lifeTheme.colors.primary}40` },
+  blockTask: { 
+    borderLeftWidth: 4, 
+    borderLeftColor: lifeTheme.colors.primary 
+  },
+  blockInProgress: {
+    borderColor: lifeTheme.colors.primary,
+    borderWidth: 2,
+    borderLeftWidth: 6,
+    shadowColor: lifeTheme.colors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  blockMeal: { borderLeftColor: '#fb923c' },
+  blockSleep: { borderLeftColor: '#818cf8' },
+  blockRest: { borderLeftColor: '#94a3b8', opacity: 0.9 },
+  blockBody: { flex: 1, paddingVertical: 4 },
+  blockTitleTask: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '700', marginBottom: 2 },
+  blockTitleRest: { color: lifeTheme.colors.muted, fontSize: 15, fontWeight: '500' },
+  blockMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  blockDuration: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '500' },
+  inProgressBadge: { 
+    backgroundColor: lifeTheme.colors.primary, 
+    paddingHorizontal: 6, 
+    paddingVertical: 2, 
+    borderRadius: 4 
+  },
+  inProgressText: { color: 'white', fontSize: 10, fontWeight: '900' },
+  blockCtrl: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  ctrlBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: `${lifeTheme.colors.text}10`, alignItems: 'center', justifyContent: 'center' },
+  ctrlBtnDisabled: { opacity: 0.3 },
+  ctrlBtnDone: { backgroundColor: `${lifeTheme.colors.success}15` },
+  ctrlBtnInProgress: { backgroundColor: `${lifeTheme.colors.primary}20` },
+  ctrlIcon: { fontSize: 16, color: lifeTheme.colors.text, fontWeight: '700' },
+  ctrlIconDisabled: { color: lifeTheme.colors.muted },
+  ctrlIconDone: { fontSize: 16, color: lifeTheme.colors.success, fontWeight: '900' },
+  liquidFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 11,
+    zIndex: -1
+  },
   blockTimeCol: { width: 50, alignItems: 'center', gap: 3 },
   blockTimeText: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '600' },
   blockLine: { width: 2, height: 16, borderRadius: 1 },
   lineTask: { backgroundColor: lifeTheme.colors.primary },
   lineRest: { backgroundColor: lifeTheme.colors.border },
-  blockBody: { flex: 1, gap: 2 },
-  blockTitleTask: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
-  blockTitleRest: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '500' },
-  blockDuration: { color: lifeTheme.colors.muted, fontSize: 10 },
-  blockCtrl: { flexDirection: 'column', gap: 4, alignItems: 'center' },
   ctrlBtn: {
     width: 26, height: 26, borderRadius: 7, alignItems: 'center',
     justifyContent: 'center', backgroundColor: lifeTheme.colors.surfaceAlt,

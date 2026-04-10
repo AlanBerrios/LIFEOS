@@ -7,8 +7,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  Text,
   TextInput,
-  View
+  View,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard
 } from 'react-native';
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -185,84 +190,91 @@ export default function HabitsScreen(): ReactElement {
       </View>
 
       <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nuevo Hábito</Text>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalCard}>
+                <Text style={styles.modalTitle}>{editingHabitId ? 'Editar Hábito' : 'Nuevo Hábito'}</Text>
 
-            <View style={styles.modalSuggestions}>
-              <Text style={styles.label}>Sugerencias rápidas</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionList}>
-                {SUGGESTIONS.map((s, i) => (
-                  <Pressable 
-                    key={i} 
-                    style={styles.suggestionItemSmall}
-                    onPress={() => setNewHabit({ 
-                      name: s.name, 
-                      emoji: s.emoji, 
-                      goalValue: s.goalValue, 
-                      goalUnit: s.goalUnit 
-                    })}
-                  >
-                    <Text style={styles.suggestionEmojiSmall}>{s.emoji}</Text>
-                    <Text style={styles.suggestionNameSmall}>{s.name}</Text>
+                <View style={styles.modalSuggestions}>
+                  <Text style={styles.label}>Sugerencias rápidas</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionList}>
+                    {SUGGESTIONS.map((s, i) => (
+                      <Pressable 
+                        key={i} 
+                        style={styles.suggestionItemSmall}
+                        onPress={() => setNewHabit({ 
+                          name: s.name, 
+                          emoji: s.emoji, 
+                          goalValue: s.goalValue, 
+                          goalUnit: s.goalUnit 
+                        })}
+                      >
+                        <Text style={styles.suggestionEmojiSmall}>{s.emoji}</Text>
+                        <Text style={styles.suggestionNameSmall}>{s.name}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+                
+                <Text style={styles.label}>Nombre</Text>
+                <TextInput
+                  style={styles.input}
+                  value={newHabit.name}
+                  onChangeText={(v) => setNewHabit((prev) => ({ ...prev, name: v }))}
+                  placeholder="Ej: Meditar, Beber agua..."
+                  placeholderTextColor={lifeTheme.colors.muted}
+                />
+
+                <Text style={styles.label}>Emoji</Text>
+                <View style={styles.emojiRow}>
+                  {EMOJI_OPTIONS.map((e) => (
+                    <Pressable
+                      key={e}
+                      style={[styles.emojiBtn, newHabit.emoji === e && styles.emojiBtnActive]}
+                      onPress={() => setNewHabit((prev) => ({ ...prev, emoji: e }))}
+                    >
+                      <Text style={{ fontSize: 20 }}>{e}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <View style={styles.goalRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Meta</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={String(newHabit.goalValue)}
+                      onChangeText={(v) => setNewHabit((prev) => ({ ...prev, goalValue: Number(v) || 0 }))}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={{ flex: 1.5 }}>
+                    <Text style={styles.label}>Unidad</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={newHabit.goalUnit}
+                      onChangeText={(v) => setNewHabit((prev) => ({ ...prev, goalUnit: v }))}
+                      placeholder="litros, km, etc."
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.modalBtns}>
+                  <Pressable style={styles.cancelBtn} onPress={() => { setModalVisible(false); setEditingHabitId(null); }}>
+                    <Text style={styles.cancelBtnText}>Cancelar</Text>
                   </Pressable>
-                ))}
-              </ScrollView>
-            </View>
-            
-            <Text style={styles.label}>Nombre</Text>
-            <TextInput
-              style={styles.input}
-              value={newHabit.name}
-              onChangeText={(v) => setNewHabit((prev) => ({ ...prev, name: v }))}
-              placeholder="Ej: Meditar, Beber agua..."
-              placeholderTextColor={lifeTheme.colors.muted}
-            />
-
-            <Text style={styles.label}>Emoji</Text>
-            <View style={styles.emojiRow}>
-              {EMOJI_OPTIONS.map((e) => (
-                <Pressable
-                  key={e}
-                  style={[styles.emojiBtn, newHabit.emoji === e && styles.emojiBtnActive]}
-                  onPress={() => setNewHabit((prev) => ({ ...prev, emoji: e }))}
-                >
-                  <Text style={{ fontSize: 20 }}>{e}</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <View style={styles.goalRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Meta</Text>
-                <TextInput
-                  style={styles.input}
-                  value={String(newHabit.goalValue)}
-                  onChangeText={(v) => setNewHabit((prev) => ({ ...prev, goalValue: Number(v) || 0 }))}
-                  keyboardType="numeric"
-                />
-              </View>
-              <View style={{ flex: 1.5 }}>
-                <Text style={styles.label}>Unidad</Text>
-                <TextInput
-                  style={styles.input}
-                  value={newHabit.goalUnit}
-                  onChangeText={(v) => setNewHabit((prev) => ({ ...prev, goalUnit: v }))}
-                  placeholder="litros, km, etc."
-                />
+                  <Pressable style={styles.saveBtn} onPress={handleSave}>
+                    <Text style={styles.saveBtnText}>{editingHabitId ? 'Guardar' : 'Crear'}</Text>
+                  </Pressable>
+                </View>
               </View>
             </View>
-
-            <View style={styles.modalBtns}>
-              <Pressable style={styles.cancelBtn} onPress={() => { setModalVisible(false); setEditingHabitId(null); }}>
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </Pressable>
-              <Pressable style={styles.saveBtn} onPress={handleSave}>
-                <Text style={styles.saveBtnText}>{editingHabitId ? 'Guardar Cambios' : 'Crear Hábito'}</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
 
       <View style={{ height: 40 }} />

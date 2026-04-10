@@ -382,6 +382,15 @@ export default function SettingsScreen(): ReactElement {
         <Pressable onPress={() => Linking.openURL('https://github.com/AlanBerrios/LIFEOS')}>
           <Text style={[styles.footerText, { color: lifeTheme.colors.primary, marginTop: 4, fontWeight: '800' }]}>GitHub: AlanBerrios/LIFEOS</Text>
         </Pressable>
+        <Pressable 
+          style={{ marginTop: 16, backgroundColor: `${lifeTheme.colors.primary}15`, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: `${lifeTheme.colors.primary}55` }}
+          onPress={() => {
+            updateSettings({ showTutorial: true });
+            Alert.alert('Tutorial Reiniciado', 'Vuelve al Home para ver la guía.');
+          }}
+        >
+          <Text style={{ color: lifeTheme.colors.primary, fontSize: 13, fontWeight: '800' }}>Reiniciar Guía Tutorial</Text>
+        </Pressable>
       </View>
     </ScrollView>
   );

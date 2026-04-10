@@ -15,15 +15,27 @@ export function initNotifications(): void {
     })
   });
 
-  Notifications.setNotificationCategoryAsync('distraction_alert', [
-    {
-      identifier: 'snooze',
-      buttonTitle: '⏳ Dame 5 min',
-      options: { opensAppToForeground: false }
-    },
     {
       identifier: 'start_task',
       buttonTitle: '✅ Iniciar Tarea',
+      options: { opensAppToForeground: true }
+    }
+  ]);
+
+  Notifications.setNotificationCategoryAsync('completion_check', [
+    {
+      identifier: 'done',
+      buttonTitle: '✅ Hecho',
+      options: { opensAppToForeground: true }
+    },
+    {
+      identifier: 'postpone',
+      buttonTitle: '⏳ Posponer',
+      options: { opensAppToForeground: true }
+    },
+    {
+      identifier: 'skip',
+      buttonTitle: '⏭️ Saltar',
       options: { opensAppToForeground: true }
     }
   ]);
@@ -92,8 +104,6 @@ export async function scheduleTaskNotifications(
 ): Promise<void> {
   const granted = await requestNotificationPermission();
   if (!granted) return;
-
-  await cancelAllNotifications();
 
   const now = Date.now();
   const taskMap = new Map(tasks.map((t) => [t.id, t]));
@@ -236,9 +246,6 @@ export async function scheduleAlarm(
 export async function syncRoutineAlarms(routines: import('../types').DailyRoutine[]) {
   const granted = await requestNotificationPermission();
   if (!granted) return;
-
-  // Clear everything first to ensure a clean sync state
-  await cancelAllNotifications();
   
   // Just schedule the next 7 days statically for simplicity, or use WEEKLY.
   for (const routine of routines) {
@@ -266,6 +273,119 @@ export async function syncRoutineAlarms(routines: import('../types').DailyRoutin
            sound: true 
          },
          trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: expoWeekday, hour: mH, minute: mM }
+      });
+    }
+  }
+}
+
+// ─── Coordinador Central ──────────────────────────────────────────────────────
+
+export async function rescheduleAll(
+  timeline: ScheduleBlock[],
+  tasks: Task[],
+  settings: AppSettings,
+  routines: import('../types').DailyRoutine[],
+  events: import('../types').StaticEvent[],
+  notes: import('../types').QuickNote[]
+): Promise<void> {
+  const granted = await requestNotificationPermission();
+  if (!granted) return;
+
+  // Paso 1: Limpiar todo
+  await cancelAllNotifications();
+
+  // Paso 2: Programar tareas (si habilitado)
+  if (settings.notifyTaskStart) {
+    await scheduleTaskNotifications(timeline, tasks, settings.notifyTaskStartLeadMinutes);
+  }
+
+  // Paso 3: Programar rutinas (comidas y sueño)
+  await syncRoutineAlarms(routines);
+
+  // Paso 4: Programar verificaciones de cumplimiento (Tarea 2 de la visión)
+  await scheduleCompletionChecks(timeline);
+
+  // Paso 5: Programar eventos estáticos
+  await scheduleEventNotifications(events);
+
+  // Paso 6: Programar recordatorios de notas
+  await scheduleNoteReminders(notes);
+}
+
+// ─── Verificación de cumplimiento ───────────────────────────────────────────
+
+export async function scheduleCompletionChecks(timeline: ScheduleBlock[]): Promise<void> {
+  const granted = await requestNotificationPermission();
+  if (!granted) return;
+
+  const now = Date.now();
+  for (const block of timeline) {
+    if (block.type !== 'task' || !block.task_id) continue;
+    
+    // Programar 1 minuto después del fin del bloque
+    const notifyAt = block.end_time.getTime() + 60_000;
+    if (notifyAt <= now) continue;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '🤔 ¿Cómo vas con tu plan?',
+        body: `Terminó el tiempo de: ${block.title}. ¿Lo lograste terminar?`,
+        data: { type: 'completion_check', taskId: block.task_id, blockId: block.id },
+        categoryIdentifier: 'completion_check',
+        sound: true,
+      },
+      trigger: new Date(notifyAt),
+    });
+  }
+}
+
+// ─── Eventos y Notas ─────────────────────────────────────────────────────────
+
+export async function scheduleEventNotifications(events: import('../types').StaticEvent[]): Promise<void> {
+  const granted = await requestNotificationPermission();
+  if (!granted) return;
+
+  const now = Date.now();
+  for (const event of events) {
+    const triggerTime = event.startTime.getTime() - (event.reminderMinutes || 0) * 60000;
+    if (triggerTime > now) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `📌 Evento: ${event.title}`,
+          body: `Comienza a las ${event.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+          data: { type: 'event', id: event.id },
+          sound: true,
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+        },
+        trigger: new Date(triggerTime),
+      });
+    }
+  }
+}
+
+export async function scheduleNoteReminders(notes: import('../types').QuickNote[]): Promise<void> {
+  const granted = await requestNotificationPermission();
+  if (!granted) return;
+
+  const now = Date.now();
+  for (const note of notes) {
+    if (note.reminderAt) {
+      const [h, m] = note.reminderAt.split(':').map(Number);
+      const trigger = new Date();
+      trigger.setHours(h, m, 0, 0);
+      
+      if (trigger.getTime() <= now) {
+        trigger.setDate(trigger.getDate() + 1);
+      }
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `📝 Nota: ${note.title || 'Recordatorio'}`,
+          body: note.content,
+          data: { type: 'note', id: note.id },
+          sound: true,
+        },
+        trigger,
       });
     }
   }

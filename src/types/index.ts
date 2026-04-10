@@ -1,4 +1,4 @@
-export type TaskStatus = 'pool' | 'scheduled' | 'completed';
+export type TaskStatus = 'pool' | 'scheduled' | 'completed' | 'in_progress' | 'skipped' | 'postponed';
 
 /**
  * Urgencia temporal de la tarea — afecta el scoring del scheduler.
@@ -114,8 +114,8 @@ export interface AppSettings {
   notifyPendingIntervalMinutes: number;
   /** Alerta si hay tarea de prioridad alta sin completar al final del día */
   notifyImportantUnfinished: boolean;
-  /** Minutos antes del inicio de la tarea para notificar (default: 5) */
   notifyTaskStartLeadMinutes: number;
+  showTutorial: boolean;
   // --- V2.1 Expansion ---
   /** Hora de dormir (HH:mm) */
   sleepTimeStart: string;
@@ -188,6 +188,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   notifyPendingIntervalMinutes: 0,
   notifyImportantUnfinished: true,
   notifyTaskStartLeadMinutes: 5,
+  showTutorial: true,
   sleepTimeStart: '23:00',
   sleepTimeEnd: '07:00',
   enableGeofencing: false,
