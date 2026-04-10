@@ -15,6 +15,12 @@ export function initNotifications(): void {
     })
   });
 
+  Notifications.setNotificationCategoryAsync('distraction_alert', [
+    {
+      identifier: 'snooze',
+      buttonTitle: '⏳ Dame 5 min',
+      options: { opensAppToForeground: false }
+    },
     {
       identifier: 'start_task',
       buttonTitle: '✅ Iniciar Tarea',
