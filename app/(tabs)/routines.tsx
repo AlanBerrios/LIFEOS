@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { lifeTheme } from '../../src/theme';
 import { createId } from '../../src/utils/ids';
-import { syncRoutineAlarms } from '../../src/services/notifications';
+import { rescheduleAll } from '../../src/services/notifications';
 import type { MealRoutine } from '../../src/types';
 
 const DAYS_SHORT = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
@@ -71,6 +71,11 @@ function SafeTimePicker({
 
 export default function RoutinesScreen(): ReactElement {
   const insets = useSafeAreaInsets();
+  const tasks = useLifeStore((s) => s.tasks);
+  const timeline = useLifeStore((s) => s.timeline);
+  const settings = useLifeStore((s) => s.settings);
+  const events = useLifeStore((s) => s.events);
+  const notes = useLifeStore((s) => s.notes);
   const routines = useLifeStore((s) => s.routines);
   const updateRoutine = useLifeStore((s) => s.updateRoutineDay);
   
@@ -106,6 +111,15 @@ export default function RoutinesScreen(): ReactElement {
     });
   }
 
+  async function handleSyncNotifications(): Promise<void> {
+    try {
+      await rescheduleAll(timeline, tasks, settings, routines, events, notes);
+      Alert.alert('Listo', 'Notificaciones sincronizadas correctamente.');
+    } catch {
+      Alert.alert('Error', 'No se pudieron sincronizar las notificaciones.');
+    }
+  }
+
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 16 }]}>
@@ -129,7 +143,7 @@ export default function RoutinesScreen(): ReactElement {
       <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
         <Pressable 
           style={styles.syncBtnFull} 
-          onPress={() => { syncRoutineAlarms(routines); Alert.alert('Listo', 'Alarmas sincronizadas'); }}
+          onPress={() => void handleSyncNotifications()}
         >
           <Text style={styles.syncBtnText}>🔔 Activar y Sincronizar Alarmas</Text>
         </Pressable>

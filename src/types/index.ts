@@ -95,9 +95,56 @@ export interface DailySession {
   date: string;
   tasksCompleted: number;
   tasksScheduled: number;
+  tasksSkipped: number;
+  tasksPostponed: number;
   totalWorkMinutes: number;
   /** Suma de cognitive_load × eta_minutes de todas las tareas del timeline */
   totalCognitiveDrain: number;
+  expGainedToday: number;
+
+  // ============================================
+  // FASE C: Extended Execution Tracking
+  // ============================================
+  
+  /** Timeline detallado de ejecución de bloques */
+  execution_timeline?: Array<{
+    block_id: string;
+    block_title: string;
+    planned_start: Date;
+    planned_end: Date;
+    actual_start: Date | null;
+    actual_end: Date | null;
+    status: 'pending' | 'completed' | 'skipped' | 'postponed';
+    skip_reason?: SkipReason;
+    postpone_reason?: PostponeReason;
+    notes?: string;
+  }>;
+  
+  /** Cuántos bloques se desviaron del plan */
+  deviations_count?: number;
+  
+  /** Cuántas veces se replaneó el día */
+  replan_count?: number;
+  
+  /** Puntos de feedback de usuario (basado en skip/postpone quality) */
+  user_feedback_points?: number;
+  
+  /** Patrones detectados (ej: "distraction_after_breaks") para futuro análisis */
+  detected_patterns?: Array<{
+    pattern: string;
+    confidence: number;  // 0-1
+  }>;
+}
+
+export interface UserProfile {
+  level: number;
+  currentXP: number;
+  skills: {
+    focus: number;      // Tareas
+    vitality: number;   // Hábitos, Sueño
+    discipline: number; // Rutinas, Consistencia
+    wisdom: number;     // Notas, Análisis
+  };
 }
 
 /** Configuración global de la app */
@@ -152,6 +199,8 @@ export interface Alarm {
   /** Array de días donde 0=Dom, 1=Lun... 6=Sab */
   days: number[];
   enabled: boolean;
+  /** IDs reales programados en expo-notifications para poder cancelar/updatear */
+  notificationIds?: string[];
 }
 
 export interface HabitLog {
@@ -196,3 +245,89 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxSocialMinutes: 20,
   alarmsBypassSilent: true
 };
+
+// ============================================
+// FASE C: Nucleus de Ejecución Real
+// ============================================
+
+/**
+ * Razones por las que una tarea fue saltada/no completada.
+ * Usado para análisis de patrones y futuras recomendaciones.
+ */
+export type SkipReason = 
+  | 'distraction'      // User se distrajo
+  | 'urgent_task'      // Salió algo urgente
+  | 'low_energy'       // No tenía energía
+  | 'blocker'          // Hay un obstáculo
+  | 'system_issue'     // Problema técnico
+  | 'other';           // Otro
+
+/**
+ * Razones por las que una tarea fue pospuesta.
+ */
+export type PostponeReason = 
+  | 'need_more_time'   // Necesita más tiempo
+  | 'blocked'          // Está bloqueada
+  | 'deprioritized'    // Se despriorizó
+  | 'other';           // Otro
+
+/**
+ * Resultado de una tentativa de ejecución de tarea.
+ */
+export type ExecutionResultCode = 
+  | 'completed'        // Se completó completamente
+  | 'partial'          // Se completó parcialmente
+  | 'failed'           // No se hizo
+  | 'not_started';     // No se inició
+
+/**
+ * Record del intento de ejecución de una tarea (FASE C).
+ * Cada vez que el user inicia/completa/salta una tarea, se graba aquí.
+ */
+export interface ExecutionRecord {
+  // Identidad
+  id: string;
+  task_id: string;
+  attempt_number: number;  // Intento número cuánto (para reintentos)
+  
+  // Timeline
+  planned_start: Date;     // Cuándo estaba planeado
+  planned_end: Date;       // Cuándo debía terminar
+  actual_start: Date | null;      // Cuándo realmente empezó
+  actual_end: Date | null;        // Cuándo realmente terminó
+  
+  // Estado de la tentativa
+  status: 'pending' | 'in_progress' | 'completed' | 'skipped' | 'postponed';
+  result_code: ExecutionResultCode;
+  
+  // Skip: por qué no se hizo
+  skip_reason?: SkipReason;
+  skip_reason_details?: string;
+  
+  // Postpone: por qué se reprogramó
+  postpone_reason?: PostponeReason;
+  postpone_reason_details?: string;
+  postponed_until?: Date;  // ← CRÍTICO: cuándo reintentar automáticamente
+  
+  // Métricas
+  work_minutes: number;               // Tiempo real dedicado (actual_end - actual_start)
+  estimated_minutes: number;          // Tiempo que se había estimado (planned_end - planned_start)
+  cognitive_drain_reported?: number;  // 0-100 self-report de fatiga
+  
+  // Notas
+  notes_before?: string;   // Contexto al iniciar
+  notes_after?: string;    // Qué pasó, lecciones
+  
+  created_at: Date;
+}
+
+/**
+ * Completion check dialog state para UI (FASE C).
+ * Cuando user intenta marcar tarea como completada, abrimos este dialog.
+ */
+export interface PendingCompletionCheck {
+  task_id: string;
+  task_title: string;
+  status: 'pending' | 'partial' | 'not_started';  // Qué pasó?
+  timestamp: Date;
+}

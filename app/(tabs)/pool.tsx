@@ -15,9 +15,11 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import Animated, { FadeInDown, FadeOutUp, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SwipeableTaskCard } from '../../src/components/SwipeableTaskCard';
+import { TaskCompletionCheckDialog } from '../../src/components/TaskCompletionCheckDialog';
+import { ReplanificationPrompt } from '../../src/components/ReplanificationPrompt';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { lifeTheme } from '../../src/theme';
-import type { Task, TaskUrgency } from '../../src/types';
+import type { PostponeReason, ScheduleBlock, SkipReason, Task, TaskUrgency } from '../../src/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -147,11 +149,24 @@ export default function PoolScreen(): ReactElement {
   const addTask = useLifeStore((s) => s.addTask);
   const updateTask = useLifeStore((s) => s.updateTask);
   const deleteTask = useLifeStore((s) => s.deleteTask);
-  const completeTask = useLifeStore((s) => s.completeTask);
+  const timeline = useLifeStore((s) => s.timeline);
+  const setTimeline = useLifeStore((s) => s.setTimeline);
+  const confirmCompletionOK = useLifeStore((s) => s.confirmCompletionOK);
+  const confirmCompletionPartial = useLifeStore((s) => s.confirmCompletionPartial);
+  const reportTaskSkipped = useLifeStore((s) => s.reportTaskSkipped);
+  const reportTaskPostponed = useLifeStore((s) => s.reportTaskPostponed);
+  const confirmReplan = useLifeStore((s) => s.confirmReplan);
+  const rejectReplan = useLifeStore((s) => s.rejectReplan);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [completionTask, setCompletionTask] = useState<Task | null>(null);
+  const [isSubmittingCompletion, setIsSubmittingCompletion] = useState(false);
+  const [replanPreview, setReplanPreview] = useState<{
+    previous: ScheduleBlock[];
+    next: ScheduleBlock[];
+  } | null>(null);
 
   // Sort: urgency > priority > completed last
   const sorted = useMemo(() => {
@@ -194,6 +209,61 @@ export default function PoolScreen(): ReactElement {
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: () => deleteTask(id) }
     ]);
+  }
+
+  async function handleConfirmCompletionOK(taskId: string): Promise<void> {
+    setIsSubmittingCompletion(true);
+    try {
+      await confirmCompletionOK(taskId);
+      setCompletionTask(null);
+    } finally {
+      setIsSubmittingCompletion(false);
+    }
+  }
+
+  async function handleConfirmCompletionPartial(taskId: string, notes: string): Promise<void> {
+    setIsSubmittingCompletion(true);
+    try {
+      await confirmCompletionPartial(taskId, notes);
+      setCompletionTask(null);
+    } finally {
+      setIsSubmittingCompletion(false);
+    }
+  }
+
+  async function handleReportTaskSkipped(taskId: string, reason: SkipReason, details: string): Promise<void> {
+    setIsSubmittingCompletion(true);
+    const previousTimeline = [...timeline];
+    try {
+      await reportTaskSkipped(taskId, reason, details);
+      setCompletionTask(null);
+      const nextTimeline = [...useLifeStore.getState().timeline];
+      if (nextTimeline.length > 0) {
+        setReplanPreview({ previous: previousTimeline, next: nextTimeline });
+      }
+    } finally {
+      setIsSubmittingCompletion(false);
+    }
+  }
+
+  async function handleReportTaskPostponed(
+    taskId: string,
+    reason: PostponeReason,
+    details: string,
+    postponedUntil: Date
+  ): Promise<void> {
+    setIsSubmittingCompletion(true);
+    const previousTimeline = [...timeline];
+    try {
+      await reportTaskPostponed(taskId, reason, details, postponedUntil);
+      setCompletionTask(null);
+      const nextTimeline = [...useLifeStore.getState().timeline];
+      if (nextTimeline.length > 0) {
+        setReplanPreview({ previous: previousTimeline, next: nextTimeline });
+      }
+    } finally {
+      setIsSubmittingCompletion(false);
+    }
   }
 
   function handleSubmit() {
@@ -440,12 +510,46 @@ export default function PoolScreen(): ReactElement {
                 task={task}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
-                onComplete={completeTask}
+                onComplete={(taskId) => {
+                  const selected = tasks.find((item) => item.id === taskId) ?? null;
+                  setCompletionTask(selected);
+                }}
               />
             </Animated.View>
           ))
         )}
       </View>
+
+      <TaskCompletionCheckDialog
+        visible={completionTask != null}
+        task={completionTask}
+        isSubmitting={isSubmittingCompletion}
+        onClose={() => {
+          if (!isSubmittingCompletion) setCompletionTask(null);
+        }}
+        onConfirmOK={handleConfirmCompletionOK}
+        onConfirmPartial={handleConfirmCompletionPartial}
+        onReportSkipped={handleReportTaskSkipped}
+        onReportPostponed={handleReportTaskPostponed}
+      />
+
+      <ReplanificationPrompt
+        visible={replanPreview != null}
+        previousBlocks={replanPreview?.previous ?? []}
+        nextBlocks={replanPreview?.next ?? []}
+        onConfirm={() => {
+          if (!replanPreview) return;
+          void confirmReplan(replanPreview.next);
+          setReplanPreview(null);
+        }}
+        onReject={() => {
+          if (replanPreview) {
+            setTimeline(replanPreview.previous);
+          }
+          rejectReplan();
+          setReplanPreview(null);
+        }}
+      />
 
       <View style={{ height: 24 }} />
     </ScrollView>

@@ -121,7 +121,85 @@ export function generateTimeline(
   const schedulableTasks = tasks.filter(
     (t) => t.status === 'pool' || t.status === 'scheduled'
   );
-  if (schedulableTasks.length === 0) return [];
+
+  function mergeRestBlocks(unmerged: ScheduleBlock[]): ScheduleBlock[] {
+    if (unmerged.length < 2) return unmerged;
+    const merged: ScheduleBlock[] = [];
+    for (const block of unmerged) {
+      const last = merged[merged.length - 1];
+      if (last && (last.type === 'rest' || last.type === 'meal') && (block.type === 'rest' || block.type === 'meal')) {
+        last.end_time = block.end_time;
+        if (block.type === 'meal') last.type = 'meal'; // Meal takes precedence
+        if (block.title.includes('Recarga') || block.title.includes('Almuerzo')) last.title = block.title;
+      } else {
+        merged.push({ ...block });
+      }
+    }
+    return merged;
+  }
+
+  if (schedulableTasks.length === 0) {
+    const routineBlocks: ScheduleBlock[] = [];
+    const dayRoutine = routines.find((routine) => routine.dayOfWeek === now.getDay());
+
+    if (dayRoutine) {
+      const currentMin = now.getHours() * 60 + now.getMinutes();
+      const [sleepStartH, sleepStartM] = dayRoutine.sleepStart.split(':').map(Number);
+      const [sleepEndH, sleepEndM] = dayRoutine.sleepEnd.split(':').map(Number);
+      const sleepStartMin = sleepStartH * 60 + sleepStartM;
+      const sleepEndMin = sleepEndH * 60 + sleepEndM;
+      const inSleepWindow =
+        sleepStartMin > sleepEndMin
+          ? currentMin >= sleepStartMin || currentMin < sleepEndMin
+          : currentMin >= sleepStartMin && currentMin < sleepEndMin;
+
+      if (inSleepWindow) {
+        const sleepEndDate = new Date(now);
+        if (sleepStartMin > sleepEndMin && currentMin >= sleepStartMin) {
+          sleepEndDate.setDate(sleepEndDate.getDate() + 1);
+        }
+        sleepEndDate.setHours(sleepEndH, sleepEndM, 0, 0);
+        routineBlocks.push({
+          id: createId('rest'),
+          type: 'sleep',
+          title: 'Descanso nocturno 😴',
+          start_time: new Date(now),
+          end_time: sleepEndDate
+        });
+      }
+
+      for (const meal of dayRoutine.meals) {
+        const [mealH, mealM] = meal.time.split(':').map(Number);
+        const mealStart = new Date(now);
+        mealStart.setHours(mealH, mealM, 0, 0);
+        if (mealStart <= now) continue;
+
+        routineBlocks.push({
+          id: createId('rest'),
+          type: 'meal',
+          title: `🍔 ${meal.type}`,
+          start_time: mealStart,
+          end_time: new Date(mealStart.getTime() + meal.durationMinutes * 60_000)
+        });
+      }
+    }
+
+    const eventBlocks = getEventsForDate(events, now)
+      .filter((event) => event.endTime > now)
+      .map((event) => ({
+        id: event.id,
+        type: 'task' as const,
+        title: `📍 ${event.title}`,
+        start_time: event.startTime,
+        end_time: event.endTime,
+        isStaticEvent: true,
+        pinned: true
+      }));
+
+    return mergeRestBlocks(
+      [...routineBlocks, ...eventBlocks].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
+    );
+  }
 
   const scored = scoreAll(schedulableTasks, now);
   const hardFirst = scored.filter((s) => s.isHardConstraint).sort((a, b) => b.baseScore - a.baseScore);
@@ -165,22 +243,6 @@ export function generateTimeline(
     [...hardFirst.map((s) => s.task), ...bestFlexible],
     now
   );
-
-  function mergeRestBlocks(unmerged: ScheduleBlock[]): ScheduleBlock[] {
-    if (unmerged.length < 2) return unmerged;
-    const merged: ScheduleBlock[] = [];
-    for (const block of unmerged) {
-      const last = merged[merged.length - 1];
-      if (last && (last.type === 'rest' || last.type === 'meal') && (block.type === 'rest' || block.type === 'meal')) {
-        last.end_time = block.end_time;
-        if (block.type === 'meal') last.type = 'meal'; // Meal takes precedence
-        if (block.title.includes('Recarga') || block.title.includes('Almuerzo')) last.title = block.title;
-      } else {
-        merged.push({ ...block });
-      }
-    }
-    return merged;
-  }
 
   // ── Build timeline blocks ─────────────────────────────────────────────────
   const blocks: ScheduleBlock[] = [];

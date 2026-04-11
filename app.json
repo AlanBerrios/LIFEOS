@@ -3,7 +3,7 @@
     "name": "LifeOS",
     "slug": "lifeos",
     "scheme": "lifeos",
-    "version": "0.1.0",
+    "version": "3.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "assetBundlePatterns": [
@@ -21,7 +21,7 @@
     },
     "android": {
       "package": "com.alan.lifeos",
-      "versionCode": 1
+      "versionCode": 3
     },
     "extra": {
       "router": {},

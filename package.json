@@ -1,14 +1,17 @@
 {
   "name": "lifeos",
-  "version": "0.1.0",
+  "version": "3.0.0",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "android:release:fast": "cd android && gradlew.bat assembleRelease",
+    "android:release:clean": "cd android && gradlew.bat --stop && gradlew.bat clean && gradlew.bat assembleRelease --console=plain --no-daemon",
+    "ios": "expo run:ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -48,6 +51,7 @@
   "devDependencies": {
     "@types/react": "~19.1.10",
     "babel-preset-expo": "~54.0.10",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "vitest": "^4.1.4"
   }
 }

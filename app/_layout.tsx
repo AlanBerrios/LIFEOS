@@ -42,6 +42,7 @@ export default function RootLayout(): ReactElement {
       const Notifications = await import('expo-notifications');
       Notifications.addNotificationResponseReceivedListener((resp) => {
         const actionId = resp.actionIdentifier;
+        const data = resp.notification.request.content.data as { type?: string; taskId?: string };
         if (actionId === 'snooze') {
           // Re-trigger after 5 mins silently
           const taskName = resp.notification.request.content.body?.split(': ')[1] || 'Tu tarea';
@@ -50,6 +51,20 @@ export default function RootLayout(): ReactElement {
           });
         } else if (actionId === 'start_task') {
           // Navigating to Home is default because the app opens
+        } else if (data?.type === 'completion_check' && data.taskId) {
+          if (actionId === 'done') {
+            void useLifeStore.getState().confirmCompletionOK(data.taskId);
+          } else if (actionId === 'skip') {
+            void useLifeStore.getState().reportTaskSkipped(data.taskId, 'distraction', 'Marcado desde notificación');
+          } else if (actionId === 'postpone') {
+            const postponedUntil = new Date(Date.now() + 60 * 60_000);
+            void useLifeStore.getState().reportTaskPostponed(
+              data.taskId,
+              'need_more_time',
+              'Pospuesto desde notificación',
+              postponedUntil
+            );
+          }
         }
       });
     };

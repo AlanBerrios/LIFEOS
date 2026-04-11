@@ -1,5 +1,7 @@
 import type { ReactElement } from 'react';
+import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable } from 'react-native';
 import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
@@ -83,6 +85,7 @@ export default function StatsScreen(): ReactElement {
   const tasks = useLifeStore((s) => s.tasks);
   const timeline = useLifeStore((s) => s.timeline);
   const sessions = useLifeStore((s) => s.sessions);
+  const userProfile = useLifeStore((s) => s.userProfile);
 
   const today = todayISO();
   const todaySession: DailySession | undefined = sessions.find((s) => s.date === today);
@@ -120,8 +123,14 @@ export default function StatsScreen(): ReactElement {
 
   // ── Histórico sparkline ─────────────────────────────────────────────────────────
   const maxCompleted = Math.max(1, ...last7.map((d) => sessionMap[d]?.tasksCompleted ?? 0));
+  const xpToNextLevel = (userProfile.level * 100) - userProfile.currentXP;
+
+  const [showMasteryInfo, setShowMasteryInfo] = useState(false);
+  const [showXpInfo, setShowXpInfo] = useState(false);
+  const [showSkillsInfo, setShowSkillsInfo] = useState(false);
 
   return (
+    <>
     <ScrollView 
       style={styles.screen} 
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}
@@ -132,13 +141,21 @@ export default function StatsScreen(): ReactElement {
       <Animated.View entering={FadeInDown.duration(350)} style={styles.hero}>
         <View style={styles.glowAccent} />
         
-        <View style={styles.maestriaBadge}>
+        <Pressable style={styles.maestriaBadge} onPress={() => setShowMasteryInfo(true)}>
           <Text style={styles.maestriaIcon}>📈</Text>
           <Text style={styles.maestriaText}>Maestría Personal</Text>
-        </View>
+        </Pressable>
 
         <Text style={styles.kicker}>Sistema Operativo Personal</Text>
-        <Text style={styles.heroTitle}>Estadísticas</Text>
+        <View style={styles.heroLevelRow}>
+           <Pressable style={styles.heroLevelBadge} onPress={() => setShowXpInfo(true)}>
+             <Text style={styles.heroLevelValue}>{userProfile.level}</Text>
+           </Pressable>
+          <View>
+            <Text style={styles.heroTitle}>Estadísticas</Text>
+            <Text style={styles.heroLevelLabel}>Nivel de Jugador</Text>
+          </View>
+        </View>
         <Text style={styles.heroSub}>
           Un vistazo a tu productividad cognitiva de hoy y los últimos 7 días.
         </Text>
@@ -156,18 +173,35 @@ export default function StatsScreen(): ReactElement {
             delay={100}
           />
           <StatCard
+            label="Saltadas"
+            value={`${tasks.filter(t => t.status === 'skipped').length}`}
+            icon="⏭️"
+            accent={lifeTheme.colors.muted}
+            delay={140}
+          />
+          <StatCard
+            label="Pospuestas"
+            value={`${tasks.filter(t => t.status === 'postponed').length}`}
+            icon="⏳"
+            accent={'#f59e0b'}
+            delay={180}
+          />
+        </View>
+        
+        <View style={[styles.statRow, { marginTop: 10 }]}>
+           <StatCard
             label="Planificadas"
             value={`${scheduledToday}`}
             icon="⚡"
             accent={lifeTheme.colors.primary}
-            delay={160}
+            delay={220}
           />
           <StatCard
             label="Trabajo total"
             value={formatMinutes(totalWork)}
             icon="⏲️"
             accent={lifeTheme.colors.text}
-            delay={220}
+            delay={260}
           />
         </View>
 
@@ -193,6 +227,46 @@ export default function StatsScreen(): ReactElement {
             </View>
           </Animated.View>
         )}
+      </Animated.View>
+
+      {/* Skills & Attributes */}
+      <Animated.View entering={FadeInDown.delay(120).duration(300)} style={styles.section}>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>Atributos y Habilidades</Text>
+          <Pressable onPress={() => setShowSkillsInfo(true)}>
+            <Text style={styles.infoLink}>¿Cómo funciona?</Text>
+          </Pressable>
+        </View>
+        <View style={styles.loadBars}>
+          <HBar
+            label="🧠 Enfoque"
+            progress={Math.min(1, userProfile.skills.focus / 500)}
+            color={lifeTheme.colors.primary}
+            count={userProfile.skills.focus}
+            delay={200}
+          />
+          <HBar
+            label="⚡ Vitalidad"
+            progress={Math.min(1, userProfile.skills.vitality / 500)}
+            color={lifeTheme.colors.success}
+            count={userProfile.skills.vitality}
+            delay={260}
+          />
+          <HBar
+            label="🛡️ Disciplina"
+            progress={Math.min(1, userProfile.skills.discipline / 500)}
+            color={'#fb923c'}
+            count={userProfile.skills.discipline}
+            delay={320}
+          />
+          <HBar
+            label="📜 Sabiduría"
+            progress={Math.min(1, userProfile.skills.wisdom / 500)}
+            color={'#818cf8'}
+            count={userProfile.skills.wisdom}
+            delay={380}
+          />
+        </View>
       </Animated.View>
 
       {/* EnergÃ­a cognitiva */}
@@ -321,6 +395,54 @@ export default function StatsScreen(): ReactElement {
       </Animated.View>
 
     </ScrollView>
+
+      <InfoModal
+        visible={showMasteryInfo}
+        title="Maestría Personal"
+        body={`Este panel resume tu consistencia diaria, tu carga cognitiva y tu progreso histórico.\n\nÚsalo para detectar patrones: cuándo rindes mejor, cuántas tareas completas realmente y si estás sobrecargando tu día.`}
+        onClose={() => setShowMasteryInfo(false)}
+      />
+
+      <InfoModal
+        visible={showXpInfo}
+        title="Nivel y Experiencia"
+        body={`Tu nivel sube cuando acumulas EXP en cualquier categoría.\n\nNivel actual: ${userProfile.level}\nEXP actual: ${userProfile.currentXP}\nFaltan: ${xpToNextLevel} EXP para el siguiente nivel.`}
+        onClose={() => setShowXpInfo(false)}
+      />
+
+      <InfoModal
+        visible={showSkillsInfo}
+        title="Atributos y Habilidades"
+        body={`• Enfoque: crece al completar tareas de trabajo.\n• Vitalidad: crece con hábitos saludables y energía diaria.\n• Disciplina: crece cuando sostienes rutinas y consistencia.\n• Sabiduría: crece al capturar notas y reflexiones útiles.\n\nCada atributo suma al progreso general de tu perfil.`}
+        onClose={() => setShowSkillsInfo(false)}
+      />
+    </>
+  );
+}
+
+function InfoModal({
+  visible,
+  title,
+  body,
+  onClose
+}: {
+  visible: boolean;
+  title: string;
+  body: string;
+  onClose: () => void;
+}): ReactElement {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+          <Text style={styles.modalTitle}>{title}</Text>
+          <Text style={styles.modalBody}>{body}</Text>
+          <Pressable style={styles.modalCloseBtn} onPress={onClose}>
+            <Text style={styles.modalCloseText}>Entendido</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -380,6 +502,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase'
   },
+  heroLevelRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 8 },
+  heroLevelBadge: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: lifeTheme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.2)'
+  },
+  heroLevelValue: { color: 'white', fontSize: 28, fontWeight: '900' },
+  heroLevelLabel: { color: lifeTheme.colors.primary, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   heroTitle: {
     color: lifeTheme.colors.text,
     fontSize: 28,
@@ -402,6 +537,16 @@ const styles = StyleSheet.create({
     color: lifeTheme.colors.text,
     fontSize: 16,
     fontWeight: '800'
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  infoLink: {
+    color: lifeTheme.colors.primary,
+    fontSize: 12,
+    fontWeight: '700'
   },
   statRow: {
     flexDirection: 'row',
@@ -596,6 +741,42 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 999,
     opacity: 0.85
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    paddingHorizontal: 20
+  },
+  modalCard: {
+    backgroundColor: lifeTheme.colors.surface,
+    borderRadius: lifeTheme.radius.md,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 18,
+    gap: 10
+  },
+  modalTitle: {
+    color: lifeTheme.colors.text,
+    fontSize: 18,
+    fontWeight: '900'
+  },
+  modalBody: {
+    color: lifeTheme.colors.muted,
+    fontSize: 14,
+    lineHeight: 21
+  },
+  modalCloseBtn: {
+    marginTop: 4,
+    backgroundColor: lifeTheme.colors.primary,
+    borderRadius: 10,
+    alignItems: 'center',
+    paddingVertical: 11
+  },
+  modalCloseText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800'
   }
 });
 

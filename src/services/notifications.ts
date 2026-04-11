@@ -94,7 +94,18 @@ export async function scheduleLocalNotification(
 }
 
 export async function cancelNotification(id: string | null): Promise<void> {
-  if (id) await Notifications.cancelScheduledNotificationAsync(id);
+  if (!id) return;
+  try {
+    await Notifications.cancelScheduledNotificationAsync(id);
+  } catch {
+    // Ignore stale IDs that are no longer scheduled.
+  }
+}
+
+export async function cancelNotificationsByIds(ids: string[] = []): Promise<void> {
+  for (const id of ids) {
+    await cancelNotification(id);
+  }
 }
 
 export async function cancelAllNotifications(): Promise<void> {
@@ -132,10 +143,10 @@ export async function scheduleTaskNotifications(
         priority: Notifications.AndroidNotificationPriority.MAX,
       },
       trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
         date: notifyAt,
-        exact: true, // Requerido para puntualidad en Android
         channelId: 'default'
-      } as any // Force any due to complex TriggerInput union
+      }
     });
   }
 }
@@ -340,7 +351,10 @@ export async function scheduleCompletionChecks(timeline: ScheduleBlock[]): Promi
         categoryIdentifier: 'completion_check',
         sound: true,
       },
-      trigger: new Date(notifyAt),
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: notifyAt
+      },
     });
   }
 }
@@ -363,7 +377,10 @@ export async function scheduleEventNotifications(events: import('../types').Stat
           sound: true,
           priority: Notifications.AndroidNotificationPriority.HIGH,
         },
-        trigger: new Date(triggerTime),
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: triggerTime
+        },
       });
     }
   }
@@ -376,9 +393,17 @@ export async function scheduleNoteReminders(notes: import('../types').QuickNote[
   const now = Date.now();
   for (const note of notes) {
     if (note.reminderAt) {
-      const [h, m] = note.reminderAt.split(':').map(Number);
       const trigger = new Date();
-      trigger.setHours(h, m, 0, 0);
+
+      if (note.reminderAt.includes('T')) {
+        const parsed = new Date(note.reminderAt);
+        if (Number.isNaN(parsed.getTime())) continue;
+        trigger.setTime(parsed.getTime());
+      } else {
+        const [h, m] = note.reminderAt.split(':').map(Number);
+        if (!Number.isFinite(h) || !Number.isFinite(m)) continue;
+        trigger.setHours(h, m, 0, 0);
+      }
       
       if (trigger.getTime() <= now) {
         trigger.setDate(trigger.getDate() + 1);
@@ -391,7 +416,10 @@ export async function scheduleNoteReminders(notes: import('../types').QuickNote[
           data: { type: 'note', id: note.id },
           sound: true,
         },
-        trigger,
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: trigger
+        },
       });
     }
   }

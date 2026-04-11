@@ -143,6 +143,13 @@ def _solve_with_cpsat(
             # Y debe terminar antes del deadline
             model.Add(end_vars[i] <= deadline_minutes)
 
+        fixed_start_minutes = _fixed_start_minutes(task, now)
+        fixed_end_minutes = _fixed_end_minutes(task, now)
+        if fixed_start_minutes is not None:
+            model.Add(start_vars[i] == fixed_start_minutes)
+        if fixed_end_minutes is not None:
+            model.Add(end_vars[i] <= fixed_end_minutes)
+
     # 3. Secuencialidad implícita por no-solapamiento (CP-SAT la maneja)
     # No necesitamos forzar orden explícito, el solver lo encuentra.
 

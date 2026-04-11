@@ -1,0 +1,284 @@
+AUDITORIA ESTRATEGICA Y TECNICA - LIFEOS
+Fecha: 11-04-2026
+
+============================================================
+1) RESUMEN EJECUTIVO
+============================================================
+LIFEOS tiene una vision de producto fuerte y diferenciada: no ser una app de tareas, sino un sistema operativo personal que convierte tiempo util en ejecucion real con replanificacion.
+
+Estado actual:
+- Direccion estrategica: Muy buena.
+- Base arquitectonica: Buena (store persistente, scheduler local + backend, modulos amplios).
+- Madurez de implementacion: Media.
+- Riesgo principal: Brecha entre vision de dominio y estabilidad/integracion tecnica.
+
+Diagnostico clave:
+LIFEOS todavia no esta al nivel de su promesa operativa porque le falta cerrar un nucleo de estabilidad e integracion antes de seguir expandiendo funcionalidades nativas complejas.
+
+============================================================
+2) PROMESA OPERATIVA DE LIFEOS (EXTRAIDA DE LA VISION)
+============================================================
+LIFEOS promete:
+1. Detectar y proteger el tiempo util.
+2. Convertirlo en un plan ejecutable real.
+3. Recordar, insistir y asistir durante la ejecucion.
+4. Reorganizar el dia cuando el contexto cambia.
+5. Mantener al usuario como piloto, con LIFEOS como copiloto estricto.
+
+Diferenciador real:
+No solo registrar pendientes. Acompanhar la ejecucion cotidiana con inteligencia y replanificacion.
+
+============================================================
+3) GAP ANALYSIS (VISION VS IMPLEMENTACION)
+============================================================
+
+3.1 Estados de tareas (in_progress, skipped, postponed)
+Estado actual:
+- Si existen en tipos y store.
+- startTask, skipTask, postponeTask, completeTask estan presentes.
+
+Brechas:
+- No hay motivo estructurado (reason code) para skipped/postponed.
+- No hay postponed_until para retorno inteligente al plan.
+- No hay loop robusto de cierre de bloque: confirmar resultado -> aprender -> replanificar.
+- Backend aun no soporta estados amplios del frontend.
+
+Resultado:
+Implementacion parcial. Sirve para UI/flujo basico, insuficiente para inteligencia de ejecucion.
+
+3.2 Gamificacion XP/Niveles
+Estado actual:
+- Hay UserProfile con level/currentXP/skills.
+- Se otorga XP por completar tareas, habitos y notas.
+
+Brechas:
+- No hay sistema conductual completo (penalizaciones, recuperacion, objetivos adaptativos diarios).
+- No hay vinculo fuerte entre adherencia al plan y progresion.
+- No hay feedback de calidad del cumplimiento (solo acumulacion simple).
+
+Resultado:
+Motivacion inicial correcta, pero aun no cumple la narrativa de "copiloto estricto".
+
+3.3 DailySession para analiticas futuras
+Estado actual:
+- DailySession incluye: completed/scheduled/skipped/postponed, work minutes, cognitive drain, XP.
+
+Brechas:
+- Faltan eventos granulares de ejecucion:
+  - planned_start vs actual_start
+  - planned_end vs actual_end
+  - motivo de desvio
+  - duracion real vs estimada por tarea
+  - interrupciones en bloque productivo
+- Sin estos datos, las futuras recomendaciones seran limitadas.
+
+Resultado:
+DailySession es una buena base, pero no suficiente para analitica predictiva/adaptativa real.
+
+============================================================
+4) CRITICA DE ARQUITECTURA
+============================================================
+
+4.1 Cuellos de botella actuales
+1. Store monolitico
+- useLifeStore concentra demasiadas responsabilidades:
+  tareas, timeline, timer, sesiones, settings, habitos, notas, alarmas, eventos, rutinas, travel logs, XP, notificaciones, replanificacion.
+- Riesgo: alto acoplamiento, regresiones, testeo costoso.
+
+2. Contrato TS-Python desalineado
+- Frontend maneja campos y estados mas ricos.
+- Backend recibe/optimiza con contrato mas estrecho.
+- Resultado: perdida de contexto al usar scheduler remoto.
+
+3. Estabilidad de build insuficiente
+- Typecheck actual falla con errores en tabs, index, pool, notifications, MaterialTabs, estilos y tipos implicitos.
+- Esto frena cualquier roadmap serio.
+
+4. Integraciones nativas todavia fragiles
+- ScreenTime esta en modo "stub".
+- Geofencing existe, pero no aun como motor robusto continuo con logica contextual madura.
+
+4.2 Prioridad de Geofencing/Anti-distraccion
+Opinion:
+No deben ser prioridad inmediata.
+Primero se necesita un nucleo estable de ejecucion y contratos.
+
+Orden recomendado:
+1) Estabilidad y contrato.
+2) Bucle de ejecucion-replanificacion.
+3) Paridad local/remoto.
+4) Luego señales contextuales (geofencing, distraccion) integradas como input del motor.
+
+4.3 Funcionalidad "Killer" faltante
+Lo que falta para pasar de app a "SO personal":
+Motor de Ejecucion Adaptativa en tiempo real.
+
+Flujo killer:
+1. Detectar desvio del bloque.
+2. Preguntar causa minima.
+3. Reestimar esfuerzo y duracion.
+4. Replanificar automaticamente el resto del dia.
+5. Explicar al usuario por que cambio el plan.
+
+============================================================
+5) RIESGOS PRINCIPALES
+============================================================
+1. Expansion sin estabilidad: mas superficie de bug.
+2. Divergencia local/remoto del scheduler.
+3. Analitica sin datos de ejecucion granular.
+4. Fatiga de mantenimiento por store monolitico.
+5. Perder la promesa de copiloto estricto por flujos incompletos.
+
+============================================================
+6) PLAN COMPLETO Y JUSTIFICADO (ROADMAP DE EJECUCION)
+============================================================
+
+FASE A - Estabilidad Base (1-2 semanas)
+Objetivo:
+Dejar LIFEOS en estado compilable, predecible y verificable.
+
+Entregables:
+1. Cero errores de TypeScript.
+2. Criterios de salida (DoD tecnico):
+   - typecheck limpio
+   - rutas principales renderizan
+   - smoke tests basicos
+3. Congelacion temporal de nuevas features.
+
+Justificacion:
+Sin baseline estable, cualquier avance agrega deuda y retrabajo.
+
+
+FASE B - Contrato Unico de Dominio TS/Python (1-2 semanas)
+Objetivo:
+Eliminar drift entre frontend y backend.
+
+Entregables:
+1. Contrato canonico versionado de Task/ScheduleBlock/Session.
+2. Alineacion backend con campos clave del frontend:
+   - urgency
+   - fixed_start/fixed_end
+   - estados operativos
+3. Validacion de payload en ambos lados.
+
+Justificacion:
+La inteligencia del scheduler remoto depende de la calidad del contrato.
+
+
+FASE C - Nucleo de Ejecucion Real (2 semanas)
+Objetivo:
+Convertir planificacion en acompanamiento activo.
+
+Entregables:
+1. Modelar transiciones de estado con metadata:
+   - reason codes (skip/postpone)
+   - timestamps de cambios
+   - postponed_until
+2. Loop de cierre de tarea:
+   - notificacion de fin
+   - confirmacion de resultado
+   - accion correctiva sugerida
+3. Replanificacion con feedback del usuario.
+
+Justificacion:
+Este es el corazon de la promesa "copiloto estricto".
+
+
+FASE D - Refactor por Slices (2 semanas)
+Objetivo:
+Reducir acoplamiento y preparar escalabilidad.
+
+Entregables:
+1. Separar store en slices:
+   - tasksTimelineSlice
+   - executionSlice
+   - settingsSlice
+   - habitsSlice
+   - notesAlarmsSlice
+   - eventsRoutinesSlice
+   - profileInsightsSlice
+2. Mover side effects a capa de orquestacion:
+   - notificaciones
+   - scheduler calls
+   - geofence/screen time
+3. Persistencia por slice con versionado de migraciones.
+
+Justificacion:
+La inteligencia contextual futura exige modularidad y testabilidad.
+
+
+FASE E - Paridad Scheduler Local vs Remoto (2 semanas)
+Objetivo:
+Garantizar consistencia funcional y resiliencia real.
+
+Entregables:
+1. Test matrix comun de escenarios:
+   - deadlines duros
+   - fixed_start/fixed_end
+   - eventos estaticos
+   - comidas/sueno
+   - fatiga cognitiva
+2. Metricas de divergencia local/remoto.
+3. Politica de fallback trazable y observable.
+
+Justificacion:
+Sin paridad, el fallback puede producir experiencia inconsistente.
+
+
+FASE F - Inteligencia Contextual Integrada (continuo)
+Objetivo:
+Usar contexto para mejorar ejecucion, no para sumar features aisladas.
+
+Entregables:
+1. Integrar geofencing y anti-distraccion como senales del motor de ejecucion.
+2. Intervenciones contextuales diferenciadas (trabajo vs descanso).
+3. Recomendaciones adaptativas por patron de usuario.
+
+Justificacion:
+Esto habilita la evolucion real hacia "organizacion definitiva".
+
+============================================================
+7) 5 ACTION ITEMS PRIORITARIOS (EJECUCION INMEDIATA)
+============================================================
+1. Corregir baseline tecnico hasta dejar typecheck en cero.
+2. Unificar contrato TS-Python y versionarlo.
+3. Implementar modelo de estado de ejecucion con reason codes + postponed_until.
+4. Dividir useLifeStore en slices y extraer side effects.
+5. Crear suite de paridad scheduler local/remoto con metrica de divergencia.
+
+============================================================
+8) BACKLOG INICIAL SUGERIDO (OPERATIVO)
+============================================================
+Sprint 1:
+- Cerrar errores TS.
+- Arreglar incompatibilidades de componentes/tab layout/icons.
+- Alinear firmas addTask/updateTask en store y pantallas.
+- Corregir triggers de notificaciones al tipo requerido por SDK.
+
+Sprint 2:
+- Contrato canonico v1.
+- Actualizar modelos backend y cliente schedulerApi.
+- Tests de serializacion Date/estado.
+
+Sprint 3:
+- reason_code + postponed_until + execution events.
+- Completion checks conectados a replanificacion.
+- Vista minima de "por que se desvio el dia".
+
+Sprint 4:
+- Refactor store por slices.
+- Persistencia modular con migracion.
+- Telemetria local de eventos de ejecucion.
+
+Sprint 5:
+- Test matrix scheduler local/remoto.
+- Dashboard de divergencia.
+- Ajustes finales de scoring y restricciones.
+
+============================================================
+9) CONCLUSION
+============================================================
+LIFEOS ya tiene ADN de producto serio.
+Para llegar a "organizacion definitiva", la prioridad no es agregar mas modulos: es consolidar estabilidad, contrato de dominio, bucle de ejecucion y consistencia del scheduler.
+
+Si se ejecuta este plan en orden, LIFEOS puede pasar de una suite potente de productividad a un verdadero sistema operativo personal adaptativo.

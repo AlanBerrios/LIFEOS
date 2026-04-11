@@ -24,9 +24,10 @@ import {
   Plus, 
   CalendarPlus, 
   FileText,
-  SquareTerminator
+  SquareTerminal
 } from 'lucide-react-native';
 import { TutorialOverlay } from '../../src/components/TutorialOverlay';
+import { TaskCompletionCheckDialog } from '../../src/components/TaskCompletionCheckDialog';
 
 function fmt(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -213,7 +214,7 @@ function QuickNoteModal({
 
   function handleSave() {
     if (!content.trim()) return;
-    addNote({ content: content.trim() });
+    addNote({ title: 'Nota rápida', content: content.trim() });
     setContent('');
     onClose();
   }
@@ -358,18 +359,23 @@ function BlockCard({
   index,
   total,
   now,
-  onEditBreak
+  onEditBreak,
+  onTaskCompleted,
+  onRequestCompletionCheck
 }: {
   block: ReturnType<typeof useLifeStore.getState>['timeline'][0];
   index: number;
   total: number;
   now: Date;
   onEditBreak: (id: string, minutes: number) => void;
+  onTaskCompleted: (title: string, xp: number) => void;
+  onRequestCompletionCheck: (taskId: string) => void;
 }): ReactElement {
   const moveBlock = useLifeStore((s) => s.moveBlock);
   const completeTask = useLifeStore((s) => s.completeTask);
   const skipTask = useLifeStore((s) => s.skipTask);
   const postponeTask = useLifeStore((s) => s.postponeTask);
+  const deleteBlock = useLifeStore((s) => s.deleteBlock);
   const tasks = useLifeStore((s) => s.tasks);
   const task = block.task_id ? tasks.find(t => t.id === block.task_id) : null;
   const isInProgress = task?.status === 'in_progress';
@@ -466,9 +472,15 @@ function BlockCard({
                 onPress={() => {
                   Alert.alert('Gestión de Tarea', `¿Qué quieres hacer con "${block.title}"?`, [
                     { text: 'X Cancelar', style: 'cancel' },
+                    { text: '🗑 Eliminar bloque', style: 'destructive', onPress: () => deleteBlock(block.id) },
                     { text: '⏭️ Saltar', onPress: () => skipTask(block.task_id!) },
                     { text: '⏳ Posponer', onPress: () => postponeTask(block.task_id!) },
-                    { text: '✅ Completar', onPress: () => completeTask(block.task_id!) },
+                    {
+                      text: '✅ Cerrar bloque',
+                      onPress: () => {
+                        onRequestCompletionCheck(block.task_id!);
+                      }
+                    },
                   ]);
                 }}
                 onLongPress={() => {
@@ -518,7 +530,12 @@ export default function DashboardScreen(): ReactElement {
   const stopTimer = useLifeStore((s) => s.stopTimer);
   const activeTimer = useLifeStore((s) => s.activeTimer);
   const settings = useLifeStore((s) => s.settings);
+  const userProfile = useLifeStore((s) => s.userProfile);
   const updateSettings = useLifeStore((s) => s.updateSettings);
+  const confirmCompletionOK = useLifeStore((s) => s.confirmCompletionOK);
+  const confirmCompletionPartial = useLifeStore((s) => s.confirmCompletionPartial);
+  const reportTaskSkipped = useLifeStore((s) => s.reportTaskSkipped);
+  const reportTaskPostponed = useLifeStore((s) => s.reportTaskPostponed);
 
   const [editBreak, setEditBreak] = useState<{ id: string; minutes: number } | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
@@ -527,6 +544,9 @@ export default function DashboardScreen(): ReactElement {
   const [mealOptionsVisible, setMealOptionsVisible] = useState(false);
   const [timeLeft, setTimeLeft] = useState<string>('');
   const [now, setNow] = useState(new Date());
+  const [feedback, setFeedback] = useState<{ title: string; subtitle: string } | null>(null);
+  const [completionTaskId, setCompletionTaskId] = useState<string | null>(null);
+  const [isSubmittingCompletion, setIsSubmittingCompletion] = useState(false);
 
   useEffect(() => {
     const itv = setInterval(() => setNow(new Date()), 60000);
@@ -554,6 +574,12 @@ export default function DashboardScreen(): ReactElement {
   const todayCount = tasks.filter((t) => (t as any).urgency === 'today' && t.status !== 'completed').length;
   const completedCount = tasks.filter((t) => t.status === 'completed').length;
   const taskBlocks = timeline.filter((b) => b.type === 'task').length;
+  const completionTask = completionTaskId ? tasks.find((t) => t.id === completionTaskId) ?? null : null;
+
+  function showFeedback(title: string, subtitle: string) {
+    setFeedback({ title, subtitle });
+    setTimeout(() => setFeedback(null), 2200);
+  }
 
   const hour = new Date().getHours();
   const greeting = hour >= 6 && hour < 12 ? 'Buenos días ☀️' : hour >= 12 && hour < 20 ? 'Buenas tardes 🌤' : 'Buenas noches 🌙';
@@ -569,7 +595,22 @@ export default function DashboardScreen(): ReactElement {
         {/* Header */}
         <Animated.View entering={FadeInDown.duration(350)} style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>{greeting}</Text>
+            <View style={styles.playerHUDRow}>
+              <View style={styles.levelBadge}>
+                <Text style={styles.levelText}>{userProfile.level}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.greeting}>{greeting}</Text>
+                <View style={styles.xpTrack}>
+                  <View 
+                    style={[
+                      styles.xpFill, 
+                      { width: `${Math.min(100, (userProfile.currentXP / (userProfile.level * 100)) * 100)}%` }
+                    ]} 
+                  />
+                </View>
+              </View>
+            </View>
             <Text style={styles.dateText}>
               {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
             </Text>
@@ -607,7 +648,12 @@ export default function DashboardScreen(): ReactElement {
                 <Pressable
                   key={habit.id}
                   style={[styles.habitBubble, isDone && styles.habitBubbleDone]}
-                  onPress={() => logHabit(habit.id, 1)}
+                  onPress={() => {
+                    logHabit(habit.id, 1);
+                    if (!isDone) {
+                      showFeedback('✨ Hábito registrado', '+15 EXP en Vitalidad');
+                    }
+                  }}
                 >
                   <Text style={styles.habitEmoji}>{habit.emoji}</Text>
                   <Text style={[styles.habitName, isDone && styles.habitNameDone]}>
@@ -714,6 +760,12 @@ export default function DashboardScreen(): ReactElement {
                   total={timeline.length}
                   now={now}
                   onEditBreak={(id, mins) => setEditBreak({ id, minutes: mins })}
+                  onTaskCompleted={(title, xp) => {
+                    if (xp > 0) {
+                      showFeedback('🏆 Tarea completada', `${title} · +${xp} EXP en Enfoque`);
+                    }
+                  }}
+                  onRequestCompletionCheck={(taskId) => setCompletionTaskId(taskId)}
                 />
               ))}
             </View>
@@ -739,6 +791,56 @@ export default function DashboardScreen(): ReactElement {
           onClose={() => setEditBreak(null)}
         />
       )}
+
+      {feedback ? (
+        <Animated.View
+          entering={FadeInDown.duration(180)}
+          exiting={FadeOutUp.duration(180)}
+          style={styles.feedbackToast}
+        >
+          <Text style={styles.feedbackTitle}>{feedback.title}</Text>
+          <Text style={styles.feedbackSubtitle}>{feedback.subtitle}</Text>
+        </Animated.View>
+      ) : null}
+
+      <TaskCompletionCheckDialog
+        visible={Boolean(completionTask)}
+        task={completionTask}
+        isSubmitting={isSubmittingCompletion}
+        onClose={() => {
+          if (!isSubmittingCompletion) setCompletionTaskId(null);
+        }}
+        onConfirmOK={async (taskId) => {
+          setIsSubmittingCompletion(true);
+          await confirmCompletionOK(taskId);
+          const task = tasks.find((t) => t.id === taskId);
+          const gainedXp = task ? (task.priority * 10) + (task.cognitive_load * 2) : 0;
+          showFeedback('🏆 Tarea completada', `${task?.title ?? 'Tarea'} · +${gainedXp} EXP en Enfoque`);
+          setIsSubmittingCompletion(false);
+          setCompletionTaskId(null);
+        }}
+        onConfirmPartial={async (taskId, notes) => {
+          setIsSubmittingCompletion(true);
+          await confirmCompletionPartial(taskId, notes);
+          showFeedback('🧩 Avance parcial guardado', 'Se registró tu progreso para replanificar mejor');
+          setIsSubmittingCompletion(false);
+          setCompletionTaskId(null);
+        }}
+        onReportSkipped={async (taskId, reason, details) => {
+          setIsSubmittingCompletion(true);
+          await reportTaskSkipped(taskId, reason, details);
+          showFeedback('⏭️ Tarea saltada', 'Se replanificó tu timeline automáticamente');
+          setIsSubmittingCompletion(false);
+          setCompletionTaskId(null);
+        }}
+        onReportPostponed={async (taskId, reason, details, postponedUntil) => {
+          setIsSubmittingCompletion(true);
+          await reportTaskPostponed(taskId, reason, details, postponedUntil);
+          showFeedback('⏳ Tarea pospuesta', `Reintento programado para ${postponedUntil.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+          setIsSubmittingCompletion(false);
+          setCompletionTaskId(null);
+        }}
+      />
     </>
   );
 }
@@ -793,6 +895,36 @@ const styles = StyleSheet.create({
     paddingVertical: 10, alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: lifeTheme.colors.border,
     height: 60
+  },
+  playerHUDRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  levelBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: lifeTheme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.2)',
+    elevation: 4,
+    shadowColor: lifeTheme.colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4
+  },
+  levelText: { color: 'white', fontSize: 18, fontWeight: '900' },
+  xpTrack: {
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 2,
+    marginTop: 4,
+    width: '80%',
+    overflow: 'hidden'
+  },
+  xpFill: {
+    height: '100%',
+    backgroundColor: lifeTheme.colors.primary,
+    borderRadius: 2
   },
   actionBtnInner: {
     alignItems: 'center',
@@ -860,16 +992,6 @@ const styles = StyleSheet.create({
   blockLine: { width: 2, height: 16, borderRadius: 1 },
   lineTask: { backgroundColor: lifeTheme.colors.primary },
   lineRest: { backgroundColor: lifeTheme.colors.border },
-  ctrlBtn: {
-    width: 26, height: 26, borderRadius: 7, alignItems: 'center',
-    justifyContent: 'center', backgroundColor: lifeTheme.colors.surfaceAlt,
-    borderWidth: 1, borderColor: lifeTheme.colors.border
-  },
-  ctrlBtnDisabled: { opacity: 0.3 },
-  ctrlBtnDone: { backgroundColor: 'rgba(108,252,184,0.12)', borderColor: lifeTheme.colors.success },
-  ctrlIcon: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
-  ctrlIconDisabled: { color: lifeTheme.colors.border },
-  ctrlIconDone: { color: lifeTheme.colors.success, fontSize: 13, fontWeight: '800' },
   editBreakBtn: {
     width: 30, height: 30, borderRadius: 8,
     backgroundColor: lifeTheme.colors.surfaceAlt, alignItems: 'center', justifyContent: 'center'
@@ -933,5 +1055,25 @@ const styles = StyleSheet.create({
     backgroundColor: lifeTheme.colors.success, borderRadius: 10,
     width: 18, height: 18, textAlign: 'center', lineHeight: 18,
     color: '#fff', fontSize: 10, fontWeight: '900', overflow: 'hidden'
-  }
+  },
+  feedbackToast: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 24,
+    backgroundColor: lifeTheme.colors.surface,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.success,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 6
+  },
+  feedbackTitle: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '800' },
+  feedbackSubtitle: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '600' }
 });

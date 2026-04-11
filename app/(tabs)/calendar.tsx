@@ -68,6 +68,38 @@ function urgencyColor(task?: Task): string {
   return lifeTheme.colors.muted;
 }
 
+type TimelineCard = {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+  color: string;
+  kind: 'Tarea' | 'Evento';
+  dotted?: boolean;
+  onPress?: () => void;
+};
+
+function assignOverlapLanes(cards: TimelineCard[]): Array<TimelineCard & { lane: number; laneCount: number }> {
+  const ordered = [...cards].sort((a, b) => a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime());
+  const laneEnds: number[] = [];
+  const laidOut: Array<TimelineCard & { lane: number; laneCount: number }> = [];
+
+  for (const card of ordered) {
+    let lane = laneEnds.findIndex((endMs) => endMs <= card.start.getTime());
+    if (lane < 0) {
+      lane = laneEnds.length;
+      laneEnds.push(card.end.getTime());
+    } else {
+      laneEnds[lane] = card.end.getTime();
+    }
+
+    laidOut.push({ ...card, lane, laneCount: 0 });
+  }
+
+  const laneCount = Math.max(1, laneEnds.length);
+  return laidOut.map((card) => ({ ...card, laneCount }));
+}
+
 // ─── Android-safe DatePicker ──────────────────────────────────────────────────
 
 function SafeDatePicker({
@@ -258,7 +290,6 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
         if (!date) return <View key={`empty-${idx}`} style={styles.dayCell} />;
         const isToday = sameDay(date, new Date());
         const isSelected = sameDay(date, selectedDay);
-        const dotColor = hasTaskOn(date);
         return (
           <Pressable
             key={date.toISOString()}
@@ -294,55 +325,118 @@ function WeekView({ currentDate, tasks, events, onSelectDay }: {
   tasks: Task[];
   events: StaticEvent[];
   onSelectDay: (d: Date) => void;
+  onEditEvent: (id: string) => void;
 }): ReactElement {
   const weekStart = startOfWeek(currentDate);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const hours = Array.from({ length: 18 }, (_, i) => i + 6); // 06:00 -> 23:00
+  const hourHeight = 56;
+  const baseHour = 6;
+  const timeline = useLifeStore((s) => s.timeline);
 
   return (
     <View style={styles.weekContainer}>
-      <View style={styles.weekHdrRow}>
-        <View style={styles.hourColSpacer} />
-        {days.map((d, i) => (
-          <Pressable key={i} style={styles.weekHdrCell} onPress={() => onSelectDay(d)}>
-            <Text style={styles.weekHdrDay}>{WEEKDAYS[i]}</Text>
-            <Text style={styles.weekHdrNum}>{d.getDate()}</Text>
-          </Pressable>
-        ))}
-      </View>
-      
-      <ScrollView style={styles.weekGridScroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.weekGridBody}>
-          <View style={styles.hourCol}>
-            {hours.map(h => (
-              <View key={h} style={styles.hourLabelCell}>
-                <Text style={styles.hourLabelText}>{String(h).padStart(2, '0')}:00</Text>
-              </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View>
+          <View style={styles.weekHdrRowWide}>
+            <View style={styles.hourColSpacerWide} />
+            {days.map((d, i) => (
+              <Pressable key={i} style={styles.weekHdrCellWide} onPress={() => onSelectDay(d)}>
+                <Text style={styles.weekHdrDay}>{WEEKDAYS[i]}</Text>
+                <Text style={styles.weekHdrNum}>{d.getDate()}</Text>
+              </Pressable>
             ))}
           </View>
-          
-          {days.map((day, dayIdx) => {
-            const dayEvents = getEventsForDate(events, day);
-            const dayTasks = tasks.filter(t => 
-              (t.fixed_start && sameDay(t.fixed_start, day)) ||
-              (t.deadline && sameDay(t.deadline, day))
-            );
 
-            return (
-              <View key={dayIdx} style={styles.dayCol}>
-                {hours.map(h => {
-                  const hasEvt = dayEvents.some(e => e.startTime.getHours() === h);
-                  const hasTsk = dayTasks.some(t => t.fixed_start?.getHours() === h);
-                  return (
-                    <View key={h} style={styles.slotCell}>
-                      {hasEvt && <View style={[styles.miniDot, { backgroundColor: '#8b5cf6' }]} />}
-                      {hasTsk && <View style={[styles.miniDot, { backgroundColor: lifeTheme.colors.primary }]} />}
-                    </View>
-                  );
-                })}
+          <ScrollView style={styles.weekGridScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.weekGridBodyWide}>
+              <View style={styles.hourColWide}>
+                {hours.map((h) => (
+                  <View key={h} style={[styles.hourLabelCellWide, { height: hourHeight }]}>
+                    <Text style={styles.hourLabelText}>{String(h).padStart(2, '0')}:00</Text>
+                  </View>
+                ))}
               </View>
-            );
-          })}
+
+              {days.map((day, dayIdx) => {
+                const dayEvents = getEventsForDate(events, day);
+                const dayTimelineTasks = timeline.filter(
+                  (b) => b.type === 'task' && sameDay(b.start_time, day)
+                );
+
+                const blocks = assignOverlapLanes([
+                  ...dayEvents.map((e) => ({
+                    id: `evt-${e.id}-${day.toISOString()}`,
+                    title: e.title,
+                    start: e.startTime,
+                    end: e.endTime,
+                    color: '#8b5cf6',
+                    kind: 'Evento' as const,
+                    dotted: true,
+                    onPress: () => onEditEvent(e.id)
+                  })),
+                  ...dayTimelineTasks.map((b) => ({
+                    id: `tsk-${b.id}`,
+                    title: b.title,
+                    start: b.start_time,
+                    end: b.end_time,
+                    color: lifeTheme.colors.primary,
+                    kind: 'Tarea' as const,
+                    dotted: false,
+                    onPress: () => undefined
+                  }))
+                ]);
+
+                return (
+                  <View key={dayIdx} style={styles.dayColWide}>
+                    {hours.map((h) => (
+                      <View key={h} style={[styles.slotCellWide, { height: hourHeight }]} />
+                    ))}
+
+                    {blocks.map((block) => {
+                      const startMin = block.start.getHours() * 60 + block.start.getMinutes();
+                      const endMin = block.end.getHours() * 60 + block.end.getMinutes();
+                      const top = ((startMin - baseHour * 60) / 60) * hourHeight;
+                      const rawHeight = ((Math.max(endMin, startMin + 15) - startMin) / 60) * hourHeight;
+                      const height = Math.max(26, rawHeight);
+                      const laneWidth = 100 / block.laneCount;
+                      const leftPct = block.lane * laneWidth;
+
+                      if (top + height < 0 || top > hours.length * hourHeight) return null;
+
+                      return (
+                        <Pressable
+                          key={block.id}
+                          style={[
+                            styles.weekBlockCard,
+                            {
+                              top,
+                              height,
+                              left: `${leftPct}%`,
+                              width: `${laneWidth}%`,
+                              borderLeftColor: block.color,
+                              borderStyle: block.dotted ? 'dashed' : 'solid',
+                              backgroundColor: block.dotted ? `${block.color}14` : lifeTheme.colors.surface
+                            }
+                          ]}
+                          onPress={() => {
+                            block.onPress?.();
+                            Alert.alert(
+                              `${block.kind}: ${block.title}`,
+                              `${fmt(block.start)} - ${fmt(block.end)} (${Math.round((block.end.getTime() - block.start.getTime()) / 60000)} min)`
+                            );
+                          }}
+                        >
+                          <Text style={styles.weekBlockTitle} numberOfLines={1}>{block.title}</Text>
+                          <Text style={styles.weekBlockMeta}>{fmt(block.start)} - {fmt(block.end)}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
         </View>
       </ScrollView>
     </View>
@@ -355,75 +449,93 @@ function WeekView({ currentDate, tasks, events, onSelectDay }: {
 function DayView({ date, tasks, events, timeline, onEditEvent }: { 
   date: Date; tasks: Task[]; events: StaticEvent[]; timeline: ScheduleBlock[]; onEditEvent: (id: string) => void 
 }): ReactElement {
-  const hours = Array.from({ length: 16 }, (_, i) => i + 7); // 7:00 — 22:00
+  const hours = Array.from({ length: 18 }, (_, i) => i + 6);
+  const hourHeight = 64;
+  const baseHour = 6;
 
-  // Combine timeline blocks & standalone events for that day
-  function blocksAt(hour: number) {
-    const isToday = sameDay(date, new Date());
-    
-    // Timeline blocks that fall into this hour
-    const tb = timeline.filter(b => b.start_time.getHours() === hour && sameDay(b.start_time, date));
-    
-    // expansion logic for recurring events
-    const dailyEvents = getEventsForDate(events, date);
-    
-    // Events not in the timeline (for future/past days, or unmerged)
-    const ev = dailyEvents.filter(e => e.startTime.getHours() === hour && sameDay(e.startTime, date) && !tb.some(b => b.id === e.id));
-    
-    return { tb, ev };
-  }
+  const dayEvents = getEventsForDate(events, date);
+  const dayTimelineTasks = timeline.filter((b) => b.type === 'task' && sameDay(b.start_time, date));
+
+  const blocks = assignOverlapLanes([
+    ...dayEvents.map((e) => ({
+      id: `evt-${e.id}`,
+      title: e.title,
+      start: e.startTime,
+      end: e.endTime,
+      color: '#8b5cf6',
+      kind: 'Evento' as const,
+      dotted: true,
+      onPress: () => onEditEvent(e.id)
+    })),
+    ...dayTimelineTasks.map((b) => ({
+      id: `tsk-${b.id}`,
+      title: b.title,
+      start: b.start_time,
+      end: b.end_time,
+      color: urgencyColor(tasks.find((t) => t.id === b.task_id)),
+      kind: 'Tarea' as const,
+      dotted: false,
+      onPress: () => undefined
+    }))
+  ]);
 
   return (
-    <ScrollView style={styles.dayScroll} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
-      {hours.map((hour) => {
-        const { tb, ev } = blocksAt(hour);
-        const hasContent = tb.length > 0 || ev.length > 0;
-        
-        return (
-          <View key={hour} style={[styles.hourRow, hasContent && { minHeight: 64 }]}>
-            <Text style={styles.hourLabel}>{String(hour).padStart(2, '0')}:00</Text>
-            <View style={styles.hourContent}>
-              {ev.map((e) => (
-                <Pressable key={e.id} style={[styles.hourTask, { borderLeftColor: '#8b5cf6', backgroundColor: '#8b5cf610' }]} onPress={() => onEditEvent(e.id)}>
-                  <Text style={[styles.hourTaskTitle, { color: '#8b5cf6' }]}>{e.title}</Text>
-                  <Text style={styles.hourTaskMeta}>Evento Fijo</Text>
-                </Pressable>
-              ))}
-              {tb.map((b) => {
-                let brdColor = lifeTheme.colors.border;
-                let bgStyle: any = null;
-                const durMinutes = Math.round((b.end_time.getTime() - b.start_time.getTime()) / 60000);
-                
-                if (b.type === 'task') {
-                  const t = tasks.find(tsk => tsk.id === b.task_id);
-                  brdColor = urgencyColor(t);
-                  bgStyle = { backgroundColor: lifeTheme.colors.surface };
-                } else if (b.type === 'rest' || b.type === 'meal') {
-                  brdColor = lifeTheme.colors.muted;
-                  bgStyle = { backgroundColor: `${lifeTheme.colors.surfaceAlt}88`, borderStyle: 'dashed' as const };
-                  if (b.type === 'meal') brdColor = lifeTheme.colors.alert;
-                } else if (b.isStaticEvent) {
-                  brdColor = '#8b5cf6';
-                  bgStyle = { backgroundColor: '#8b5cf610' };
-                }
-
-                return (
-                  <Pressable 
-                    key={`${b.id}-${b.start_time.getTime()}`} 
-                    style={[styles.hourTask, { borderLeftColor: brdColor }, bgStyle]}
-                    onPress={() => b.isStaticEvent && onEditEvent(b.id)}
-                  >
-                    <Text style={[styles.hourTaskTitle, b.isStaticEvent && { color: '#8b5cf6' }]}>{b.title}</Text>
-                    <Text style={styles.hourTaskMeta}>
-                      {fmt(b.start_time)} - {fmt(b.end_time)} ({durMinutes} min)
-                    </Text>
-                  </Pressable>
-                );
-              })}
+    <ScrollView style={styles.dayTimelineScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.dayTimelineWrapper}>
+        <View style={styles.dayHourCol}>
+          {hours.map((h) => (
+            <View key={h} style={[styles.dayHourLabelCell, { height: hourHeight }]}>
+              <Text style={styles.hourLabelText}>{String(h).padStart(2, '0')}:00</Text>
             </View>
-          </View>
-        );
-      })}
+          ))}
+        </View>
+
+        <View style={[styles.dayBlocksCanvas, { height: hours.length * hourHeight }]}>
+          {hours.map((h) => (
+            <View key={h} style={[styles.dayHourLine, { top: (h - baseHour) * hourHeight }]} />
+          ))}
+
+          {blocks.map((block) => {
+            const startMin = block.start.getHours() * 60 + block.start.getMinutes();
+            const endMin = block.end.getHours() * 60 + block.end.getMinutes();
+            const top = ((startMin - baseHour * 60) / 60) * hourHeight;
+            const rawHeight = ((Math.max(endMin, startMin + 15) - startMin) / 60) * hourHeight;
+            const height = Math.max(28, rawHeight);
+            const laneWidth = 100 / block.laneCount;
+            const leftPct = block.lane * laneWidth;
+
+            if (top + height < 0 || top > hours.length * hourHeight) return null;
+
+            return (
+              <Pressable
+                key={block.id}
+                style={[
+                  styles.dayBlockCard,
+                  {
+                    top,
+                    height,
+                    left: `${leftPct}%`,
+                    width: `${laneWidth}%`,
+                    borderLeftColor: block.color,
+                    borderStyle: block.dotted ? 'dashed' : 'solid',
+                    backgroundColor: block.dotted ? `${block.color}14` : lifeTheme.colors.surface
+                  }
+                ]}
+                onPress={() => {
+                  block.onPress();
+                  Alert.alert(
+                    `${block.kind}: ${block.title}`,
+                    `${fmt(block.start)} - ${fmt(block.end)} (${Math.round((block.end.getTime() - block.start.getTime()) / 60000)} min)`
+                  );
+                }}
+              >
+                <Text style={styles.dayBlockTitle} numberOfLines={1}>{block.title}</Text>
+                <Text style={styles.dayBlockMeta}>{fmt(block.start)} - {fmt(block.end)}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
     </ScrollView>
   );
 }
@@ -694,7 +806,7 @@ export default function CalendarScreen(): ReactElement {
       </View>
 
       {/* Calendar body */}
-      <View style={styles.calBody}>
+      <View style={[styles.calBody, view === 'month' && styles.calBodyMonth]}>
         {view === 'month' && (
           <MonthView
             currentDate={currentDate}
@@ -711,6 +823,7 @@ export default function CalendarScreen(): ReactElement {
             tasks={activeTasks}
             events={events}
             onSelectDay={setSelectedDay}
+            onEditEvent={onEditEvent}
           />
         )}
         {view === 'day' && (
@@ -771,6 +884,7 @@ const styles = StyleSheet.create({
   viewTabText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '700' },
   viewTabTextActive: { color: '#fff' },
   calBody: { flex: 1 },
+  calBodyMonth: { flex: 0 },
   // Month
   monthGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8 },
   weekdayHeader: { width: '14.28%', alignItems: 'center', paddingVertical: 6 },
@@ -779,7 +893,8 @@ const styles = StyleSheet.create({
     width: '14.28%',
     aspectRatio: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 7,
     borderRadius: 10,
     position: 'relative'
   },
@@ -788,22 +903,37 @@ const styles = StyleSheet.create({
   dayCellText: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '600' },
   dayCellTextToday: { color: lifeTheme.colors.primary, fontWeight: '800' },
   dayCellTextSelected: { color: '#fff', fontWeight: '800' },
-  dotRow: { flexDirection: 'row', gap: 2, position: 'absolute', bottom: 4 },
+  dotRow: { flexDirection: 'row', gap: 2, position: 'absolute', bottom: 5 },
   calDot: { width: 4, height: 4, borderRadius: 2 },
   // Week Vertical
   weekContainer: { flex: 1 },
-  weekHdrRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: lifeTheme.colors.border, paddingBottom: 8 },
-  hourColSpacer: { width: 45 },
-  weekHdrCell: { flex: 1, alignItems: 'center' },
+  weekHdrRowWide: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: lifeTheme.colors.border, paddingBottom: 8 },
+  hourColSpacerWide: { width: 52 },
+  weekHdrCellWide: { width: 150, alignItems: 'center' },
   weekHdrDay: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '700' },
   weekHdrNum: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '800' },
   weekGridScroll: { flex: 1 },
-  weekGridBody: { flexDirection: 'row' },
-  hourCol: { width: 45 },
-  hourLabelCell: { height: 40, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: lifeTheme.colors.border },
+  weekGridBodyWide: { flexDirection: 'row' },
+  hourColWide: { width: 52 },
+  hourLabelCellWide: { justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: lifeTheme.colors.border },
   hourLabelText: { color: lifeTheme.colors.muted, fontSize: 9, fontWeight: '600' },
-  dayCol: { flex: 1, borderRightWidth: 1, borderRightColor: `${lifeTheme.colors.border}44` },
-  slotCell: { height: 40, borderBottomWidth: 1, borderBottomColor: `${lifeTheme.colors.border}22`, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  dayColWide: { width: 150, borderRightWidth: 1, borderRightColor: `${lifeTheme.colors.border}44`, position: 'relative' },
+  slotCellWide: { borderBottomWidth: 1, borderBottomColor: `${lifeTheme.colors.border}22` },
+  weekBlockCard: {
+    position: 'absolute',
+    left: 6,
+    right: 6,
+    backgroundColor: lifeTheme.colors.surface,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    borderLeftWidth: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 5,
+    overflow: 'hidden'
+  },
+  weekBlockTitle: { color: lifeTheme.colors.text, fontSize: 11, fontWeight: '800' },
+  weekBlockMeta: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '600' },
   miniDot: { width: 6, height: 6, borderRadius: 3 },
   // View switches...
 
@@ -821,18 +951,38 @@ const styles = StyleSheet.create({
   moreText: { color: lifeTheme.colors.muted, fontSize: 11, marginTop: 2 },
   emptyDayText: { color: lifeTheme.colors.border, fontSize: 14 },
   // Day view
-  dayScroll: { paddingHorizontal: 12 },
-  hourRow: { flexDirection: 'row', minHeight: 52, borderBottomWidth: 1, borderBottomColor: lifeTheme.colors.border },
-  hourLabel: { width: 50, color: lifeTheme.colors.muted, fontSize: 11, paddingTop: 8, paddingRight: 8, textAlign: 'right' },
-  hourContent: { flex: 1, gap: 4, paddingVertical: 6 },
-  hourTask: {
-    backgroundColor: lifeTheme.colors.surface,
-    borderRadius: 8,
-    padding: 6,
-    borderLeftWidth: 3
+  dayTimelineScroll: { flex: 1, paddingHorizontal: 12 },
+  dayTimelineWrapper: { flexDirection: 'row' },
+  dayHourCol: { width: 52 },
+  dayHourLabelCell: { justifyContent: 'flex-start', alignItems: 'center', paddingTop: 4 },
+  dayBlocksCanvas: {
+    flex: 1,
+    position: 'relative',
+    borderLeftWidth: 1,
+    borderLeftColor: lifeTheme.colors.border
   },
-  hourTaskTitle: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
-  hourTaskMeta: { color: lifeTheme.colors.muted, fontSize: 11 },
+  dayHourLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: `${lifeTheme.colors.border}44`
+  },
+  dayBlockCard: {
+    position: 'absolute',
+    left: 8,
+    right: 10,
+    backgroundColor: lifeTheme.colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    borderLeftWidth: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    overflow: 'hidden'
+  },
+  dayBlockTitle: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '800' },
+  dayBlockMeta: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '600' },
   // Day panel
   dayPanel: {
     backgroundColor: lifeTheme.colors.surface,
@@ -840,7 +990,8 @@ const styles = StyleSheet.create({
     borderTopColor: lifeTheme.colors.border,
     padding: 16,
     gap: 10,
-    maxHeight: 200
+    flex: 1,
+    minHeight: 210
   },
   dayPanelTitle: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '800', textTransform: 'capitalize' },
   dayPanelEmpty: { color: lifeTheme.colors.muted, fontSize: 13 },

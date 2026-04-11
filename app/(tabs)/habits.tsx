@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  Text,
   TextInput,
   View,
   KeyboardAvoidingView,

@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import {
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,10 +11,31 @@ import {
   TextInput,
   View
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { lifeTheme } from '../../src/theme';
+
+function parseReminder(reminderAt?: string): Date | null {
+  if (!reminderAt) return null;
+  if (reminderAt.includes('T')) {
+    const date = new Date(reminderAt);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const [h, m] = reminderAt.split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  const date = new Date();
+  date.setHours(h, m, 0, 0);
+  return date;
+}
+
+function formatReminder(reminderAt?: string): string {
+  const parsed = parseReminder(reminderAt);
+  if (!parsed) return '';
+  return `${parsed.toLocaleDateString('es-ES')} · ${parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+}
 
 export default function NotesScreen(): ReactElement {
   const insets = useSafeAreaInsets();
@@ -25,6 +47,9 @@ export default function NotesScreen(): ReactElement {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [newNote, setNewNote] = useState({ title: '', content: '', reminderAt: '' });
+  const [showReminderDatePicker, setShowReminderDatePicker] = useState(false);
+  const [showReminderTimePicker, setShowReminderTimePicker] = useState(false);
+  const [pendingReminderDate, setPendingReminderDate] = useState<Date | null>(null);
 
   function handleSave() {
     if (!newNote.title.trim() && !newNote.content.trim()) return;
@@ -32,7 +57,8 @@ export default function NotesScreen(): ReactElement {
     if (editingNoteId) {
       updateNote(editingNoteId, {
         title: newNote.title.trim() || 'Nota sin título',
-        content: newNote.content.trim()
+        content: newNote.content.trim(),
+        reminderAt: newNote.reminderAt || undefined
       });
     } else {
       addNote({
@@ -44,6 +70,9 @@ export default function NotesScreen(): ReactElement {
     setModalVisible(false);
     setEditingNoteId(null);
     setNewNote({ title: '', content: '', reminderAt: '' });
+    setShowReminderDatePicker(false);
+    setShowReminderTimePicker(false);
+    setPendingReminderDate(null);
   }
 
   function openEdit(note: any) {
@@ -56,6 +85,43 @@ export default function NotesScreen(): ReactElement {
     setEditingNoteId(null);
     setNewNote({ title: '', content: '', reminderAt: '' });
     setModalVisible(true);
+  }
+
+  function openReminderPicker() {
+    setShowReminderDatePicker(true);
+  }
+
+  function clearReminder() {
+    setNewNote((prev) => ({ ...prev, reminderAt: '' }));
+    setPendingReminderDate(null);
+  }
+
+  function handleReminderDateChange(_event: unknown, selected?: Date) {
+    setShowReminderDatePicker(false);
+    if (!selected) return;
+
+    if (Platform.OS === 'android') {
+      setPendingReminderDate(selected);
+      setShowReminderTimePicker(true);
+      return;
+    }
+
+    const base = parseReminder(newNote.reminderAt) ?? new Date();
+    selected.setHours(base.getHours(), base.getMinutes(), 0, 0);
+    setNewNote((prev) => ({ ...prev, reminderAt: selected.toISOString() }));
+  }
+
+  function handleReminderTimeChange(_event: unknown, selected?: Date) {
+    setShowReminderTimePicker(false);
+    if (!selected || !pendingReminderDate) {
+      setPendingReminderDate(null);
+      return;
+    }
+
+    const merged = new Date(pendingReminderDate);
+    merged.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+    setNewNote((prev) => ({ ...prev, reminderAt: merged.toISOString() }));
+    setPendingReminderDate(null);
   }
 
   return (
@@ -104,7 +170,7 @@ export default function NotesScreen(): ReactElement {
                 </Text>
                 {note.reminderAt && (
                   <View style={styles.reminderBadge}>
-                    <Text style={styles.reminderText}>🔔 {note.reminderAt}</Text>
+                    <Text style={styles.reminderText}>🔔 {formatReminder(note.reminderAt)}</Text>
                   </View>
                 )}
               </View>
@@ -138,16 +204,38 @@ export default function NotesScreen(): ReactElement {
             />
 
             <View style={styles.reminderRow}>
-              <Text style={styles.label}>Recordatorio (HH:mm)</Text>
-              <TextInput
-                style={styles.inputTime}
-                value={newNote.reminderAt}
-                onChangeText={(v) => setNewNote((prev) => ({ ...prev, reminderAt: v }))}
-                placeholder="20:00"
-                placeholderTextColor={lifeTheme.colors.muted}
-                maxLength={5}
-              />
+              <Text style={styles.label}>Recordatorio (día y hora)</Text>
+              <View style={styles.reminderActionRow}>
+                <Pressable style={styles.reminderPickerBtn} onPress={openReminderPicker}>
+                  <Text style={[styles.reminderPickerText, newNote.reminderAt ? styles.reminderPickerTextActive : null]}>
+                    {newNote.reminderAt ? formatReminder(newNote.reminderAt) : 'Seleccionar fecha y hora'}
+                  </Text>
+                </Pressable>
+                {newNote.reminderAt ? (
+                  <Pressable style={styles.clearReminderBtn} onPress={clearReminder}>
+                    <Text style={styles.clearReminderText}>✕</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
+
+            {showReminderDatePicker ? (
+              <DateTimePicker
+                value={parseReminder(newNote.reminderAt) ?? new Date()}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                onChange={handleReminderDateChange}
+              />
+            ) : null}
+
+            {showReminderTimePicker ? (
+              <DateTimePicker
+                value={pendingReminderDate ?? new Date()}
+                mode="time"
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                onChange={handleReminderTimeChange}
+              />
+            ) : null}
 
             <View style={styles.modalBtns}>
               <Pressable style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
@@ -195,6 +283,29 @@ const styles = StyleSheet.create({
   inputTitle: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12, padding: 14, color: lifeTheme.colors.text, fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: lifeTheme.colors.border },
   inputContent: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12, padding: 14, color: lifeTheme.colors.text, fontSize: 15, minHeight: 120, borderWidth: 1, borderColor: lifeTheme.colors.border },
   reminderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  reminderActionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reminderPickerBtn: {
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    minWidth: 180
+  },
+  reminderPickerText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '600' },
+  reminderPickerTextActive: { color: lifeTheme.colors.text, fontWeight: '700' },
+  clearReminderBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  clearReminderText: { color: lifeTheme.colors.muted, fontSize: 14, fontWeight: '800' },
   inputTime: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: lifeTheme.colors.text, fontSize: 14, width: 80, textAlign: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
   modalBtns: { flexDirection: 'row', gap: 12, marginTop: 10 },
   cancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center' },

@@ -20,7 +20,8 @@ import { lifeTheme } from '../../src/theme';
 import {
   schedulePendingReminder,
   scheduleImportantTaskAlert,
-  cancelAllNotifications
+  cancelAllNotifications,
+  rescheduleAll
 } from '../../src/services/notifications';
 import { getCurrentLocation } from '../../src/services/location';
 import { fetchAndParseICS, parseICS } from '../../src/services/icsParser';
@@ -79,6 +80,10 @@ export default function SettingsScreen(): ReactElement {
   const updateSettings = useLifeStore((s) => s.updateSettings);
   const clearAllData = useLifeStore((s) => s.clearAllData);
   const tasks = useLifeStore((s) => s.tasks);
+  const timeline = useLifeStore((s) => s.timeline);
+  const routines = useLifeStore((s) => s.routines);
+  const events = useLifeStore((s) => s.events);
+  const notes = useLifeStore((s) => s.notes);
   const lastEngine = useLifeStore((s) => s.lastEngine);
   const lastSolverStatus = useLifeStore((s) => s.lastSolverStatus);
 
@@ -134,6 +139,7 @@ export default function SettingsScreen(): ReactElement {
 
   async function handleApplyNotifications() {
     await cancelAllNotifications();
+    await rescheduleAll(timeline, tasks, settings, routines, events, notes);
     const pendingTasks = tasks.filter((t) => t.status !== 'completed');
     if (settings.notifyPendingIntervalMinutes > 0 && pendingTasks.length > 0) {
       await schedulePendingReminder(settings.notifyPendingIntervalMinutes, pendingTasks.length);
@@ -374,11 +380,11 @@ export default function SettingsScreen(): ReactElement {
              '📱 Planificador local'}
           </Text>
         </View>
-        <Text style={styles.buildInfo}>LifeOS v2.0.4 · Production Build</Text>
+        <Text style={styles.buildInfo}>LifeOS v3.0.0 · Production Build</Text>
       </View>
 
       <View style={styles.footerInfo}>
-        <Text style={styles.footerText}>LifeOS v2.0 "Nexus" | Desarrollado por Alan Berrios Estay (aka BlitZx)</Text>
+        <Text style={styles.footerText}>LifeOS v3.0 "Nexus" | Desarrollado por Alan Berrios Estay (aka BlitZx)</Text>
         <Pressable onPress={() => Linking.openURL('https://github.com/AlanBerrios/LIFEOS')}>
           <Text style={[styles.footerText, { color: lifeTheme.colors.primary, marginTop: 4, fontWeight: '800' }]}>GitHub: AlanBerrios/LIFEOS</Text>
         </Pressable>
@@ -454,6 +460,14 @@ const styles = StyleSheet.create({
   dangerTitle: { color: lifeTheme.colors.alert, fontSize: 16, fontWeight: '900', marginBottom: 12, textTransform: 'uppercase' },
   dangerBtn: { backgroundColor: `${lifeTheme.colors.alert}15`, padding: 16, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: `${lifeTheme.colors.alert}55` },
   dangerBtnText: { color: lifeTheme.colors.alert, fontWeight: '800', fontSize: 14 },
+  footer: { marginTop: 12, paddingHorizontal: 4, gap: 10 },
+  footerTitle: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '800' },
+  engineBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, alignSelf: 'flex-start' },
+  badgeGreen: { backgroundColor: 'rgba(108,252,184,0.08)', borderColor: 'rgba(108,252,184,0.25)' },
+  badgeYellow: { backgroundColor: 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.25)' },
+  badgePurple: { backgroundColor: 'rgba(124,108,252,0.08)', borderColor: 'rgba(124,108,252,0.25)' },
+  engineText: { fontSize: 10, fontWeight: '700', fontFamily: 'monospace' },
+  buildInfo: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '600' },
   
   footerInfo: { alignItems: 'center', paddingVertical: 24 },
   footerText: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '600' }

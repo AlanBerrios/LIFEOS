@@ -16,7 +16,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { useLifeStore } from '../src/store/useLifeStore';
 import { lifeTheme } from '../src/theme';
-import { scheduleAlarm, cancelNotification } from '../src/services/notifications';
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
@@ -36,13 +35,11 @@ export default function AlarmsScreen(): ReactElement {
   });
 
   async function handleToggle(id: string, currentEnabled: boolean) {
-    toggleAlarm(id, !currentEnabled);
-    if (currentEnabled) {
-      // It was enabled, going to disabled. In a real scenario we'd need to track notification IDs to cancel them.
-      // For simplicity in UI, we just toggle state. Real implementation needs alarm -> [notifId...] mapping.
-      Alert.alert('Alarma', 'Alarma desactivada');
-    } else {
-      Alert.alert('Alarma', 'Alarma activada');
+    try {
+      await toggleAlarm(id, !currentEnabled);
+      Alert.alert('Alarma', currentEnabled ? 'Alarma desactivada' : 'Alarma activada');
+    } catch {
+      Alert.alert('Error', 'No se pudo actualizar la alarma.');
     }
   }
 
@@ -52,14 +49,16 @@ export default function AlarmsScreen(): ReactElement {
       return;
     }
     
-    addAlarm({
-      time: newAlarm.time,
-      label: newAlarm.label || 'Alarma',
-      days: newAlarm.days
-    });
-    
-    // In background, schedule it
-    void scheduleAlarm(newAlarm.time, newAlarm.label, newAlarm.days);
+    try {
+      await addAlarm({
+        time: newAlarm.time,
+        label: newAlarm.label || 'Alarma',
+        days: newAlarm.days
+      });
+    } catch {
+      Alert.alert('Error', 'No se pudo crear la alarma.');
+      return;
+    }
 
     setModalVisible(false);
     setNewAlarm({ time: '07:00', label: 'Despertar', days: [1, 2, 3, 4, 5] });
@@ -133,7 +132,7 @@ export default function AlarmsScreen(): ReactElement {
                   onPress={() => {
                     Alert.alert('Eliminar', '¿Borrar esta alarma?', [
                       { text: 'Cancelar', style: 'cancel' },
-                      { text: 'Borrar', style: 'destructive', onPress: () => deleteAlarm(alarm.id) }
+                      { text: 'Borrar', style: 'destructive', onPress: () => void deleteAlarm(alarm.id) }
                     ]);
                   }}
                 >

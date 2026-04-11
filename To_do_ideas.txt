@@ -1,14 +1,15 @@
-# Features Centrales Avanzadas
-- [ ] Geofencing pasivo (expo-location) para detectar llegada a casa y activar el Scheduler.
-- [ ] IA Negociadora (RAG + Function Calling) para reprogramación interactiva.
-- [ ] Modelo de energía cruzado con Carga Cognitiva para gestión de fatiga precisa.
-- [ ] Sincronización en la nube (PostgreSQL + Supabase).
+# Mejoras
 
-# Mejoras de UI/UX Inmediatas (Pendientes)
-- [x] Estadísticas y análisis de productividad: pantalla /stats con resumen del día, energía cognitiva, barras de distribución, sparkline 7 días y pool breakdown.
-- [x] Modelo de energía cognitiva en el Scheduler: presupuesto dual (tiempo 90min + energía 600u). Superarlo inserta "Recarga mental" de 20min. Penalización dinámica de tareas pesadas cuando el presupuesto baja.
-- [x] Gestos "Swipe": SwipeableTaskCard.tsx con react-native-gesture-handler. Swipe derecho = completar, izquierdo = borrar. Hints visuales de color mientras arrastras.
-- [x] Formularios Intuitivos: Sliders para ETA (5–240 min), prioridad (1–5 con estrellas) y carga cognitiva (1–10 con colores). DateTimePicker nativo para deadline.
-- [x] Animaciones Fluidas: FadeInDown, ZoomIn y Layout.springify() con react-native-reanimated en index.tsx y pool.tsx. Barra de progreso animada en ActionTimer.
-- [x] Ajuste Tipográfico: fontFamily: 'monospace' aplicado en stats del Dashboard, reloj del ActionTimer, timestamps del TimelineBlock y duración en sliders.
-- [x] Scheduler avanzado OR-Tools inspired: Hard constraints (deadlines <2h), Beam Search K=3 contextual, Simulated Annealing global (400 iter), cognitive alternation penalties — TypeScript puro, sin deps externas.
+- boton para eliminar tareas o descansos en el timeline
+- en el gestor de rutinas, las horas de sueño deifnindas y las comidas del dia no se ven reflejadas en el timeline
+- el boton de activar y sincronizar alarmas practicamente no funciona, no me llegan notificaciones de nada, ni cuando empieza una tarea, ni un descanso
+- poner prioridad total enel funcionamiento correcto de notificaciones ahora mismo
+
+- mejorar el formateo al agregar una nota en la apntalla de block de nota, cambiar el recordatorio, en vez de escribir la hora, que despliegue un set de hora y dia para la notificacion
+- mejorar el sistema de puntaje, nivel de player os, en la parte de metricas el boton de maestria personal no hace nada, no abre
+- en metria al apretretar tu nivel de exp, no abre nada, agregar una poatnalla que detalle els sitema de puntaje de exp de del jugador, lo mismo para atributos y habilidades, que abra otro menu donde explique cada una de esas cosas.
+- en la app, al completar una tarea o rutina, que muestre una notificacion dentro de la app, como un pop up donde se muestre que astributo y habilidad a aumentado de experiencia o puntaje, asi, le das feedback al usuairo de player os
+- al agrgar un evento, tomaste mal la mejora de los calendarios. las tareas y eventos deberian verse como bloques en el calendario semanal, lo pusiste como un misero punto y cuando lo apretas no pasa nada, cuando lo apretas deberia al menos dar detalles de lo que apretaste, lo mismo para el dia, en el calendiario diario no dice nada, deberia decir a que hora empieza y a que hora termina y el bloque ser mas grande o largo dependiendo de la hora que dure la tarea o vento, aparte, si un evento o tarea empieza a las 2pm y termina a las 6pm, el bloque actualmente esta solamente se pone en la seccion de las 2pm, pero no se alarga dependiendo del tiempo, mejora eso, mejora la ux en general de los calendarios tambien
+- en el calendario mensual los puntos (referenciando que hay una tarea en ese dia) siuguen solapandose con los numeros de los dias, haz un formateo de eso, ademas, la parte de abajo donde esta la lista ede eventos y tareas no se ve bien, hay un espaico vacio ahi entre el calendario y la lista que deberia parovecharse mejor. 
+- para el calendario semanal tambien siento que es muy pequeño el espacio, hace las columnas de los dias mas anchas pra que pueda leerse bien las tareas y eventos en los bloques que te dije ante
+- siguiendo la ultima build se supone que mejoraste el sistema de tareas, donde te preguntaba responsivamente que paso si no la completaste, o como te sentiste al completarla, todo eso, no veo nada de eso reflejado en la build.

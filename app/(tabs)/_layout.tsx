@@ -25,7 +25,7 @@ export default function TabLayout(): ReactElement {
     <MaterialTabs
       tabBarPosition="bottom"
       keyboardDismissMode="on-drag"
-      screenOptions={({ route }) => ({
+      screenOptions={({ route }: { route: { name: string } }) => ({
         tabBarIndicatorStyle: { height: 0 }, // Hide the default top indicator
         tabBarStyle: [styles.tabBar, { height: barHeight }],
         tabBarActiveTintColor: lifeTheme.colors.primary,
@@ -38,9 +38,9 @@ export default function TabLayout(): ReactElement {
           marginBottom: Math.max(insets.bottom / 2, 4)
         },
         tabBarItemStyle: { padding: 0 },
-        tabBarIcon: ({ focused }) => {
+        tabBarIcon: ({ focused }: { focused: boolean }) => {
           const tab = TABS.find((t) => t.name === route.name);
-          if (!tab) return null;
+          if (!tab) return <View style={styles.iconContainer} />;
           return (
             <View style={styles.iconContainer}>
               {focused && <View style={styles.activePill} />}
