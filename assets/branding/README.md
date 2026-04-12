@@ -18,5 +18,6 @@ Estos son los assets de marca oficiales utilizados por la app.
 ## Notas
 
 - El icono que aparece en la app instalada se genera desde `icon-v3.png`.
-- El `splash-icon-v3.png` debe usarse para los primeros segundos antes de que JS se ejecute.
-- Si reemplazas estos PNG por versiones mejores, manten los mismos nombres para no romper la configuración actual.
+- El `splash-icon-v3.png` se usa para los primeros segundos antes de que JS se ejecute.
+- Los archivos SVG antiguos de `docs/branding` fueron retirados porque no coinciden con el branding real actual.
+- Si reemplazas estos PNG por versiones mejores, mantiene los mismos nombres para no romper la configuración actual.

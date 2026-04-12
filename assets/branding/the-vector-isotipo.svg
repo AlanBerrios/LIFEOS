@@ -1,6 +1,0 @@
-<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LIFEOS The Vector Isotipo">
-  <rect width="100" height="100" rx="18" fill="#000000" />
-  <rect x="5" y="5" width="90" height="90" rx="18" stroke="#BDFF00" stroke-width="4" fill="none" />
-  <rect x="20" y="72" width="60" height="8" fill="#BDFF00" />
-  <polygon points="30,72 44,72 72,44 62,44 62,34 50,46 44,46 30,60" fill="#BDFF00" />
-</svg>
