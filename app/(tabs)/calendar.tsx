@@ -76,7 +76,7 @@ type TimelineCard = {
   color: string;
   kind: 'Tarea' | 'Evento';
   dotted?: boolean;
-  onPress?: () => void;
+  onPress: () => void;
 };
 
 function assignOverlapLanes(cards: TimelineCard[]): Array<TimelineCard & { lane: number; laneCount: number }> {
@@ -205,7 +205,7 @@ function DayTasksPanel({
           <Pressable key={evt.id} style={styles.dayTask} onPress={() => onEditEvent(evt.id)}>
             <Text style={{fontSize: 16}}>📌</Text>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.dayTaskTitle, { color: '#8b5cf6' }]}>{evt.title}</Text>
+              <Text style={[styles.dayTaskTitle, { color: lifeTheme.colors.primary }]}>{evt.title}</Text>
               <Text style={styles.dayTaskMeta}>
                 Evento Fijo · {evt.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {evt.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 {evt.reminderMinutes ? ` · Alerta: ${evt.reminderMinutes}m antes` : ''}
@@ -266,7 +266,7 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
     });
 
     const colors: string[] = [];
-    if (dayEvents.length > 0) colors.push('#8b5cf6');
+    if (dayEvents.length > 0) colors.push(lifeTheme.colors.primary);
     
     // Get unique urgency colors from tasks
     const urgencies = Array.from(new Set(dayTasks.map(t => t.urgency)));
@@ -319,7 +319,7 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 
-function WeekView({ currentDate, tasks, events, onSelectDay }: {
+function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
   currentDate: Date;
   selectedDay: Date;
   tasks: Task[];
@@ -370,7 +370,7 @@ function WeekView({ currentDate, tasks, events, onSelectDay }: {
                     title: e.title,
                     start: e.startTime,
                     end: e.endTime,
-                    color: '#8b5cf6',
+                    color: lifeTheme.colors.primary,
                     kind: 'Evento' as const,
                     dotted: true,
                     onPress: () => onEditEvent(e.id)
@@ -420,7 +420,7 @@ function WeekView({ currentDate, tasks, events, onSelectDay }: {
                             }
                           ]}
                           onPress={() => {
-                            block.onPress?.();
+                            block.onPress();
                             Alert.alert(
                               `${block.kind}: ${block.title}`,
                               `${fmt(block.start)} - ${fmt(block.end)} (${Math.round((block.end.getTime() - block.start.getTime()) / 60000)} min)`
@@ -462,7 +462,7 @@ function DayView({ date, tasks, events, timeline, onEditEvent }: {
       title: e.title,
       start: e.startTime,
       end: e.endTime,
-      color: '#8b5cf6',
+      color: lifeTheme.colors.primary,
       kind: 'Evento' as const,
       dotted: true,
       onPress: () => onEditEvent(e.id)

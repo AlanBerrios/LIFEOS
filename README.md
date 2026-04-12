@@ -1,6 +1,8 @@
 <div align="center">
-  <img src="https://img.shields.io/badge/LIFEOS-v3.0%20Nexus-8b5cf6?style=for-the-badge&logo=react&logoColor=white" alt="LifeOS Nexus" />
-  <h1 align="center">LifeOS ✨ v3.0 "Nexus"</h1>
+  <img src="https://img.shields.io/badge/LIFEOS-v3.1%20Nexus-8b5cf6?style=for-the-badge&logo=react&logoColor=white" alt="LifeOS Nexus" />
+  <br />
+  <img src="docs/branding/logo-lifeos-v3.svg" alt="Logo LIFEOS v3.1" width="760" />
+  <h1 align="center">LifeOS ✨ v3.1 "Nexus"</h1>
   <p align="center">
     <strong>Sistema operativo personal para ejecutar tu día con foco, estructura y replanificación inteligente.</strong>
   </p>
@@ -11,6 +13,8 @@
 </div>
 
 <br />
+
+![Portada LIFEOS v3](docs/branding/cover-lifeos-v3.svg)
 
 ## 🚀 ¿Qué es LifeOS?
 

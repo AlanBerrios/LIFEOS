@@ -1,17 +1,17 @@
 export const lifeTheme = {
   colors: {
-    background: '#0a0a0f',
-    surface: '#111118',
-    surfaceAlt: '#15151f',
-    border: '#2a2a3a',
-    text: '#f4f4ff',
-    muted: '#9b9bb0',
-    primary: '#7c6cfc',
-    success: '#6cfcb8',
-    alert: '#fc6c8f',
-    softPrimary: 'rgba(124, 108, 252, 0.18)',
-    softSuccess: 'rgba(108, 252, 184, 0.16)',
-    softAlert: 'rgba(252, 108, 143, 0.16)'
+    background: '#000000',
+    surface: '#121212',
+    surfaceAlt: '#1a1a1a',
+    border: '#2a2a2a',
+    text: '#f5f5f5',
+    muted: '#9a9a9a',
+    primary: '#BDFF00',
+    success: '#BDFF00',
+    alert: '#ff5f7a',
+    softPrimary: 'rgba(189, 255, 0, 0.22)',
+    softSuccess: 'rgba(189, 255, 0, 0.18)',
+    softAlert: 'rgba(255, 95, 122, 0.18)'
   },
   radius: {
     sm: 12,

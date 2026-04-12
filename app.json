@@ -3,9 +3,15 @@
     "name": "LifeOS",
     "slug": "lifeos",
     "scheme": "lifeos",
-    "version": "3.0.0",
+    "version": "3.1.0",
+    "icon": "./assets/branding/icon-v3.png",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/branding/splash-icon-v3.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -21,7 +27,14 @@
     },
     "android": {
       "package": "com.alan.lifeos",
-      "versionCode": 3
+      "versionCode": 3,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/branding/adaptive-icon-v3.png",
+        "backgroundColor": "#000000"
+      }
+    },
+    "web": {
+      "favicon": "./assets/branding/favicon-v3.png"
     },
     "extra": {
       "router": {},

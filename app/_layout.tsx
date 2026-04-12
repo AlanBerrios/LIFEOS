@@ -2,7 +2,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { AppState } from 'react-native';
 import { useLifeStore } from '../src/store/useLifeStore';
@@ -13,6 +13,7 @@ import {
 import { checkGeofenceState } from '../src/services/location';
 import { checkScreenTimeDistraction, registerScreenTimeBackgroundTask } from '../src/services/screenTime';
 import { lifeTheme } from '../src/theme';
+import AppLoadingSplash from '../src/components/AppLoadingSplash';
 
 try {
   initNotifications();
@@ -21,8 +22,11 @@ try {
 }
 
 export default function RootLayout(): ReactElement {
+  const [isBooting, setIsBooting] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
     const initApp = async () => {
       try {
         await requestNotificationPermission();
@@ -36,11 +40,20 @@ export default function RootLayout(): ReactElement {
         useLifeStore.getState().restoreMealTimer();
       } catch(e) { console.log(e); }
     };
-    initApp();
 
+    const bootstrap = async () => {
+      await Promise.allSettled([
+        initApp(),
+        new Promise((resolve) => setTimeout(resolve, 1400))
+      ]);
+      if (mounted) setIsBooting(false);
+    };
+    bootstrap();
+
+    let notifSub: { remove: () => void } | undefined;
     const importNotifs = async () => {
       const Notifications = await import('expo-notifications');
-      Notifications.addNotificationResponseReceivedListener((resp) => {
+      notifSub = Notifications.addNotificationResponseReceivedListener((resp) => {
         const actionId = resp.actionIdentifier;
         const data = resp.notification.request.content.data as { type?: string; taskId?: string };
         if (actionId === 'snooze') {
@@ -79,9 +92,15 @@ export default function RootLayout(): ReactElement {
     });
 
     return () => {
+      mounted = false;
+      notifSub?.remove();
       sub.remove();
     };
   }, []);
+
+  if (isBooting) {
+    return <AppLoadingSplash />;
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: lifeTheme.colors.background }}>
