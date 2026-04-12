@@ -1,6 +1,7 @@
+import { useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { lifeTheme } from '../theme';
+import { useAppTheme } from '../theme';
 import type { ScheduleBlock } from '../types';
 
 interface ReplanificationPromptProps {
@@ -24,6 +25,8 @@ export function ReplanificationPrompt({
   onConfirm,
   onReject
 }: ReplanificationPromptProps): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const diffMinutes = minutesDiff(previousBlocks, nextBlocks);
 
   return (
@@ -75,7 +78,8 @@ export function ReplanificationPrompt({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
@@ -206,4 +210,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800'
   }
-});
+  });
+}

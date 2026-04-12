@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -8,7 +8,7 @@ import Animated, {
   Easing
 } from 'react-native-reanimated';
 import { formatCountdown } from '../utils/time';
-import { lifeTheme } from '../theme';
+import { useAppTheme } from '../theme';
 import type { LifeTimer } from '../types';
 
 interface ActionTimerProps {
@@ -17,6 +17,8 @@ interface ActionTimerProps {
 }
 
 export function ActionTimer({ timer, onStop }: ActionTimerProps): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const [now, setNow] = useState<Date>(new Date());
   const progressBar = useSharedValue(0);
 
@@ -90,7 +92,8 @@ export function ActionTimer({ timer, onStop }: ActionTimerProps): ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   card: {
     backgroundColor: lifeTheme.colors.surface,
     borderColor: 'rgba(108, 252, 184, 0.3)',
@@ -173,4 +176,5 @@ const styles = StyleSheet.create({
   mono: {
     fontFamily: 'monospace'
   }
-});
+  });
+}

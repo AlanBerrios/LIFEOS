@@ -12,7 +12,7 @@ import {
 } from '../src/services/notifications';
 import { checkGeofenceState } from '../src/services/location';
 import { checkScreenTimeDistraction, registerScreenTimeBackgroundTask } from '../src/services/screenTime';
-import { lifeTheme } from '../src/theme';
+import { useAppTheme } from '../src/theme';
 import AppLoadingSplash from '../src/components/AppLoadingSplash';
 
 try {
@@ -23,6 +23,8 @@ try {
 
 export default function RootLayout(): ReactElement {
   const [isBooting, setIsBooting] = useState(true);
+  const theme = useAppTheme();
+  const uiThemeMode = useLifeStore((s) => s.settings.uiThemeMode ?? 'dark');
 
   useEffect(() => {
     let mounted = true;
@@ -103,9 +105,9 @@ export default function RootLayout(): ReactElement {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: lifeTheme.colors.background }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <SafeAreaProvider>
-        <StatusBar style="light" backgroundColor="transparent" translucent />
+        <StatusBar style={uiThemeMode === 'dark' ? 'light' : 'dark'} backgroundColor="transparent" translucent />
         <Stack screenOptions={{ headerShown: false }} />
       </SafeAreaProvider>
     </GestureHandlerRootView>

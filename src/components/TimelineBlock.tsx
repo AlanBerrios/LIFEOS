@@ -1,15 +1,16 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
 import type { ReactElement } from 'react';
 import Animated, { FadeInLeft } from 'react-native-reanimated';
 import { formatClock } from '../utils/time';
-import { lifeTheme } from '../theme';
+import { useAppTheme } from '../theme';
 import type { ScheduleBlock } from '../types';
 
 interface TimelineBlockProps {
   block: ScheduleBlock;
 }
 
-function getBlockAccent(type: ScheduleBlock['type']): string {
+function getBlockAccent(type: ScheduleBlock['type'], lifeTheme: ReturnType<typeof useAppTheme>): string {
   switch (type) {
     case 'rest': return lifeTheme.colors.success;
     case 'meal': return lifeTheme.colors.alert;
@@ -38,7 +39,9 @@ function getDurationMinutes(block: ScheduleBlock): number {
 }
 
 export function TimelineBlock({ block }: TimelineBlockProps): ReactElement {
-  const accent = getBlockAccent(block.type);
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+  const accent = getBlockAccent(block.type, lifeTheme);
   const durationMin = getDurationMinutes(block);
 
   return (
@@ -65,7 +68,8 @@ export function TimelineBlock({ block }: TimelineBlockProps): ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   card: {
     backgroundColor: lifeTheme.colors.surface,
     borderRadius: lifeTheme.radius.md,
@@ -136,4 +140,5 @@ const styles = StyleSheet.create({
   mono: {
     fontFamily: 'monospace'
   }
-});
+  });
+}

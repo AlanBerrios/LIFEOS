@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { formatDuration } from '../utils/time';
-import { lifeTheme } from '../theme';
+import { useAppTheme } from '../theme';
 import type { Task } from '../types';
 
 interface TaskPoolCardProps {
@@ -23,6 +24,8 @@ function getStatusLabel(task: Task): string {
 }
 
 export function TaskPoolCard({ task, onEdit, onDelete, onComplete }: TaskPoolCardProps): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const isCompleted = task.status === 'completed';
   const accentColor =
     task.status === 'completed'
@@ -71,7 +74,8 @@ export function TaskPoolCard({ task, onEdit, onDelete, onComplete }: TaskPoolCar
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   card: {
     backgroundColor: lifeTheme.colors.surface,
     borderColor: lifeTheme.colors.border,
@@ -147,4 +151,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700'
   }
-});
+  });
+}

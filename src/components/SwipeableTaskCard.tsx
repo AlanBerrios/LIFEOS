@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View, Dimensions, Alert } from 'react-native';
+import { useMemo } from 'react';
 import type { ReactElement } from 'react';
 import Animated, {
   useSharedValue,
@@ -12,18 +13,18 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { formatDuration } from '../utils/time';
-import { lifeTheme } from '../theme';
+import { useAppTheme } from '../theme';
 import type { Task, TaskUrgency } from '../types';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.30;
 
-const URGENCY_COLOR: Record<TaskUrgency, string> = {
-  today: lifeTheme.colors.alert,
-  this_week: '#f59e0b',
-  this_month: lifeTheme.colors.primary,
-  someday: lifeTheme.colors.muted
-};
+function getUrgencyColor(urgency: TaskUrgency, lifeTheme: ReturnType<typeof useAppTheme>): string {
+  if (urgency === 'today') return lifeTheme.colors.alert;
+  if (urgency === 'this_week') return '#f59e0b';
+  if (urgency === 'this_month') return lifeTheme.colors.primary;
+  return lifeTheme.colors.muted;
+}
 
 const URGENCY_ICON: Record<TaskUrgency, string> = {
   today: '🔥', this_week: '📅', this_month: '🗓', someday: '💭'
@@ -36,10 +37,20 @@ interface Props {
   onComplete: (taskId: string) => void;
 }
 
-function getStatusColor(task: Task): string {
+function getStatusColor(task: Task, lifeTheme: ReturnType<typeof useAppTheme>): string {
   if (task.status === 'completed') return lifeTheme.colors.success;
   if (task.status === 'scheduled') return lifeTheme.colors.primary;
   return lifeTheme.colors.muted;
+}
+
+function getPriorityColors(lifeTheme: ReturnType<typeof useAppTheme>): Record<number, string> {
+  return {
+    1: '#6b7280',
+    2: '#22d3ee',
+    3: lifeTheme.colors.primary,
+    4: '#f59e0b',
+    5: lifeTheme.colors.alert
+  };
 }
 
 function getStatusLabel(task: Task): string {
@@ -49,6 +60,8 @@ function getStatusLabel(task: Task): string {
 }
 
 export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const translateX = useSharedValue(0);
   const cardOpacity = useSharedValue(1);
   const isCompleted = task.status === 'completed';
@@ -108,8 +121,9 @@ export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props)
     )
   }));
 
-  const statusColor = getStatusColor(task);
-  const urgencyColor = URGENCY_COLOR[urgency];
+  const statusColor = getStatusColor(task, lifeTheme);
+  const urgencyColor = getUrgencyColor(urgency, lifeTheme);
+  const priorityColors = getPriorityColors(lifeTheme);
 
   return (
     <View style={styles.wrapper}>
@@ -149,7 +163,7 @@ export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props)
               <Text style={[styles.chipText, { color: urgencyColor }]}>{task.eta_minutes} min</Text>
             </View>
             <View style={styles.chip}>
-              <Text style={[styles.chipText, { color: PRIORITY_COLORS[task.priority] }]}>
+              <Text style={[styles.chipText, { color: priorityColors[task.priority] }]}>
                 P{task.priority}
               </Text>
             </View>
@@ -202,11 +216,8 @@ export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props)
   );
 }
 
-const PRIORITY_COLORS: Record<number, string> = {
-  1: '#6b7280', 2: '#22d3ee', 3: lifeTheme.colors.primary, 4: '#f59e0b', 5: lifeTheme.colors.alert
-};
-
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   wrapper: { position: 'relative' },
   hint: {
     position: 'absolute', top: 0, bottom: 0, width: '50%',
@@ -253,4 +264,5 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: { color: lifeTheme.colors.alert, fontSize: 12, fontWeight: '700' },
   swipeHint: { flex: 1, color: lifeTheme.colors.muted, fontSize: 10, textAlign: 'center' }
-});
+  });
+}

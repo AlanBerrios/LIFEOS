@@ -1,13 +1,16 @@
+import { useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../src/store/useLifeStore';
-import { lifeTheme } from '../src/theme';
+import { useAppTheme } from '../src/theme';
 
 export default function AnalyticsScreen(): ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   
   const tasks = useLifeStore(s => s.tasks);
   const travel = useLifeStore(s => s.travelLogs);
@@ -63,7 +66,8 @@ export default function AnalyticsScreen(): ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 24 },
   backBtn: { marginRight: 16 },
@@ -81,4 +85,5 @@ const styles = StyleSheet.create({
   metricLabel: { fontSize: 13, color: lifeTheme.colors.text, fontWeight: '700' },
   metricDesc: { fontSize: 10, color: lifeTheme.colors.muted, textAlign: 'center', marginTop: 4 },
   cardDesc: { color: lifeTheme.colors.muted, fontSize: 12, marginBottom: 16, lineHeight: 18 }
-});
+  });
+}

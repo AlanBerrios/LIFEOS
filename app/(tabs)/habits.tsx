@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Alert,
@@ -18,7 +18,7 @@ import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTodayStr } from '../../src/utils/date';
 import { useLifeStore } from '../../src/store/useLifeStore';
-import { lifeTheme } from '../../src/theme';
+import { useAppTheme } from '../../src/theme';
 
 const EMOJI_OPTIONS = ['💧', '🏃', '🥗', '🧘', '📚', '💊', '🍎', '💤', '🚶', '💪', '🧠', '✨'];
 
@@ -32,6 +32,8 @@ const SUGGESTIONS = [
 
 export default function HabitsScreen(): ReactElement {
   const insets = useSafeAreaInsets();
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const habits = useLifeStore((s) => s.habits);
   const addHabit = useLifeStore((s) => s.addHabit);
   const deleteHabit = useLifeStore((s) => s.deleteHabit);
@@ -281,7 +283,8 @@ export default function HabitsScreen(): ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
   content: { paddingHorizontal: 20, gap: 20 },
   hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -353,4 +356,5 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
   saveBtn: { flex: 2, backgroundColor: lifeTheme.colors.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontWeight: '800' }
-});
+  });
+}

@@ -182,6 +182,10 @@ export interface AppSettings {
   alarmsBypassSilent: boolean;
   /** URL pública de calendario compartida en formato .ics */
   icsCalendarUrl?: string;
+  /** Tema visual de la app */
+  uiThemeMode: 'dark' | 'light';
+  /** Color principal para botones, indicadores y acentos */
+  uiAccentColor: string;
 }
 
 export interface TravelLog {
@@ -243,7 +247,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   enableGeofencing: false,
   distractionTimeoutMinutes: 5,
   maxSocialMinutes: 20,
-  alarmsBypassSilent: true
+  alarmsBypassSilent: true,
+  uiThemeMode: 'dark',
+  uiAccentColor: '#8FBF00'
 };
 
 // ============================================

@@ -1,11 +1,11 @@
 import type { ReactElement } from 'react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Modal, Pressable } from 'react-native';
 import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
-import { lifeTheme } from '../../src/theme';
+import { useAppTheme } from '../../src/theme';
 import type { DailySession } from '../../src/types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -46,11 +46,14 @@ interface StatCardProps {
   delay?: number;
 }
 
-function StatCard({ label, value, icon, accent = lifeTheme.colors.primary, delay = 0 }: StatCardProps): ReactElement {
+function StatCard({ label, value, icon, accent, delay = 0 }: StatCardProps): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+  const resolvedAccent = accent ?? lifeTheme.colors.primary;
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(300)} style={styles.statCard}>
       <View style={styles.statCardHeader}>
-        <Text style={[styles.statValue, { color: accent, fontFamily: 'monospace' }]}>{value}</Text>
+        <Text style={[styles.statValue, { color: resolvedAccent, fontFamily: 'monospace' }]}>{value}</Text>
         {icon && <Text style={styles.statIcon}>{icon}</Text>}
       </View>
       <Text style={styles.statLabel}>{label}</Text>
@@ -67,6 +70,8 @@ interface BarProps {
 }
 
 function HBar({ progress, color, label, count, delay = 0 }: BarProps): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   return (
     <Animated.View entering={FadeInRight.delay(delay).duration(300)} style={styles.hbarRow}>
       <Text style={styles.hbarLabel}>{label}</Text>
@@ -81,6 +86,8 @@ function HBar({ progress, color, label, count, delay = 0 }: BarProps): ReactElem
 // ─── Pantalla principal ───────────────────────────────────────────────────────
 
 export default function StatsScreen(): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const insets = useSafeAreaInsets();
   const tasks = useLifeStore((s) => s.tasks);
   const timeline = useLifeStore((s) => s.timeline);
@@ -431,6 +438,8 @@ function InfoModal({
   body: string;
   onClose: () => void;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
@@ -448,7 +457,8 @@ function InfoModal({
 
 // â”€â”€â”€ Estilos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: lifeTheme.colors.background
@@ -778,5 +788,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800'
   }
-});
+  });
+}
 

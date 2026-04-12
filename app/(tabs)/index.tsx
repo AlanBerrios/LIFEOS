@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Alert,
   Modal,
@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import { getTodayStr } from '../../src/utils/date';
 import { useLifeStore } from '../../src/store/useLifeStore';
-import { lifeTheme } from '../../src/theme';
+import { useAppTheme } from '../../src/theme';
 import type { TaskUrgency } from '../../src/types';
 import { createId } from '../../src/utils/ids';
 import { 
@@ -42,6 +42,8 @@ function QuickTaskModal({
   visible: boolean;
   onClose: () => void;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const addTask = useLifeStore((s) => s.addTask);
   const [title, setTitle] = useState('');
   const [urgency, setUrgency] = useState<TaskUrgency>('today');
@@ -133,6 +135,8 @@ function QuickEventModal({
   visible: boolean;
   onClose: () => void;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const addEvent = useLifeStore((s) => s.addEvent);
   const [title, setTitle] = useState('');
   const [startTime, setStartTime] = useState<Date | null>(null);
@@ -209,6 +213,8 @@ function QuickNoteModal({
   visible: boolean;
   onClose: () => void;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const addNote = useLifeStore((s) => s.addNote);
   const [content, setContent] = useState('');
 
@@ -260,6 +266,8 @@ function BreakEditModal({
   currentMinutes: number;
   onClose: () => void;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const updateBreak = useLifeStore((s) => s.updateBreakDuration);
   const [value, setValue] = useState(String(currentMinutes));
 
@@ -306,6 +314,8 @@ function MealOptionsModal({
   visible: boolean;
   onClose: () => void;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const startMealTimer = useLifeStore((s) => s.startMealTimer);
   const routines = useLifeStore((s) => s.routines);
   
@@ -371,6 +381,8 @@ function BlockCard({
   onTaskCompleted: (title: string, xp: number) => void;
   onRequestCompletionCheck: (taskId: string) => void;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const moveBlock = useLifeStore((s) => s.moveBlock);
   const completeTask = useLifeStore((s) => s.completeTask);
   const skipTask = useLifeStore((s) => s.skipTask);
@@ -401,7 +413,7 @@ function BlockCard({
   }
 
   const showProgress = progress > 0 && progress < 1;
-  const fillColor = isRest ? 'rgba(0,0,0,0.05)' : 'rgba(124,108,252,0.1)';
+  const fillColor = isRest ? `${lifeTheme.colors.text}0D` : lifeTheme.colors.softPrimary;
 
   return (
     <Animated.View
@@ -516,6 +528,8 @@ function BlockCard({
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function DashboardScreen(): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const timeline = useLifeStore((s) => s.timeline);
@@ -847,7 +861,8 @@ export default function DashboardScreen(): ReactElement {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
   content: { paddingHorizontal: 16, gap: 14, paddingBottom: 32 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
@@ -1076,4 +1091,5 @@ const styles = StyleSheet.create({
   },
   feedbackTitle: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '800' },
   feedbackSubtitle: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '600' }
-});
+  });
+}

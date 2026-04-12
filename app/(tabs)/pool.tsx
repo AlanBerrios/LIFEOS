@@ -18,7 +18,7 @@ import { SwipeableTaskCard } from '../../src/components/SwipeableTaskCard';
 import { TaskCompletionCheckDialog } from '../../src/components/TaskCompletionCheckDialog';
 import { ReplanificationPrompt } from '../../src/components/ReplanificationPrompt';
 import { useLifeStore } from '../../src/store/useLifeStore';
-import { lifeTheme } from '../../src/theme';
+import { useAppTheme } from '../../src/theme';
 import type { PostponeReason, ScheduleBlock, SkipReason, Task, TaskUrgency } from '../../src/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -47,19 +47,28 @@ const DEFAULT_FORM: FormState = {
   urgency: 'this_week'
 };
 
-const PRIORITY_COLORS: Record<number, string> = {
-  1: '#6b7280', 2: '#22d3ee', 3: lifeTheme.colors.primary, 4: '#f59e0b', 5: lifeTheme.colors.alert
-};
+function getPriorityColors(lifeTheme: ReturnType<typeof useAppTheme>): Record<number, string> {
+  return {
+    1: '#6b7280',
+    2: '#22d3ee',
+    3: lifeTheme.colors.primary,
+    4: '#f59e0b',
+    5: lifeTheme.colors.alert
+  };
+}
 
-const LOAD_COLOR = (v: number): string =>
-  v <= 3 ? lifeTheme.colors.success : v <= 6 ? '#f59e0b' : lifeTheme.colors.alert;
+function getLoadColor(v: number, lifeTheme: ReturnType<typeof useAppTheme>): string {
+  return v <= 3 ? lifeTheme.colors.success : v <= 6 ? '#f59e0b' : lifeTheme.colors.alert;
+}
 
-const URGENCY_OPTS: { value: TaskUrgency; label: string; icon: string; color: string }[] = [
-  { value: 'today',      label: 'Hoy',      icon: '🔥', color: lifeTheme.colors.alert },
-  { value: 'this_week',  label: 'Semana',   icon: '📅', color: '#f59e0b' },
-  { value: 'this_month', label: 'Mes',      icon: '🗓', color: lifeTheme.colors.primary },
-  { value: 'someday',    label: 'Algún día', icon: '💭', color: lifeTheme.colors.muted }
-];
+function getUrgencyOptions(lifeTheme: ReturnType<typeof useAppTheme>): { value: TaskUrgency; label: string; icon: string; color: string }[] {
+  return [
+    { value: 'today', label: 'Hoy', icon: '🔥', color: lifeTheme.colors.alert },
+    { value: 'this_week', label: 'Semana', icon: '📅', color: '#f59e0b' },
+    { value: 'this_month', label: 'Mes', icon: '🗓', color: lifeTheme.colors.primary },
+    { value: 'someday', label: 'Algún día', icon: '💭', color: lifeTheme.colors.muted }
+  ];
+}
 
 type FilterType = 'all' | 'today' | 'this_week' | 'pool' | 'completed';
 
@@ -78,6 +87,8 @@ function SafeDatePicker({
   onClear: () => void;
   onConfirm: (d: Date) => void;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const [showDate, setShowDate] = useState(false);
   const [showTime, setShowTime] = useState(false);
   const [pendingDate, setPendingDate] = useState<Date | null>(null);
@@ -144,6 +155,8 @@ function SafeDatePicker({
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function PoolScreen(): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const insets = useSafeAreaInsets();
   const tasks = useLifeStore((s) => s.tasks);
   const addTask = useLifeStore((s) => s.addTask);
@@ -291,9 +304,12 @@ export default function PoolScreen(): ReactElement {
   const weekCount  = tasks.filter((t) => t.urgency === 'this_week' && t.status !== 'completed').length;
   const doneCount  = tasks.filter((t) => t.status === 'completed').length;
 
+  const priorityColors = useMemo(() => getPriorityColors(lifeTheme), [lifeTheme]);
+  const urgencyOptions = useMemo(() => getUrgencyOptions(lifeTheme), [lifeTheme]);
+
   const p = form.priority;
-  const prioColor = PRIORITY_COLORS[p];
-  const loadColor = LOAD_COLOR(form.cognitive_load);
+  const prioColor = priorityColors[p];
+  const loadColor = getLoadColor(form.cognitive_load, lifeTheme);
 
   return (
     <ScrollView
@@ -349,7 +365,7 @@ export default function PoolScreen(): ReactElement {
         <View>
           <Text style={styles.fieldLabel}>¿Cuándo debe hacerse? *</Text>
           <View style={styles.urgencyRow}>
-            {URGENCY_OPTS.map((opt) => (
+            {urgencyOptions.map((opt) => (
               <Pressable
                 key={opt.value}
                 style={[
@@ -558,7 +574,8 @@ export default function PoolScreen(): ReactElement {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
   content: { paddingHorizontal: 16, gap: 14, paddingBottom: 32 },
   hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
@@ -632,4 +649,5 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '700' },
   emptyText: { color: lifeTheme.colors.muted, fontSize: 13, textAlign: 'center', lineHeight: 20 }
-});
+  });
+}

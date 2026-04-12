@@ -15,7 +15,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
-import { lifeTheme } from '../../src/theme';
+import { useAppTheme } from '../../src/theme';
 import { getEventsForDate } from '../../src/utils/events';
 import type { Task, StaticEvent, ScheduleBlock, RecurrenceFrequency } from '../../src/types';
 
@@ -60,7 +60,7 @@ const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-function urgencyColor(task?: Task): string {
+function urgencyColor(task: Task | undefined, lifeTheme: ReturnType<typeof useAppTheme>): string {
   if (!task) return lifeTheme.colors.muted;
   if (task.urgency === 'today') return lifeTheme.colors.alert;
   if (task.urgency === 'this_week') return '#f59e0b';
@@ -113,6 +113,8 @@ function SafeDatePicker({
   onClear: () => void;
   onConfirm: (d: Date) => void;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const [showDate, setShowDate] = useState(false);
   const [showTime, setShowTime] = useState(false);
   const [pendingDate, setPendingDate] = useState<Date | null>(null);
@@ -182,6 +184,8 @@ function DayTasksPanel({
 }: { 
   date: Date; tasks: Task[]; events: StaticEvent[]; onEditEvent: (id: string) => void 
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const dayTasks = tasks.filter((t) => {
     if (t.fixed_start && sameDay(t.fixed_start, date)) return true;
     if (t.deadline && sameDay(t.deadline, date)) return true;
@@ -215,7 +219,7 @@ function DayTasksPanel({
         ))}
         {dayTasks.map((task) => (
           <View key={task.id} style={styles.dayTask}>
-            <View style={[styles.urgencyDot, { backgroundColor: urgencyColor(task) }]} />
+            <View style={[styles.urgencyDot, { backgroundColor: urgencyColor(task, lifeTheme) }]} />
             <View style={{ flex: 1 }}>
               <Text style={styles.dayTaskTitle}>{task.title}</Text>
               <Text style={styles.dayTaskMeta}>
@@ -242,6 +246,8 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
   events: StaticEvent[];
   onSelectDay: (d: Date) => void;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const firstDay = startOfMonth(currentDate);
@@ -272,7 +278,7 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
     const urgencies = Array.from(new Set(dayTasks.map(t => t.urgency)));
     urgencies.forEach(u => {
       const dummyTask = { urgency: u } as any;
-      const color = urgencyColor(dummyTask);
+      const color = urgencyColor(dummyTask, lifeTheme);
       if (!colors.includes(color)) colors.push(color);
     });
 
@@ -327,6 +333,8 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
   onSelectDay: (d: Date) => void;
   onEditEvent: (id: string) => void;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const weekStart = startOfWeek(currentDate);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const hours = Array.from({ length: 18 }, (_, i) => i + 6); // 06:00 -> 23:00
@@ -449,6 +457,8 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
 function DayView({ date, tasks, events, timeline, onEditEvent }: { 
   date: Date; tasks: Task[]; events: StaticEvent[]; timeline: ScheduleBlock[]; onEditEvent: (id: string) => void 
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const hours = Array.from({ length: 18 }, (_, i) => i + 6);
   const hourHeight = 64;
   const baseHour = 6;
@@ -472,7 +482,7 @@ function DayView({ date, tasks, events, timeline, onEditEvent }: {
       title: b.title,
       start: b.start_time,
       end: b.end_time,
-      color: urgencyColor(tasks.find((t) => t.id === b.task_id)),
+      color: urgencyColor(tasks.find((t) => t.id === b.task_id), lifeTheme),
       kind: 'Tarea' as const,
       dotted: false,
       onPress: () => undefined
@@ -551,6 +561,8 @@ function EventModal({
 }: { 
   visible: boolean; editId?: string | null; onClose: () => void; 
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const addEvent = useLifeStore(s => s.addEvent);
   const updateEvent = useLifeStore(s => s.updateEvent);
   const deleteEvent = useLifeStore(s => s.deleteEvent);
@@ -736,6 +748,8 @@ function EventModal({
 type CalendarView = 'month' | 'week' | 'day';
 
 export default function CalendarScreen(): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const insets = useSafeAreaInsets();
   const tasks = useLifeStore((s) => s.tasks);
   const events = useLifeStore((s) => s.events);
@@ -848,7 +862,8 @@ export default function CalendarScreen(): ReactElement {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
   topBar: {
     flexDirection: 'row',
@@ -1034,4 +1049,5 @@ const styles = StyleSheet.create({
   daySelectChipActive: { backgroundColor: lifeTheme.colors.primary, borderColor: lifeTheme.colors.primary },
   daySelectText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '700' },
   daySelectTextActive: { color: '#fff' }
-});
+  });
+}

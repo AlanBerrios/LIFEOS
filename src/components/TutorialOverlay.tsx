@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -13,7 +13,7 @@ import Animated, {
   SlideInUp, 
   SlideOutDown 
 } from 'react-native-reanimated';
-import { lifeTheme } from '../theme';
+import { useAppTheme } from '../theme';
 
 const { width, height } = Dimensions.get('window');
 
@@ -57,6 +57,8 @@ export function TutorialOverlay({
   visible: boolean; 
   onComplete: () => void; 
 }) {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const [currentStep, setCurrentStep] = useState(0);
 
   if (!visible) return null;
@@ -106,7 +108,8 @@ export function TutorialOverlay({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
@@ -174,4 +177,5 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 15
   }
-});
+  });
+}

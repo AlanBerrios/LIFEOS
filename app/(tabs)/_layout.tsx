@@ -2,7 +2,7 @@ import { MaterialTabs } from '../../src/components/MaterialTabs';
 import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { lifeTheme } from '../../src/theme';
+import { useAppTheme } from '../../src/theme';
 
 import { Zap, Calendar, CheckCircle, ListTodo, Clock, Settings, Book, BarChart } from 'lucide-react-native';
 
@@ -19,7 +19,9 @@ const TABS = [
 
 export default function TabLayout(): ReactElement {
   const insets = useSafeAreaInsets();
+  const theme = useAppTheme();
   const barHeight = 64 + Math.max(insets.bottom, 12);
+  const styles = createStyles(theme);
 
   return (
     <MaterialTabs
@@ -28,8 +30,8 @@ export default function TabLayout(): ReactElement {
       screenOptions={({ route }: { route: { name: string } }) => ({
         tabBarIndicatorStyle: { height: 0 }, // Hide the default top indicator
         tabBarStyle: [styles.tabBar, { height: barHeight }],
-        tabBarActiveTintColor: lifeTheme.colors.primary,
-        tabBarInactiveTintColor: lifeTheme.colors.muted,
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.muted,
         tabBarShowLabel: true,
         tabBarLabelStyle: {
           fontSize: 9,
@@ -45,7 +47,7 @@ export default function TabLayout(): ReactElement {
             <View style={styles.iconContainer}>
               {focused && <View style={styles.activePill} />}
               <View style={focused && { transform: [{ scale: 1.1 }] }}>
-                <tab.IconComponent size={22} color={focused ? lifeTheme.colors.primary : lifeTheme.colors.muted} strokeWidth={focused ? 2.5 : 2} />
+                <tab.IconComponent size={22} color={focused ? theme.colors.primary : theme.colors.muted} strokeWidth={focused ? 2.5 : 2} />
               </View>
             </View>
           );
@@ -65,32 +67,34 @@ export default function TabLayout(): ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
-  tabBar: {
-    backgroundColor: lifeTheme.colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: lifeTheme.colors.border,
-    paddingBottom: 0,
-    paddingTop: 0,
-    elevation: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4
-  },
-  iconContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 8,
-    width: 48,
-    overflow: 'visible'
-  },
-  activePill: {
-    position: 'absolute',
-    top: -4,
-    width: 28,
-    height: 3,
-    borderRadius: 3,
-    backgroundColor: lifeTheme.colors.primary
-  }
-});
+function createStyles(theme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
+    tabBar: {
+      backgroundColor: theme.colors.surface,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border,
+      paddingBottom: 0,
+      paddingTop: 0,
+      elevation: 0,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4
+    },
+    iconContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop: 8,
+      width: 48,
+      overflow: 'visible'
+    },
+    activePill: {
+      position: 'absolute',
+      top: -4,
+      width: 28,
+      height: 3,
+      borderRadius: 3,
+      backgroundColor: theme.colors.primary
+    }
+  });
+}

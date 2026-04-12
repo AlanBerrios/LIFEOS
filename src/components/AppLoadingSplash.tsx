@@ -1,10 +1,12 @@
 import type { ReactElement } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useRef } from 'react';
-import { lifeTheme } from '../theme';
+import { useAppTheme } from '../theme';
 import { AppIconSVG } from './AppIconSVG';
 
 export function AppLoadingSplash(): ReactElement {
+  const theme = useAppTheme();
+  const styles = createStyles(theme);
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const logoScale = useRef(new Animated.Value(0.94)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
@@ -47,35 +49,37 @@ export function AppLoadingSplash(): ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#000000',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  logoWrap: {
-    borderWidth: 1,
-    borderColor: '#BDFF00',
-    borderRadius: 28,
-    padding: 10,
-    marginBottom: 18,
-    backgroundColor: '#121212'
-  },
-  wordmark: {
-    color: '#BDFF00',
-    fontSize: 40,
-    fontWeight: '900',
-    letterSpacing: 1,
-    textAlign: 'center'
-  },
-  version: {
-    color: lifeTheme.colors.muted,
-    fontSize: 20,
-    fontWeight: '500',
-    textAlign: 'center',
-    marginTop: 2
-  }
-});
+function createStyles(theme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+      alignItems: 'center',
+      justifyContent: 'center'
+    },
+    logoWrap: {
+      borderWidth: 1,
+      borderColor: theme.colors.primary,
+      borderRadius: 28,
+      padding: 10,
+      marginBottom: 18,
+      backgroundColor: theme.colors.surface
+    },
+    wordmark: {
+      color: theme.colors.primary,
+      fontSize: 40,
+      fontWeight: '900',
+      letterSpacing: 1,
+      textAlign: 'center'
+    },
+    version: {
+      color: theme.colors.muted,
+      fontSize: 20,
+      fontWeight: '500',
+      textAlign: 'center',
+      marginTop: 2
+    }
+  });
+}
 
 export default AppLoadingSplash;

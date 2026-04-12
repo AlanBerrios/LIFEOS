@@ -16,7 +16,7 @@ import {
 import Slider from '@react-native-community/slider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
-import { lifeTheme } from '../../src/theme';
+import { useAppTheme, UI_ACCENT_PRESETS } from '../../src/theme';
 import {
   schedulePendingReminder,
   scheduleImportantTaskAlert,
@@ -31,8 +31,22 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
+type SettingsStyles = ReturnType<typeof createStyles>;
+
 // ─── Accordion Component ──────────────────────────────────────────────────
-function Accordion({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
+function Accordion({
+  title,
+  icon,
+  children,
+  styles,
+  primaryColor
+}: {
+  title: string;
+  icon: string;
+  children: React.ReactNode;
+  styles: SettingsStyles;
+  primaryColor: string;
+}) {
   const [open, setOpen] = useState(false);
   const heightValue = useSharedValue(0);
 
@@ -46,7 +60,7 @@ function Accordion({ title, icon, children }: { title: string; icon: string; chi
     <View style={styles.accordionCard}>
       <Pressable style={styles.accordionHeader} onPress={() => setOpen(!open)}>
         <Text style={styles.accordionTitle}>{icon}  {title}</Text>
-        <Text style={{ color: lifeTheme.colors.primary, fontSize: 18, fontWeight: '700' }}>{open ? '▲' : '▼'}</Text>
+        <Text style={{ color: primaryColor, fontSize: 18, fontWeight: '700' }}>{open ? '▲' : '▼'}</Text>
       </Pressable>
       <Animated.View style={[styles.accordionContent, stylez]}>
         {children}
@@ -57,10 +71,11 @@ function Accordion({ title, icon, children }: { title: string; icon: string; chi
 }
 
 // ─── Setting Row ──────────────────────────────────────────────────────────────
-function SettingRow({ label, subtitle, children }: {
+function SettingRow({ label, subtitle, children, styles }: {
   label: string;
   subtitle?: string;
   children: ReactElement;
+  styles: SettingsStyles;
 }): ReactElement {
   return (
     <View style={styles.settingRow}>
@@ -76,6 +91,9 @@ function SettingRow({ label, subtitle, children }: {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function SettingsScreen(): ReactElement {
   const insets = useSafeAreaInsets();
+  const theme = useAppTheme();
+  const lifeTheme = theme;
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const settings = useLifeStore((s) => s.settings);
   const updateSettings = useLifeStore((s) => s.updateSettings);
   const clearAllData = useLifeStore((s) => s.clearAllData);
@@ -190,8 +208,40 @@ export default function SettingsScreen(): ReactElement {
         <Text style={styles.headerTitle}>Configuración</Text>
       </View>
 
-      <Accordion title="Preferencias de Tareas" icon="🎯">
-        <SettingRow label="Límite Agotamiento" subtitle="Minutos de trabajo continuo antes de forzar descanso (racha máxima).">
+      <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Apariencia" icon="🎨">
+        <SettingRow styles={styles} label="Modo oscuro" subtitle="Activa modo oscuro o claro para toda la interfaz.">
+          <Switch
+            value={settings.uiThemeMode === 'dark'}
+            onValueChange={(v) => updateSettings({ uiThemeMode: v ? 'dark' : 'light' })}
+            trackColor={{ true: lifeTheme.colors.primary, false: lifeTheme.colors.border }}
+            thumbColor="#fff"
+          />
+        </SettingRow>
+
+        <View style={styles.divider} />
+        <Text style={styles.inputLabel}>Color principal UI</Text>
+        <View style={styles.colorRow}>
+          {UI_ACCENT_PRESETS.map((preset) => {
+            const selected = settings.uiAccentColor === preset.color;
+            return (
+              <Pressable
+                key={preset.key}
+                onPress={() => updateSettings({ uiAccentColor: preset.color })}
+                style={[
+                  styles.colorSwatch,
+                  { backgroundColor: preset.color },
+                  selected && styles.colorSwatchSelected
+                ]}
+              >
+                <Text style={styles.colorSwatchText}>{selected ? '✓' : ''}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Accordion>
+
+      <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Preferencias de Tareas" icon="🎯">
+        <SettingRow styles={styles} label="Límite Agotamiento" subtitle="Minutos de trabajo continuo antes de forzar descanso (racha máxima).">
           <Text style={styles.valueText}>{settings.workStreakLimitMinutes} m</Text>
         </SettingRow>
         <Slider
@@ -203,7 +253,7 @@ export default function SettingsScreen(): ReactElement {
         />
         <View style={styles.divider} />
         
-        <SettingRow label="Descanso Corto" subtitle="Entre bloques regulares.">
+        <SettingRow styles={styles} label="Descanso Corto" subtitle="Entre bloques regulares.">
           <Text style={styles.valueText}>{settings.breakDurationMinutes} m</Text>
         </SettingRow>
         <Slider
@@ -215,7 +265,7 @@ export default function SettingsScreen(): ReactElement {
         />
         <View style={styles.divider} />
         
-        <SettingRow label="Descanso Cognitivo" subtitle="Tras agotar racha máxima.">
+        <SettingRow styles={styles} label="Descanso Cognitivo" subtitle="Tras agotar racha máxima.">
           <Text style={styles.valueText}>{settings.longBreakDurationMinutes} m</Text>
         </SettingRow>
         <Slider
@@ -227,8 +277,8 @@ export default function SettingsScreen(): ReactElement {
         />
       </Accordion>
 
-      <Accordion title="Rutinas y Alarmas" icon="🌙">
-        <SettingRow label="Hora de dormir" subtitle="Inicio del periodo de descanso">
+      <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Rutinas y Alarmas" icon="🌙">
+        <SettingRow styles={styles} label="Hora de dormir" subtitle="Inicio del periodo de descanso">
           <TextInput
             style={styles.timeInput}
             value={settings.sleepTimeStart}
@@ -237,7 +287,7 @@ export default function SettingsScreen(): ReactElement {
           />
         </SettingRow>
         <View style={styles.divider} />
-        <SettingRow label="Hora de despertar" subtitle="Fin del periodo de descanso">
+        <SettingRow styles={styles} label="Hora de despertar" subtitle="Fin del periodo de descanso">
           <TextInput
             style={styles.timeInput}
             value={settings.sleepTimeEnd}
@@ -254,8 +304,8 @@ export default function SettingsScreen(): ReactElement {
         </Pressable>
       </Accordion>
 
-      <Accordion title="Gestión Antidistracción" icon="⏳">
-        <SettingRow label="Tiempo máx en RRSS" subtitle="Minutos base antes de advertir distracciones (RRSS, videos).">
+      <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Gestión Antidistracción" icon="⏳">
+        <SettingRow styles={styles} label="Tiempo máx en RRSS" subtitle="Minutos base antes de advertir distracciones (RRSS, videos).">
           <Text style={styles.valueText}>{settings.maxSocialMinutes} m</Text>
         </SettingRow>
         <Slider
@@ -267,8 +317,8 @@ export default function SettingsScreen(): ReactElement {
         />
       </Accordion>
 
-      <Accordion title="Notificaciones" icon="🔔">
-        <SettingRow label="Aviso de inicio" subtitle={`${settings.notifyTaskStartLeadMinutes} min antes de empezar`}>
+      <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Notificaciones" icon="🔔">
+        <SettingRow styles={styles} label="Aviso de inicio" subtitle={`${settings.notifyTaskStartLeadMinutes} min antes de empezar`}>
           <Switch
             value={settings.notifyTaskStart}
             onValueChange={(v) => updateSettings({ notifyTaskStart: v })}
@@ -285,7 +335,7 @@ export default function SettingsScreen(): ReactElement {
           />
         )}
         <View style={styles.divider} />
-        <SettingRow label="Recordatorio de pendientes" subtitle="Notificación de tareas sin completar">
+        <SettingRow styles={styles} label="Recordatorio de pendientes" subtitle="Notificación de tareas sin completar">
           <Switch
             value={settings.notifyPendingIntervalMinutes > 0}
             onValueChange={(v) => updateSettings({ notifyPendingIntervalMinutes: v ? 60 : 0 })}
@@ -293,7 +343,7 @@ export default function SettingsScreen(): ReactElement {
           />
         </SettingRow>
         <View style={styles.divider} />
-        <SettingRow label="Alarmas forzadas" subtitle="Sonido incluso en modo silencio">
+        <SettingRow styles={styles} label="Alarmas forzadas" subtitle="Sonido incluso en modo silencio">
           <Switch
             value={settings.alarmsBypassSilent}
             onValueChange={(v) => updateSettings({ alarmsBypassSilent: v })}
@@ -306,8 +356,8 @@ export default function SettingsScreen(): ReactElement {
         </Pressable>
       </Accordion>
 
-      <Accordion title="Geofencing e ICS" icon="📍">
-        <SettingRow label="Habilitar Detección" subtitle="Traslados casa-universidad">
+      <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Geofencing e ICS" icon="📍">
+        <SettingRow styles={styles} label="Habilitar Detección" subtitle="Traslados casa-universidad">
           <Switch
             value={settings.enableGeofencing}
             onValueChange={(v) => updateSettings({ enableGeofencing: v })}
@@ -346,8 +396,8 @@ export default function SettingsScreen(): ReactElement {
         </View>
       </Accordion>
 
-      <Accordion title="Mantenimiento" icon="⚙️">
-        <SettingRow label="Copia de Seguridad" subtitle="Exporta tus datos localmente">
+      <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Mantenimiento" icon="⚙️">
+        <SettingRow styles={styles} label="Copia de Seguridad" subtitle="Exporta tus datos localmente">
           <Pressable style={styles.backupBtn} onPress={() => void handleBackup()}>
             <Text style={styles.backupBtnText}>Exportar</Text>
           </Pressable>
@@ -404,17 +454,18 @@ export default function SettingsScreen(): ReactElement {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
+function createStyles(theme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.colors.background },
   header: { paddingHorizontal: 16, marginBottom: 12 },
-  headerTitle: { color: lifeTheme.colors.text, fontSize: 32, fontWeight: '900', letterSpacing: -0.5 },
+  headerTitle: { color: theme.colors.text, fontSize: 32, fontWeight: '900', letterSpacing: -0.5 },
   scroll: { paddingHorizontal: 16, paddingBottom: 50, gap: 16 },
 
   accordionCard: {
-    backgroundColor: lifeTheme.colors.surface,
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
+    borderColor: theme.colors.border,
     overflow: 'hidden'
   },
   accordionHeader: {
@@ -422,11 +473,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 18,
-    backgroundColor: lifeTheme.colors.surface,
+    backgroundColor: theme.colors.surface,
     elevation: 2,
     zIndex: 10
   },
-  accordionTitle: { color: lifeTheme.colors.text, fontSize: 17, fontWeight: '800' },
+  accordionTitle: { color: theme.colors.text, fontSize: 17, fontWeight: '800' },
   accordionContent: {
     paddingHorizontal: 16,
     overflow: 'hidden'
@@ -434,41 +485,58 @@ const styles = StyleSheet.create({
 
   settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 8, gap: 16 },
   settingInfo: { flex: 1 },
-  settingLabel: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '700' },
-  settingSubtitle: { color: lifeTheme.colors.muted, fontSize: 13, marginTop: 4, lineHeight: 18 },
-  divider: { height: 1, backgroundColor: lifeTheme.colors.border, marginVertical: 8 },
+  settingLabel: { color: theme.colors.text, fontSize: 16, fontWeight: '700' },
+  settingSubtitle: { color: theme.colors.muted, fontSize: 13, marginTop: 4, lineHeight: 18 },
+  divider: { height: 1, backgroundColor: theme.colors.border, marginVertical: 8 },
   slider: { marginHorizontal: -4, height: 30 },
   
-  valueText: { color: lifeTheme.colors.primary, fontSize: 16, fontWeight: '800', marginRight: 8, width: 45, textAlign: 'right' },
+  valueText: { color: theme.colors.primary, fontSize: 16, fontWeight: '800', marginRight: 8, width: 45, textAlign: 'right' },
   
-  applyBtn: { backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  applyBtn: { backgroundColor: theme.colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
   applyBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
-  backupBtn: { backgroundColor: lifeTheme.colors.success, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  backupBtn: { backgroundColor: theme.colors.success, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
   backupBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
   pressed: { opacity: 0.75 },
 
-  timeInput: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, color: lifeTheme.colors.text, fontSize: 16, fontWeight: '700', width: 65, textAlign: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
+  timeInput: { backgroundColor: theme.colors.surfaceAlt, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, color: theme.colors.text, fontSize: 16, fontWeight: '700', width: 65, textAlign: 'center', borderWidth: 1, borderColor: theme.colors.border },
 
   urlInputBox: { paddingVertical: 8, gap: 12 },
-  inputLabel: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '700', marginBottom: -4 },
-  urlInput: { backgroundColor: lifeTheme.colors.background, color: lifeTheme.colors.text, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: lifeTheme.colors.border, fontSize: 15 },
+  inputLabel: { color: theme.colors.text, fontSize: 14, fontWeight: '700', marginBottom: -4 },
+  urlInput: { backgroundColor: theme.colors.background, color: theme.colors.text, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, fontSize: 15 },
+  colorRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  colorSwatch: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)'
+  },
+  colorSwatchSelected: {
+    transform: [{ scale: 1.06 }],
+    borderColor: theme.colors.text,
+    borderWidth: 2
+  },
+  colorSwatchText: { color: '#ffffff', fontWeight: '900', fontSize: 14 },
   
   locBtn: { paddingVertical: 10 },
-  locBtnText: { color: lifeTheme.colors.primary, fontWeight: '600', fontSize: 14 },
+  locBtnText: { color: theme.colors.primary, fontWeight: '600', fontSize: 14 },
   
-  dangerZone: { marginTop: 16, paddingVertical: 16, borderTopWidth: 1, borderTopColor: `${lifeTheme.colors.alert}55` },
-  dangerTitle: { color: lifeTheme.colors.alert, fontSize: 16, fontWeight: '900', marginBottom: 12, textTransform: 'uppercase' },
-  dangerBtn: { backgroundColor: `${lifeTheme.colors.alert}15`, padding: 16, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: `${lifeTheme.colors.alert}55` },
-  dangerBtnText: { color: lifeTheme.colors.alert, fontWeight: '800', fontSize: 14 },
+  dangerZone: { marginTop: 16, paddingVertical: 16, borderTopWidth: 1, borderTopColor: `${theme.colors.alert}55` },
+  dangerTitle: { color: theme.colors.alert, fontSize: 16, fontWeight: '900', marginBottom: 12, textTransform: 'uppercase' },
+  dangerBtn: { backgroundColor: `${theme.colors.alert}15`, padding: 16, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: `${theme.colors.alert}55` },
+  dangerBtnText: { color: theme.colors.alert, fontWeight: '800', fontSize: 14 },
   footer: { marginTop: 12, paddingHorizontal: 4, gap: 10 },
-  footerTitle: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '800' },
+  footerTitle: { color: theme.colors.text, fontSize: 16, fontWeight: '800' },
   engineBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, alignSelf: 'flex-start' },
   badgeGreen: { backgroundColor: 'rgba(108,252,184,0.08)', borderColor: 'rgba(108,252,184,0.25)' },
   badgeYellow: { backgroundColor: 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.25)' },
   badgePurple: { backgroundColor: 'rgba(124,108,252,0.08)', borderColor: 'rgba(124,108,252,0.25)' },
   engineText: { fontSize: 10, fontWeight: '700', fontFamily: 'monospace' },
-  buildInfo: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '600' },
+  buildInfo: { color: theme.colors.muted, fontSize: 11, fontWeight: '600' },
   
   footerInfo: { alignItems: 'center', paddingVertical: 24 },
-  footerText: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '600' }
-});
+  footerText: { color: theme.colors.muted, fontSize: 12, fontWeight: '600' }
+  });
+}

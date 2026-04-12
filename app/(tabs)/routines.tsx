@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Alert,
@@ -14,7 +14,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
-import { lifeTheme } from '../../src/theme';
+import { useAppTheme } from '../../src/theme';
 import { createId } from '../../src/utils/ids';
 import { rescheduleAll } from '../../src/services/notifications';
 import type { MealRoutine } from '../../src/types';
@@ -32,6 +32,8 @@ function SafeTimePicker({
   value: string;
   onConfirm: (t: string) => void;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const [show, setShow] = useState(false);
 
   // Convert "HH:mm" to Date object for the picker
@@ -71,6 +73,8 @@ function SafeTimePicker({
 
 export default function RoutinesScreen(): ReactElement {
   const insets = useSafeAreaInsets();
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const tasks = useLifeStore((s) => s.tasks);
   const timeline = useLifeStore((s) => s.timeline);
   const settings = useLifeStore((s) => s.settings);
@@ -226,7 +230,8 @@ export default function RoutinesScreen(): ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 16 },
   headerTitle: { color: lifeTheme.colors.text, fontSize: 26, fontWeight: '900' },
@@ -278,4 +283,5 @@ const styles = StyleSheet.create({
   addBtn: { backgroundColor: `${lifeTheme.colors.primary}15`, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
   addBtnText: { color: lifeTheme.colors.primary, fontWeight: '900', fontSize: 13 },
   emptyText: { color: lifeTheme.colors.muted, textAlign: 'center', fontStyle: 'italic', marginTop: 20 }
-});
+  });
+}

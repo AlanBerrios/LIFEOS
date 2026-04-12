@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { PostponeReason, SkipReason, Task } from '../types';
-import { lifeTheme } from '../theme';
+import { useAppTheme } from '../theme';
 
 type CompletionChoice = 'ok' | 'partial' | 'skipped' | 'postponed';
 
@@ -48,6 +48,8 @@ export function TaskCompletionCheckDialog({
   onReportSkipped,
   onReportPostponed
 }: TaskCompletionCheckDialogProps): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const [choice, setChoice] = useState<CompletionChoice>('ok');
   const [details, setDetails] = useState('');
   const [partialNotes, setPartialNotes] = useState('');
@@ -201,6 +203,8 @@ function ChoiceChip({
   onPress: () => void;
   compact?: boolean;
 }): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   return (
     <Pressable
       onPress={onPress}
@@ -211,7 +215,8 @@ function ChoiceChip({
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',
@@ -330,4 +335,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800'
   }
-});
+  });
+}

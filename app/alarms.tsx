@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Alert,
@@ -15,13 +15,15 @@ import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { useLifeStore } from '../src/store/useLifeStore';
-import { lifeTheme } from '../src/theme';
+import { useAppTheme } from '../src/theme';
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
 export default function AlarmsScreen(): ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const alarms = useLifeStore((s) => s.alarms);
   const addAlarm = useLifeStore((s) => s.addAlarm);
   const toggleAlarm = useLifeStore((s) => s.toggleAlarm);
@@ -201,7 +203,8 @@ export default function AlarmsScreen(): ReactElement {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 },
   backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-start' },
@@ -247,4 +250,5 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: lifeTheme.colors.text, fontWeight: '700' },
   saveBtn: { flex: 2, backgroundColor: lifeTheme.colors.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontWeight: '800' }
-});
+  });
+}
