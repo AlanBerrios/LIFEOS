@@ -173,7 +173,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderRadius: 16
   },
   nextText: {
-    color: '#fff',
+    color: lifeTheme.colors.onPrimary,
     fontWeight: '800',
     fontSize: 15
   }

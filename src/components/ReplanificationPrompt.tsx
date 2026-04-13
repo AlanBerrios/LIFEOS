@@ -206,7 +206,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     paddingVertical: 12
   },
   confirmText: {
-    color: '#fff',
+    color: lifeTheme.colors.onPrimary,
     fontSize: 12,
     fontWeight: '800'
   }

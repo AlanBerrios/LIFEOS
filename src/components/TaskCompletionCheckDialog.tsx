@@ -331,7 +331,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     opacity: 0.5
   },
   confirmText: {
-    color: '#fff',
+    color: lifeTheme.colors.onPrimary,
     fontSize: 13,
     fontWeight: '800'
   }

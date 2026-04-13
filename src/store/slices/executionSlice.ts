@@ -104,7 +104,8 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       };
     });
 
-    void rescheduleAll(newBlocks, tasks, settings, get().routines, get().events, get().notes);
+    void rescheduleAll(newBlocks, tasks, settings, get().routines, get().events, get().notes, get().alarms)
+      .then((syncedAlarms) => set({ alarms: syncedAlarms }));
   },
 
   setTimeline: (blocks: ScheduleBlock[]) => set({ timeline: blocks }),
@@ -191,7 +192,8 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
     });
 
     const { timeline, tasks, settings, routines, events, notes } = get();
-    void rescheduleAll(timeline, tasks, settings, routines, events, notes);
+    void rescheduleAll(timeline, tasks, settings, routines, events, notes, get().alarms)
+      .then((syncedAlarms) => set({ alarms: syncedAlarms }));
   },
 
   startMealTimer: async (durationMinutes?: number) => {
@@ -362,7 +364,8 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       lastSolverStatus: 'LOCAL_ONLY'
     });
 
-    void rescheduleAll(blocks, tasks, settings, get().routines, get().events, get().notes);
+    void rescheduleAll(blocks, tasks, settings, get().routines, get().events, get().notes, get().alarms)
+      .then((syncedAlarms) => set({ alarms: syncedAlarms }));
   },
 
   pauseTaskExecution: (task_id: string) => {

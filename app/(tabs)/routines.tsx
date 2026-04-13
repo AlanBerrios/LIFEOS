@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
 import { createId } from '../../src/utils/ids';
-import { rescheduleAll } from '../../src/services/notifications';
+import { requestNotificationPermission, rescheduleAll } from '../../src/services/notifications';
 import type { MealRoutine } from '../../src/types';
 
 const DAYS_SHORT = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
@@ -117,7 +117,14 @@ export default function RoutinesScreen(): ReactElement {
 
   async function handleSyncNotifications(): Promise<void> {
     try {
-      await rescheduleAll(timeline, tasks, settings, routines, events, notes);
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        Alert.alert('Permiso requerido', 'Activa notificaciones del sistema para sincronizar rutinas.');
+        return;
+      }
+
+      const syncedAlarms = await rescheduleAll(timeline, tasks, settings, routines, events, notes, useLifeStore.getState().alarms);
+      useLifeStore.setState({ alarms: syncedAlarms });
       Alert.alert('Listo', 'Notificaciones sincronizadas correctamente.');
     } catch {
       Alert.alert('Error', 'No se pudieron sincronizar las notificaciones.');
@@ -249,13 +256,13 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     elevation: 4,
     marginBottom: 4
   },
-  syncBtnText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+  syncBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '900', fontSize: 14 },
   
   daySelectorStatic: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 20 },
   dayCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: lifeTheme.colors.surfaceAlt, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
   dayCircleActive: { backgroundColor: lifeTheme.colors.primary, borderColor: lifeTheme.colors.primary },
   dayCircleText: { color: lifeTheme.colors.muted, fontWeight: '800', fontSize: 16 },
-  dayCircleTextActive: { color: '#fff' },
+  dayCircleTextActive: { color: lifeTheme.colors.onPrimary },
   
   scroll: { flex: 1 },
   section: { gap: 10 },

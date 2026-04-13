@@ -6,8 +6,10 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
-    "android:release:fast": "cmd /C \"set \"NODE_ENV=production\" && cd android && gradlew.bat assembleRelease\"",
-    "android:release:clean": "cmd /C \"set \"NODE_ENV=production\" && cd android && gradlew.bat --stop && gradlew.bat clean && gradlew.bat assembleRelease --console=plain --no-daemon\"",
+    "android:sync:native": "cmd /C \"set \"CI=1\" && npx expo prebuild --platform android\"",
+    "android:sync:native:clean": "cmd /C \"set \"CI=1\" && npx expo prebuild --platform android --clean\"",
+    "android:release:fast": "cmd /C \"set \"NODE_ENV=production\" && set \"CI=1\" && npx expo prebuild --platform android && cd android && gradlew.bat assembleRelease\"",
+    "android:release:clean": "cmd /C \"set \"NODE_ENV=production\" && set \"CI=1\" && npx expo prebuild --platform android --clean && cd android && gradlew.bat --stop && gradlew.bat clean && gradlew.bat assembleRelease --console=plain --no-daemon\"",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",

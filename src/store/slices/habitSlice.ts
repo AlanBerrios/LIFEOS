@@ -21,6 +21,7 @@ export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
   },
 
   logHabit: (id: string, value: number) => {
+    let shouldAwardXP = false;
     set((state) => ({
       habits: state.habits.map((habit) => {
         if (habit.id !== id) return habit;
@@ -42,6 +43,7 @@ export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
         } else {
           newLogs.push({ timestamp: now, value });
           newLastDate = todayStr;
+          shouldAwardXP = true;
         }
 
         let newStreak = 0;
@@ -69,7 +71,9 @@ export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
         return { ...habit, logs: newLogs, lastCompletedDate: newLastDate, streak: newStreak };
       })
     }));
-    get().addXP(15, 'vitality');
+    if (shouldAwardXP) {
+      get().addXP(15, 'vitality');
+    }
   },
 
   updateHabit: (id: string, updates: Partial<Habit>) => {

@@ -186,6 +186,8 @@ export interface AppSettings {
   uiThemeMode: 'dark' | 'light';
   /** Color principal para botones, indicadores y acentos */
   uiAccentColor: string;
+  /** Color de texto sobre superficies de acento */
+  uiAccentTextMode: 'auto' | 'light' | 'dark';
 }
 
 export interface TravelLog {
@@ -249,7 +251,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxSocialMinutes: 20,
   alarmsBypassSilent: true,
   uiThemeMode: 'dark',
-  uiAccentColor: '#8FBF00'
+  uiAccentColor: '#8FBF00',
+  uiAccentTextMode: 'auto'
 };
 
 // ============================================

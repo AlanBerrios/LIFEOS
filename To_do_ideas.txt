@@ -1,15 +1,109 @@
-# Mejoras
+# LIFEOS - To Do priorizado
 
-- boton para eliminar tareas o descansos en el timeline
-- en el gestor de rutinas, las horas de sueño deifnindas y las comidas del dia no se ven reflejadas en el timeline
-- el boton de activar y sincronizar alarmas practicamente no funciona, no me llegan notificaciones de nada, ni cuando empieza una tarea, ni un descanso
-- poner prioridad total enel funcionamiento correcto de notificaciones ahora mismo
+Actualizado: 12-04-2026 (23:35 UTC)
 
-- mejorar el formateo al agregar una nota en la apntalla de block de nota, cambiar el recordatorio, en vez de escribir la hora, que despliegue un set de hora y dia para la notificacion
-- mejorar el sistema de puntaje, nivel de player os, en la parte de metricas el boton de maestria personal no hace nada, no abre
-- en metria al apretretar tu nivel de exp, no abre nada, agregar una poatnalla que detalle els sitema de puntaje de exp de del jugador, lo mismo para atributos y habilidades, que abra otro menu donde explique cada una de esas cosas.
-- en la app, al completar una tarea o rutina, que muestre una notificacion dentro de la app, como un pop up donde se muestre que astributo y habilidad a aumentado de experiencia o puntaje, asi, le das feedback al usuairo de player os
-- al agrgar un evento, tomaste mal la mejora de los calendarios. las tareas y eventos deberian verse como bloques en el calendario semanal, lo pusiste como un misero punto y cuando lo apretas no pasa nada, cuando lo apretas deberia al menos dar detalles de lo que apretaste, lo mismo para el dia, en el calendiario diario no dice nada, deberia decir a que hora empieza y a que hora termina y el bloque ser mas grande o largo dependiendo de la hora que dure la tarea o vento, aparte, si un evento o tarea empieza a las 2pm y termina a las 6pm, el bloque actualmente esta solamente se pone en la seccion de las 2pm, pero no se alarga dependiendo del tiempo, mejora eso, mejora la ux en general de los calendarios tambien
-- en el calendario mensual los puntos (referenciando que hay una tarea en ese dia) siuguen solapandose con los numeros de los dias, haz un formateo de eso, ademas, la parte de abajo donde esta la lista ede eventos y tareas no se ve bien, hay un espaico vacio ahi entre el calendario y la lista que deberia parovecharse mejor. 
-- para el calendario semanal tambien siento que es muy pequeño el espacio, hace las columnas de los dias mas anchas pra que pueda leerse bien las tareas y eventos en los bloques que te dije ante
-- siguiendo la ultima build se supone que mejoraste el sistema de tareas, donde te preguntaba responsivamente que paso si no la completaste, o como te sentiste al completarla, todo eso, no veo nada de eso reflejado en la build.
+## PRIORIDAD 0 (BLOQUEANTE)
+
+### Notificaciones y alarmas: estabilizar de punta a punta
+- Problema: el boton de activar/sincronizar no da confianza y en build real no siempre llegan notificaciones (inicio de tarea, descanso, alarmas de rutina).
+- Objetivo: 100% confiable en dispositivo real.
+- Estado en codigo: hardening implementado (resync con persistencia de IDs, validacion de permisos y errores reales en UI).
+- Criterios de aceptacion:
+	- Se reciben notificaciones de tareas programadas.
+	- Se reciben notificaciones de comidas/sueno de rutina.
+	- No hay duplicados por resincronizacion.
+	- Toggle activar/desactivar alarmas funciona de forma consistente.
+	- Al sincronizar reglas desde Settings/Rutinas, las alarmas guardadas conservan IDs nuevos para poder apagarlas luego.
+	- Falta validar en dispositivo real que el resync no duplica ni pierde alarmas.
+
+Implementado en esta sesion (codigo):
+	- `rescheduleAll(...)` ahora devuelve alarmas sincronizadas y todos los callers persisten `notificationIds` nuevos.
+	- `addAlarm` y `toggleAlarm` fallan con error explicito cuando no se pueden programar (ej. permisos denegados).
+	- Settings y Rutinas verifican permisos antes de aplicar/sincronizar reglas.
+	- Nueva seccion "Test" en Settings con un boton por tipo de notificacion (`task_start`, `pending`, `important`, `distraction`, `completion_check`, `alarm`, `routine_sleep`, `routine_meal`, `event`, `note`).
+	- Los tests de notificaciones son aislados y no alteran tareas/rutinas/timeline.
+
+## PRIORIDAD 1 (ALTA) - Funcionalidad crítica y bugs
+
+### Verificación y sincronización de build instalada vs código actual
+- Problema: hay features ya implementadas que no se reflejan en la build de prueba.
+- Checklist:
+	- Confirmar version/commit de la APK instalada.
+	- Rebuild release limpio con `npm run android:release:clean`.
+	- Prueba en dispositivo: validar flujo completo (cierre, replan, filtros, etc).
+
+### Flujo de cierre de tarea desde timeline mejorado
+- Problema: completar tarea desde timeline de Home abre check pero opciones están confusas.
+- Mejora: el pop-up de "¿Qué quieres hacer?" debería canalizar a TaskCompletionCheckDialog correctamente.
+- Adicional: cuando confirmas acción, debería cerrarse automático y reflejarse en timeline.
+
+### Bloque fantasma al completar tareas antes de la hora final
+- Idea: en vez de borrar el bloque por completo del timeline, dejar una versión fantasma de color verde como referencia visual de que ya fue completado.
+- Ejemplo: una tarea de 11:00 a 12:00 completada a las 11:30 mantiene el bloque fantasma hasta las 12:00, sin bloquear interacción ni replanificación.
+- Reglas deseadas:
+	- El bloque fantasma no bloquea nada y no se puede volver a editar como tarea activa.
+	- El tiempo restante puede convertirse automáticamente en descanso.
+	- Alternativa: el tiempo restante puede reorganizarse en el timeline de forma automática.
+	- Este comportamiento debe ser configurable desde Settings.
+- Objetivo UX: conservar contexto histórico en el timeline sin perder la señal de que la tarea ya fue resuelta.
+- Característica: Registrar hitos de consistencia (racha de X días de hábito, tareas completadas consecutivas, etc).
+- Visual: Insignias/badges en perfil, historial de logros desbloqueados.
+- Impacto: Motivación + gamificación del Player OS.
+- Datos a capturar: DailySession ya tiene tasksCompleted, tasksSkipped, tasksPostponed; extender para racha.
+
+### Reordenamiento de bloques con drag-and-drop (vs flechas)
+- Cambio: reemplazar botones ↑↓ por drag nativo en bloques.
+- Flujo: al soltar, mostrar modal de confirmación: "¿Reorganizar timeline con este cambio?".
+- Beneficio: UX más natural y rápida en móvil.
+- Nota: mantener soporte mobile-first + iOS.
+
+### Metricas: cliquabilidad en resumen de hoy y corrección de pospuestas
+- Problema: tareas pospuestas se cuentan en "trabajo total" aunque no se realizaron.
+- Solución: filtrar status !== 'postponed' antes de calcular totalWorkMinutes.
+- Mejora: cada chip del resumen (Completadas, Saltadas, Pospuestas, Planificadas, Trabajo Total) es clickeable.
+- Pop-up al clickear: lista detallada de tareas dentro de cada categoría.
+
+### UX del Task Pool mejorada
+- Minimizar form de nueva tarea: al apretar "+ Nueva tarea" en el header, colapsa el form para ver pool completo.
+- Filtros: pasar de swipe horizontal a dropdown vertical (más legible y descubible).
+- Filtros expandidos: agregar filtros útiles (ej: por urgencia, prioridad, deadline próxima, pendientes hoy).
+- Resultado visual: bloque completado pasa a verde con "✓ Completado" inline, no espera cambio de filtro.
+
+### Mejora UI de calendarios
+- Calendario mensual:
+	- Separación clara entre número de día e indicadores (puntos/barras de urgencia).
+	- Mejor espaciado entre calendario y lista inferior.
+	- Aumentar tamaño de celdas si es necesario.
+- Calendario semanal:
+	- Aumentar ancho de columnas de días para legibilidad en pantallas pequeñas.
+	- Afinar el zoom restante si todavía se siente grande en pantallas chicas.
+- Calendario diario:
+	- Agregar vista de hoy con bloques de descanso visibles.
+	- Mostrar horario (06:00-23:00) con slots de 30min o 1h.
+
+### Notas: formateo mejorado de selector fecha/hora
+- Problema: botón "Seleccionar fecha y hora" se sale del contenedor modal.
+- Solución: restructurar layout con componentes más compactos o grid responsive.
+- Validación: probar en pantallas de 4.7", 5.5", 6.5".
+
+### Configuración: limpiar "Sistema y Optimizador"
+- Remover: sección antigua de Settings que hacía referencia a backend remoto.
+- Reemplazar con: resumen de características (Expo, TypeScript, Zustand, OR-Tools, tecnologías clave).
+- Agregar: versión de app, links a docs/GitHub.
+
+## PRIORIDAD 3 (BAJA) - Pulido y optimización
+
+- Revisar tipografía y espaciado global para consistencia.
+- Performance: memoización de componentes pesados en calendario.
+- Accesibilidad: labels y contrast ratios.
+
+## YA IMPLEMENTADO (RETIRADO DEL PENDIENTE)
+
+- Selector de fecha y hora para recordatorios en notas (ya no es texto manual).
+- Modales informativos en metricas (maestria personal, nivel EXP, atributos/habilidades).
+- Popup/feedback in-app al completar tareas y habitos.
+- Flujo de cierre de tarea con opciones completa/parcial/saltada/pospuesta.
+- Prompt de replanificacion conectado desde Task Pool.
+- Eliminacion de bloques en timeline (tareas y descansos).
+- Vista semanal/diaria con bloques temporales y soporte de solapamiento por carriles.
+- Selector de paleta amplia + contraste de texto en Settings.

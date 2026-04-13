@@ -74,7 +74,7 @@ type TimelineCard = {
   start: Date;
   end: Date;
   color: string;
-  kind: 'Tarea' | 'Evento';
+  kind: 'Tarea' | 'Evento' | 'Descanso';
   dotted?: boolean;
   onPress: () => void;
 };
@@ -338,7 +338,7 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
   const weekStart = startOfWeek(currentDate);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const hours = Array.from({ length: 18 }, (_, i) => i + 6); // 06:00 -> 23:00
-  const hourHeight = 56;
+  const hourHeight = 40; // Reduced from 56 for better density
   const baseHour = 6;
   const timeline = useLifeStore((s) => s.timeline);
 
@@ -369,7 +369,7 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
               {days.map((day, dayIdx) => {
                 const dayEvents = getEventsForDate(events, day);
                 const dayTimelineTasks = timeline.filter(
-                  (b) => b.type === 'task' && sameDay(b.start_time, day)
+                  (b) => (b.type === 'task' || b.type === 'rest') && sameDay(b.start_time, day)
                 );
 
                 const blocks = assignOverlapLanes([
@@ -388,9 +388,9 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
                     title: b.title,
                     start: b.start_time,
                     end: b.end_time,
-                    color: lifeTheme.colors.primary,
-                    kind: 'Tarea' as const,
-                    dotted: false,
+                    color: b.type === 'rest' ? lifeTheme.colors.muted : lifeTheme.colors.primary,
+                    kind: b.type === 'rest' ? ('Descanso' as const) : ('Tarea' as const),
+                    dotted: b.type === 'rest',
                     onPress: () => undefined
                   }))
                 ]);
@@ -464,7 +464,7 @@ function DayView({ date, tasks, events, timeline, onEditEvent }: {
   const baseHour = 6;
 
   const dayEvents = getEventsForDate(events, date);
-  const dayTimelineTasks = timeline.filter((b) => b.type === 'task' && sameDay(b.start_time, date));
+  const dayTimelineTasks = timeline.filter((b) => (b.type === 'task' || b.type === 'rest') && sameDay(b.start_time, date));
 
   const blocks = assignOverlapLanes([
     ...dayEvents.map((e) => ({
@@ -482,9 +482,9 @@ function DayView({ date, tasks, events, timeline, onEditEvent }: {
       title: b.title,
       start: b.start_time,
       end: b.end_time,
-      color: urgencyColor(tasks.find((t) => t.id === b.task_id), lifeTheme),
-      kind: 'Tarea' as const,
-      dotted: false,
+      color: b.type === 'rest' ? lifeTheme.colors.muted : urgencyColor(tasks.find((t) => t.id === b.task_id), lifeTheme),
+      kind: b.type === 'rest' ? ('Descanso' as const) : ('Tarea' as const),
+      dotted: b.type === 'rest',
       onPress: () => undefined
     }))
   ]);
@@ -897,7 +897,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   viewTab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 9 },
   viewTabActive: { backgroundColor: lifeTheme.colors.primary },
   viewTabText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '700' },
-  viewTabTextActive: { color: '#fff' },
+  viewTabTextActive: { color: lifeTheme.colors.onPrimary },
   calBody: { flex: 1 },
   calBodyMonth: { flex: 0 },
   // Month
@@ -917,7 +917,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   dayCellSelected: { backgroundColor: lifeTheme.colors.primary },
   dayCellText: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '600' },
   dayCellTextToday: { color: lifeTheme.colors.primary, fontWeight: '800' },
-  dayCellTextSelected: { color: '#fff', fontWeight: '800' },
+  dayCellTextSelected: { color: lifeTheme.colors.onPrimary, fontWeight: '800' },
   dotRow: { flexDirection: 'row', gap: 2, position: 'absolute', bottom: 5 },
   calDot: { width: 4, height: 4, borderRadius: 2 },
   // Week Vertical
@@ -953,7 +953,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   // View switches...
 
   weekDayNum: { color: lifeTheme.colors.text, fontSize: 18, fontWeight: '800' },
-  weekDayNumToday: { color: '#fff' },
+  weekDayNumToday: { color: lifeTheme.colors.onPrimary },
   weekTasks: { flex: 1, gap: 4 },
   weekTaskChip: {
     backgroundColor: lifeTheme.colors.surface,
@@ -1029,7 +1029,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   cancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: lifeTheme.colors.border },
   cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
   saveBtn: { flex: 2, paddingVertical: 14, alignItems: 'center', borderRadius: 12, backgroundColor: lifeTheme.colors.primary },
-  saveBtnText: { color: '#fff', fontWeight: '800' },
+  saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' },
   
   dateBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: lifeTheme.colors.surfaceAlt, borderColor: lifeTheme.colors.border, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
   dateBtnText: { color: lifeTheme.colors.muted, fontSize: 13, flex: 1 },
@@ -1038,16 +1038,16 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
 
   // FAB
   fab: { position: 'absolute', right: 20, backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 30, elevation: 5, shadowColor: '#000', shadowOffset: {width:0, height:3}, shadowOpacity: 0.3, shadowRadius: 5 },
-  fabText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+  fabText: { color: lifeTheme.colors.onPrimary, fontWeight: '900', fontSize: 14 },
 
   freqChip: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: lifeTheme.colors.border, backgroundColor: lifeTheme.colors.surfaceAlt },
   freqChipActive: { backgroundColor: lifeTheme.colors.primary, borderColor: lifeTheme.colors.primary },
   freqChipText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '700' },
-  freqChipTextActive: { color: '#fff' },
+  freqChipTextActive: { color: lifeTheme.colors.onPrimary },
 
   daySelectChip: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border, backgroundColor: lifeTheme.colors.surfaceAlt },
   daySelectChipActive: { backgroundColor: lifeTheme.colors.primary, borderColor: lifeTheme.colors.primary },
   daySelectText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '700' },
-  daySelectTextActive: { color: '#fff' }
+  daySelectTextActive: { color: lifeTheme.colors.onPrimary }
   });
 }

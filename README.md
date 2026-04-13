@@ -75,10 +75,20 @@ npm install
 npm run android:release:fast
 ```
 
+Este comando ahora hace primero la sincronización nativa (`expo prebuild --platform android`) y luego compila con Gradle. De este modo, los íconos de `app.json` se inyectan en `android/app/src/main/res/mipmap-*` antes del release.
+
 3. Si necesitas build limpio cuando algo queda cacheado:
 
 ```bash
 npm run android:release:clean
+```
+
+Este modo ejecuta `expo prebuild --platform android --clean` antes del build para forzar regeneración completa de recursos nativos (útil si Android sigue mostrando un ícono viejo).
+
+Opcional para sincronizar sin compilar:
+
+```bash
+npm run android:sync:native
 ```
 
 APK esperado:

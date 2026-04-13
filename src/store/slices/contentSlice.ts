@@ -4,6 +4,8 @@ import type { LifeStore } from '../lifeStore.types';
 import type { Alarm, DailyRoutine, QuickNote, StaticEvent, TravelLog } from '../../types';
 import { cancelNotificationsByIds, scheduleAlarm } from '../../services/notifications';
 
+const ALARM_PERMISSION_ERROR = 'No se pudo programar la alarma. Verifica permisos de notificaciones.';
+
 export const createContentSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
   'addNote' | 'updateNote' | 'deleteNote' | 'addAlarm' | 'toggleAlarm' | 'deleteAlarm' |
   'addEvent' | 'updateEvent' | 'setEvents' | 'deleteEvent' | 'updateRoutineDay' | 'addTravelLog'
@@ -34,7 +36,15 @@ export const createContentSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
   },
 
   addAlarm: async (alarm) => {
+    if (!alarm.days.length) {
+      throw new Error('Selecciona al menos un día para la alarma.');
+    }
+
     const notificationIds = await scheduleAlarm(alarm.time, alarm.label, alarm.days);
+    if (notificationIds.length === 0) {
+      throw new Error(ALARM_PERMISSION_ERROR);
+    }
+
     set((state) => ({
       alarms: [
         ...state.alarms,
@@ -54,6 +64,10 @@ export const createContentSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
 
     if (enabled) {
       const notificationIds = await scheduleAlarm(target.time, target.label, target.days);
+      if (notificationIds.length === 0) {
+        throw new Error(ALARM_PERMISSION_ERROR);
+      }
+
       set((state) => ({
         alarms: state.alarms.map((alarm) =>
           alarm.id === id ? { ...alarm, enabled: true, notificationIds } : alarm

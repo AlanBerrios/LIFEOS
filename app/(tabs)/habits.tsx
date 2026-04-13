@@ -290,7 +290,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: lifeTheme.colors.text, fontSize: 24, fontWeight: '900' },
   addBtn: { backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
-  addBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  addBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 13 },
   modalSuggestions: { gap: 8, marginBottom: 8 },
   sectLabel: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginLeft: 4 },
   suggestionList: { gap: 10, paddingRight: 40 },
@@ -336,7 +336,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   habitActions: { flexDirection: 'row', gap: 8 },
   logBtn: { flex: 1, backgroundColor: lifeTheme.colors.primary, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
   logBtnDone: { backgroundColor: lifeTheme.colors.success },
-  logBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  logBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 13 },
   editBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
   delBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
   delBtnText: { fontSize: 14 },
@@ -355,6 +355,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   cancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center' },
   cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
   saveBtn: { flex: 2, backgroundColor: lifeTheme.colors.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  saveBtnText: { color: '#fff', fontWeight: '800' }
+  saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' }
   });
 }

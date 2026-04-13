@@ -784,7 +784,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     paddingVertical: 11
   },
   modalCloseText: {
-    color: '#fff',
+    color: lifeTheme.colors.onPrimary,
     fontSize: 13,
     fontWeight: '800'
   }

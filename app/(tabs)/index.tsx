@@ -1,7 +1,6 @@
 import type { ReactElement } from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -28,6 +27,8 @@ import {
 } from 'lucide-react-native';
 import { TutorialOverlay } from '../../src/components/TutorialOverlay';
 import { TaskCompletionCheckDialog } from '../../src/components/TaskCompletionCheckDialog';
+import { CustomAlertDialog, AlertButtonConfig } from '../../src/components/CustomAlertDialog';
+import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 
 function fmt(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -44,6 +45,7 @@ function QuickTaskModal({
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+  const { alertState, showAlert, hideAlert } = useCustomAlert();
   const addTask = useLifeStore((s) => s.addTask);
   const [title, setTitle] = useState('');
   const [urgency, setUrgency] = useState<TaskUrgency>('today');
@@ -51,7 +53,7 @@ function QuickTaskModal({
 
   function handleSave() {
     if (!title.trim()) {
-      Alert.alert('Error', 'El título es obligatorio');
+      showAlert('Error', 'El título es obligatorio');
       return;
     }
     addTask({
@@ -66,63 +68,72 @@ function QuickTaskModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Nueva tarea rápida</Text>
-          
-          <TextInput
-            style={[styles.modalInput, { fontSize: 16, textAlign: 'left' }]}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="¿Qué hay que hacer?"
-            placeholderTextColor={lifeTheme.colors.muted}
-            autoFocus
-          />
+    <>
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <Pressable style={styles.overlay} onPress={onClose}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Nueva tarea rápida</Text>
+            
+            <TextInput
+              style={[styles.modalInput, { fontSize: 16, textAlign: 'left' }]}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="¿Qué hay que hacer?"
+              placeholderTextColor={lifeTheme.colors.muted}
+              autoFocus
+            />
 
-          <View style={{ gap: 8 }}>
-            <Text style={styles.modalLabel}>Urgencia</Text>
-            <View style={{ flexDirection: 'row', gap: 6 }}>
-              {(['today', 'this_week', 'someday'] as TaskUrgency[]).map((u) => (
-                <Pressable
-                  key={u}
-                  style={[
-                    styles.urgencyMiniChip,
-                    urgency === u && styles.urgencyMiniChipActive
-                  ]}
-                  onPress={() => setUrgency(u)}
-                >
-                  <Text style={[styles.urgencyMiniText, urgency === u && { color: '#fff' }]}>
-                    {u === 'today' ? 'Hoy' : u === 'this_week' ? 'Semana' : 'Pool'}
-                  </Text>
-                </Pressable>
-              ))}
+            <View style={{ gap: 8 }}>
+              <Text style={styles.modalLabel}>Urgencia</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {(['today', 'this_week', 'someday'] as TaskUrgency[]).map((u) => (
+                  <Pressable
+                    key={u}
+                    style={[
+                      styles.urgencyMiniChip,
+                      urgency === u && styles.urgencyMiniChipActive
+                    ]}
+                    onPress={() => setUrgency(u)}
+                  >
+                    <Text style={[styles.urgencyMiniText, urgency === u && { color: lifeTheme.colors.onPrimary }]}> 
+                      {u === 'today' ? 'Hoy' : u === 'this_week' ? 'Semana' : 'Pool'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={{ gap: 4 }}>
+              <Text style={styles.modalLabel}>Tiempo: {eta} min</Text>
+              <Slider
+                style={{ width: '100%', height: 40 }}
+                minimumValue={5} maximumValue={120} step={5}
+                value={eta} onValueChange={setEta}
+                minimumTrackTintColor={lifeTheme.colors.primary}
+                maximumTrackTintColor={lifeTheme.colors.border}
+                thumbTintColor={lifeTheme.colors.primary}
+              />
+            </View>
+
+            <View style={styles.modalBtns}>
+              <Pressable style={styles.cancelBtn} onPress={onClose}>
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </Pressable>
+              <Pressable style={styles.saveBtn} onPress={handleSave}>
+                <Text style={styles.saveBtnText}>Guardar</Text>
+              </Pressable>
             </View>
           </View>
-
-          <View style={{ gap: 4 }}>
-            <Text style={styles.modalLabel}>Tiempo: {eta} min</Text>
-            <Slider
-              style={{ width: '100%', height: 40 }}
-              minimumValue={5} maximumValue={120} step={5}
-              value={eta} onValueChange={setEta}
-              minimumTrackTintColor={lifeTheme.colors.primary}
-              maximumTrackTintColor={lifeTheme.colors.border}
-              thumbTintColor={lifeTheme.colors.primary}
-            />
-          </View>
-
-          <View style={styles.modalBtns}>
-            <Pressable style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>Cancelar</Text>
-            </Pressable>
-            <Pressable style={styles.saveBtn} onPress={handleSave}>
-              <Text style={styles.saveBtnText}>Guardar</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Pressable>
-    </Modal>
+        </Pressable>
+      </Modal>
+      <CustomAlertDialog
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        buttons={alertState.buttons}
+        onDismiss={hideAlert}
+      />
+    </>
   );
 }
 
@@ -137,6 +148,7 @@ function QuickEventModal({
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+  const { alertState, showAlert, hideAlert } = useCustomAlert();
   const addEvent = useLifeStore((s) => s.addEvent);
   const [title, setTitle] = useState('');
   const [startTime, setStartTime] = useState<Date | null>(null);
@@ -145,7 +157,7 @@ function QuickEventModal({
 
   function handleSave() {
     if (!title.trim() || !startTime || !endTime) {
-      Alert.alert('Faltan datos', 'Título y horarios son obligatorios.');
+      showAlert('Faltan datos', 'Título y horarios son obligatorios.');
       return;
     }
     addEvent({
@@ -161,46 +173,55 @@ function QuickEventModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Rápido: Nuevo Evento</Text>
-          
-          <TextInput
-            style={[styles.modalInput, { fontSize: 16, textAlign: 'left' }]}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Nombre del evento"
-            placeholderTextColor={lifeTheme.colors.muted}
-            autoFocus
-          />
+    <>
+      <Modal visible={visible} transparent animationType="slide">
+        <Pressable style={styles.overlay} onPress={onClose}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Rápido: Nuevo Evento</Text>
+            
+            <TextInput
+              style={[styles.modalInput, { fontSize: 16, textAlign: 'left' }]}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="Nombre del evento"
+              placeholderTextColor={lifeTheme.colors.muted}
+              autoFocus
+            />
 
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-             <View style={{ flex: 1 }}>
-                <Text style={styles.modalLabel}>Recordatorio (min)</Text>
-                <TextInput
-                  style={[styles.modalInput, { fontSize: 16, padding: 10 }]}
-                  value={String(remindMin)}
-                  onChangeText={(v) => setRemindMin(Number(v) || 0)}
-                  keyboardType="number-pad"
-                />
-             </View>
-          </View>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+               <View style={{ flex: 1 }}>
+                  <Text style={styles.modalLabel}>Recordatorio (min)</Text>
+                  <TextInput
+                    style={[styles.modalInput, { fontSize: 16, padding: 10 }]}
+                    value={String(remindMin)}
+                    onChangeText={(v) => setRemindMin(Number(v) || 0)}
+                    keyboardType="number-pad"
+                  />
+               </View>
+            </View>
 
-          <View style={styles.modalBtns}>
-            <Pressable style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>Cerrar</Text>
-            </Pressable>
-            <Pressable style={styles.saveBtn} onPress={handleSave}>
-              <Text style={styles.saveBtnText}>Guardar</Text>
-            </Pressable>
+            <View style={styles.modalBtns}>
+              <Pressable style={styles.cancelBtn} onPress={onClose}>
+                <Text style={styles.cancelBtnText}>Cerrar</Text>
+              </Pressable>
+              <Pressable style={styles.saveBtn} onPress={handleSave}>
+                <Text style={styles.saveBtnText}>Guardar</Text>
+              </Pressable>
+            </View>
+            <Text style={{ color: lifeTheme.colors.muted, fontSize: 10, textAlign: 'center' }}>
+              * Usa el Calendario para configurar horas exactas.
+            </Text>
           </View>
-          <Text style={{ color: lifeTheme.colors.muted, fontSize: 10, textAlign: 'center' }}>
-            * Usa el Calendario para configurar horas exactas.
-          </Text>
-        </View>
-      </Pressable>
-    </Modal>
+        </Pressable>
+      </Modal>
+      <CustomAlertDialog
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        buttons={alertState.buttons}
+        onDismiss={hideAlert}
+      />
+    </>
   );
 }
 
@@ -371,7 +392,9 @@ function BlockCard({
   now,
   onEditBreak,
   onTaskCompleted,
-  onRequestCompletionCheck
+  onRequestCompletionCheck,
+  showAlert,
+  hideAlert
 }: {
   block: ReturnType<typeof useLifeStore.getState>['timeline'][0];
   index: number;
@@ -380,6 +403,8 @@ function BlockCard({
   onEditBreak: (id: string, minutes: number) => void;
   onTaskCompleted: (title: string, xp: number) => void;
   onRequestCompletionCheck: (taskId: string) => void;
+  showAlert: (title: string, message?: string, buttons?: AlertButtonConfig[]) => void;
+  hideAlert: () => void;
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
@@ -482,7 +507,7 @@ function BlockCard({
               <Pressable
                 style={[styles.ctrlBtn, styles.ctrlBtnDone, isInProgress && styles.ctrlBtnInProgress]}
                 onPress={() => {
-                  Alert.alert('Gestión de Tarea', `¿Qué quieres hacer con "${block.title}"?`, [
+                  showAlert('Gestión de Tarea', `¿Qué quieres hacer con "${block.title}"?`, [
                     { text: 'X Cancelar', style: 'cancel' },
                     { text: '🗑 Eliminar bloque', style: 'destructive', onPress: () => deleteBlock(block.id) },
                     { text: '⏭️ Saltar', onPress: () => skipTask(block.task_id!) },
@@ -511,7 +536,7 @@ function BlockCard({
             style={styles.editBreakBtn}
             onPress={() => onEditBreak(block.id, durationMin)}
             onLongPress={() => {
-              Alert.alert('Eliminar descanso', '¿Eliminar este bloque de descanso?', [
+              showAlert('Eliminar descanso', '¿Eliminar este bloque de descanso?', [
                 { text: 'Cancelar', style: 'cancel' },
                 { text: 'Eliminar 🗑', style: 'destructive', onPress: () => useLifeStore.getState().deleteBlock(block.id) }
               ]);
@@ -530,6 +555,7 @@ function BlockCard({
 export default function DashboardScreen(): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+  const { alertState, showAlert, hideAlert } = useCustomAlert();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const timeline = useLifeStore((s) => s.timeline);
@@ -589,6 +615,15 @@ export default function DashboardScreen(): ReactElement {
   const completedCount = tasks.filter((t) => t.status === 'completed').length;
   const taskBlocks = timeline.filter((b) => b.type === 'task').length;
   const completionTask = completionTaskId ? tasks.find((t) => t.id === completionTaskId) ?? null : null;
+
+  // Auto-filter completed tasks from timeline
+  const visibleTimeline = timeline.filter((block) => {
+    if (block.task_id) {
+      const task = tasks.find((t) => t.id === block.task_id);
+      return !task || task.status !== 'completed';
+    }
+    return true;
+  });
 
   function showFeedback(title: string, subtitle: string) {
     setFeedback({ title, subtitle });
@@ -762,16 +797,16 @@ export default function DashboardScreen(): ReactElement {
 
 
         {/* Timeline */}
-        {timeline.length > 0 ? (
+        {visibleTimeline.length > 0 ? (
           <Animated.View entering={FadeInDown.delay(220).duration(320)} style={styles.section}>
             <Text style={styles.sectionTitle}>📆 Timeline de hoy</Text>
             <View style={styles.blockList}>
-              {timeline.map((block, idx) => (
+              {visibleTimeline.map((block, idx) => (
                 <BlockCard
                   key={block.id}
                   block={block}
                   index={idx}
-                  total={timeline.length}
+                  total={visibleTimeline.length}
                   now={now}
                   onEditBreak={(id, mins) => setEditBreak({ id, minutes: mins })}
                   onTaskCompleted={(title, xp) => {
@@ -780,6 +815,8 @@ export default function DashboardScreen(): ReactElement {
                     }
                   }}
                   onRequestCompletionCheck={(taskId) => setCompletionTaskId(taskId)}
+                  showAlert={showAlert}
+                  hideAlert={hideAlert}
                 />
               ))}
             </View>
@@ -855,6 +892,13 @@ export default function DashboardScreen(): ReactElement {
           setCompletionTaskId(null);
         }}
       />
+      <CustomAlertDialog
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        buttons={alertState.buttons}
+        onDismiss={hideAlert}
+      />
     </>
   );
 }
@@ -904,7 +948,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     backgroundColor: lifeTheme.colors.primary, borderRadius: 12,
     paddingVertical: 14, alignItems: 'center'
   },
-  primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  primaryBtnText: { color: lifeTheme.colors.onPrimary, fontSize: 15, fontWeight: '800' },
   secondaryBtn: {
     backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12,
     paddingVertical: 10, alignItems: 'center', justifyContent: 'center',
@@ -1044,7 +1088,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   },
   cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
   saveBtn: { flex: 1, backgroundColor: lifeTheme.colors.primary, borderRadius: 12, padding: 13, alignItems: 'center' },
-  saveBtnText: { color: '#fff', fontWeight: '800' },
+  saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' },
   // Actions Grid
   secondaryActionsRow: { flexDirection: 'row', gap: 10 },
   flex1: { flex: 1 },
@@ -1069,7 +1113,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     position: 'absolute', top: -4, right: -4,
     backgroundColor: lifeTheme.colors.success, borderRadius: 10,
     width: 18, height: 18, textAlign: 'center', lineHeight: 18,
-    color: '#fff', fontSize: 10, fontWeight: '900', overflow: 'hidden'
+    color: lifeTheme.colors.onPrimary, fontSize: 10, fontWeight: '900', overflow: 'hidden'
   },
   feedbackToast: {
     position: 'absolute',

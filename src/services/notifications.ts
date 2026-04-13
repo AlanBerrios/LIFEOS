@@ -1,6 +1,23 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import type { AppSettings, ScheduleBlock, Task } from '../types';
+import type { Alarm, AppSettings, ScheduleBlock, Task } from '../types';
+
+export const NOTIFICATION_PERMISSION_ERROR = 'NOTIFICATION_PERMISSION_DENIED';
+
+export const NOTIFICATION_TEST_TYPES = [
+  'task_start',
+  'pending',
+  'important',
+  'distraction',
+  'completion_check',
+  'alarm',
+  'routine_sleep',
+  'routine_meal',
+  'event',
+  'note'
+] as const;
+
+export type NotificationTestType = (typeof NOTIFICATION_TEST_TYPES)[number];
 
 // ─── Init (call once from _layout) ───────────────────────────────────────────
 
@@ -110,6 +127,86 @@ export async function cancelNotificationsByIds(ids: string[] = []): Promise<void
 
 export async function cancelAllNotifications(): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
+}
+
+function dateAfterSeconds(seconds: number): Date {
+  const date = new Date();
+  date.setSeconds(date.getSeconds() + Math.max(1, seconds));
+  return date;
+}
+
+export async function triggerNotificationTest(type: NotificationTestType): Promise<string | null> {
+  const granted = await requestNotificationPermission();
+  if (!granted) return null;
+
+  const triggerDate = dateAfterSeconds(3);
+
+  const payloadByType: Record<NotificationTestType, Notifications.NotificationRequestInput['content']> = {
+    task_start: {
+      title: '📌 Test: Tarea programada',
+      body: 'En 5 min: Revisar agenda del día.',
+      sound: true
+    },
+    pending: {
+      title: '📋 Test: Pendientes',
+      body: 'Tienes 3 tareas sin completar.',
+      sound: true
+    },
+    important: {
+      title: '⚠️ Test: Tarea importante pendiente',
+      body: '"Enviar reporte" sigue pendiente hoy.',
+      sound: true
+    },
+    distraction: {
+      title: '👀 Test: Fuga de atención',
+      body: 'Llevas 5 min fuera de la app. ¿Retomamos?',
+      sound: true,
+      categoryIdentifier: 'distraction_alert'
+    },
+    completion_check: {
+      title: '🤔 Test: Completion Check',
+      body: 'Terminó el bloque de "Deep Work". ¿Lo completaste?',
+      sound: true,
+      categoryIdentifier: 'completion_check',
+      data: { type: 'completion_check', taskId: 'test-task', blockId: 'test-block' }
+    },
+    alarm: {
+      title: '⏰ Test: Alarma',
+      body: 'Esta es una alarma de prueba.',
+      sound: true
+    },
+    routine_sleep: {
+      title: '🌙 Test: Rutina sueño',
+      body: 'Hora de empezar la desconexión para dormir.',
+      sound: true
+    },
+    routine_meal: {
+      title: '🍴 Test: Rutina comida',
+      body: 'Bloque de comida de 45 min.',
+      sound: true
+    },
+    event: {
+      title: '📌 Test: Evento',
+      body: 'Evento de prueba inicia en breve.',
+      sound: true,
+      data: { type: 'event', id: 'test-event' }
+    },
+    note: {
+      title: '📝 Test: Nota',
+      body: 'Recordatorio de nota de prueba.',
+      sound: true,
+      data: { type: 'note', id: 'test-note' }
+    }
+  };
+
+  return Notifications.scheduleNotificationAsync({
+    content: payloadByType[type],
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: triggerDate,
+      channelId: 'default'
+    }
+  });
 }
 
 // ─── Notificaciones de inicio de tarea ───────────────────────────────────────
@@ -295,6 +392,27 @@ export async function syncRoutineAlarms(routines: import('../types').DailyRoutin
   }
 }
 
+// ─── Alarmas guardadas por el usuario ────────────────────────────────────────
+
+export async function syncSavedAlarms(alarms: Alarm[]): Promise<Alarm[]> {
+  const granted = await requestNotificationPermission();
+  if (!granted) return alarms;
+
+  const syncedAlarms: Alarm[] = [];
+
+  for (const alarm of alarms) {
+    if (!alarm.enabled) {
+      syncedAlarms.push({ ...alarm, notificationIds: [] });
+      continue;
+    }
+
+    const notificationIds = await scheduleAlarm(alarm.time, alarm.label, alarm.days);
+    syncedAlarms.push({ ...alarm, notificationIds });
+  }
+
+  return syncedAlarms;
+}
+
 // ─── Coordinador Central ──────────────────────────────────────────────────────
 
 export async function rescheduleAll(
@@ -303,10 +421,11 @@ export async function rescheduleAll(
   settings: AppSettings,
   routines: import('../types').DailyRoutine[],
   events: import('../types').StaticEvent[],
-  notes: import('../types').QuickNote[]
-): Promise<void> {
+  notes: import('../types').QuickNote[],
+  alarms: Alarm[] = []
+): Promise<Alarm[]> {
   const granted = await requestNotificationPermission();
-  if (!granted) return;
+  if (!granted) return alarms;
 
   // Paso 1: Limpiar todo
   await cancelAllNotifications();
@@ -327,6 +446,9 @@ export async function rescheduleAll(
 
   // Paso 6: Programar recordatorios de notas
   await scheduleNoteReminders(notes);
+
+  // Paso 7: Reprogramar alarmas guardadas del usuario y devolver IDs frescos
+  return syncSavedAlarms(alarms);
 }
 
 // ─── Verificación de cumplimiento ───────────────────────────────────────────

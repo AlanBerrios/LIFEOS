@@ -21,7 +21,10 @@ import {
   schedulePendingReminder,
   scheduleImportantTaskAlert,
   cancelAllNotifications,
-  rescheduleAll
+  rescheduleAll,
+  requestNotificationPermission,
+  triggerNotificationTest,
+  type NotificationTestType
 } from '../../src/services/notifications';
 import { getCurrentLocation } from '../../src/services/location';
 import { fetchAndParseICS, parseICS } from '../../src/services/icsParser';
@@ -30,8 +33,22 @@ import { router } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { UI_ACCENT_TEXT_MODES } from '../../src/theme';
 
 type SettingsStyles = ReturnType<typeof createStyles>;
+
+const NOTIFICATION_TEST_BUTTONS: Array<{ key: NotificationTestType; label: string; subtitle: string }> = [
+  { key: 'task_start', label: 'Test Tarea Programada', subtitle: 'Aviso de inicio de bloque' },
+  { key: 'pending', label: 'Test Pendientes', subtitle: 'Resumen de tareas pendientes' },
+  { key: 'important', label: 'Test Importante', subtitle: 'Alerta de prioridad alta' },
+  { key: 'distraction', label: 'Test Distracción', subtitle: 'Categoría distraction_alert' },
+  { key: 'completion_check', label: 'Test Completion Check', subtitle: 'Cierre de bloque con acciones' },
+  { key: 'alarm', label: 'Test Alarma', subtitle: 'Notificación tipo alarma' },
+  { key: 'routine_sleep', label: 'Test Rutina Sueño', subtitle: 'Recordatorio de descanso' },
+  { key: 'routine_meal', label: 'Test Rutina Comida', subtitle: 'Bloque de comida' },
+  { key: 'event', label: 'Test Evento', subtitle: 'Recordatorio de evento estático' },
+  { key: 'note', label: 'Test Nota', subtitle: 'Recordatorio de nota' }
+];
 
 // ─── Accordion Component ──────────────────────────────────────────────────
 function Accordion({
@@ -156,8 +173,15 @@ export default function SettingsScreen(): ReactElement {
   }
 
   async function handleApplyNotifications() {
+    const granted = await requestNotificationPermission();
+    if (!granted) {
+      Alert.alert('Permiso requerido', 'Activa notificaciones del sistema para aplicar reglas.');
+      return;
+    }
+
     await cancelAllNotifications();
-    await rescheduleAll(timeline, tasks, settings, routines, events, notes);
+    const syncedAlarms = await rescheduleAll(timeline, tasks, settings, routines, events, notes, useLifeStore.getState().alarms);
+    useLifeStore.setState({ alarms: syncedAlarms });
     const pendingTasks = tasks.filter((t) => t.status !== 'completed');
     if (settings.notifyPendingIntervalMinutes > 0 && pendingTasks.length > 0) {
       await schedulePendingReminder(settings.notifyPendingIntervalMinutes, pendingTasks.length);
@@ -173,6 +197,15 @@ export default function SettingsScreen(): ReactElement {
     if (!icsUrl) return;
     const success = await fetchAndParseICS(icsUrl);
     if (success) setIcsUrl('');
+  }
+
+  async function handleRunNotificationTest(type: NotificationTestType) {
+    const id = await triggerNotificationTest(type);
+    if (!id) {
+      Alert.alert('Permiso requerido', 'No se pudo ejecutar el test. Revisa permisos de notificaciones.');
+      return;
+    }
+    Alert.alert('🧪 Test enviado', 'Se programó una notificación de prueba para los próximos segundos.');
   }
 
   async function handlePickIcsFile() {
@@ -219,8 +252,9 @@ export default function SettingsScreen(): ReactElement {
         </SettingRow>
 
         <View style={styles.divider} />
-        <Text style={styles.inputLabel}>Color principal UI</Text>
-        <View style={styles.colorRow}>
+        <Text style={styles.inputLabel}>Paleta principal UI</Text>
+        <Text style={styles.helperText}>Elige un color de acento para botones, indicadores y resaltados.</Text>
+        <View style={styles.colorGrid}>
           {UI_ACCENT_PRESETS.map((preset) => {
             const selected = settings.uiAccentColor === preset.color;
             return (
@@ -232,8 +266,36 @@ export default function SettingsScreen(): ReactElement {
                   { backgroundColor: preset.color },
                   selected && styles.colorSwatchSelected
                 ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Seleccionar color ${preset.label}`}
               >
                 <Text style={styles.colorSwatchText}>{selected ? '✓' : ''}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={styles.divider} />
+        <Text style={styles.inputLabel}>Color del texto en botones</Text>
+        <Text style={styles.helperText}>Auto usa contraste automático; también puedes forzar blanco u oscuro claro.</Text>
+        <View style={styles.contrastRow}>
+          {UI_ACCENT_TEXT_MODES.map((mode) => {
+            const selected = settings.uiAccentTextMode === mode.key;
+            return (
+              <Pressable
+                key={mode.key}
+                onPress={() => updateSettings({ uiAccentTextMode: mode.key })}
+                style={[
+                  styles.contrastOption,
+                  selected && { backgroundColor: lifeTheme.colors.primary, borderColor: lifeTheme.colors.primary }
+                ]}
+              >
+                <Text style={[styles.contrastOptionText, selected && { color: lifeTheme.colors.onPrimary }]}>
+                  {mode.label}
+                </Text>
+                <Text style={[styles.contrastOptionSubtext, selected && { color: lifeTheme.colors.onPrimary }]}>
+                  {mode.description}
+                </Text>
               </Pressable>
             );
           })}
@@ -396,6 +458,23 @@ export default function SettingsScreen(): ReactElement {
         </View>
       </Accordion>
 
+      <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Test" icon="🧪">
+        <Text style={styles.inputLabel}>Pruebas de notificaciones</Text>
+        <Text style={styles.helperText}>Estos botones disparan ejemplos aislados. No modifican tareas, rutinas ni timeline.</Text>
+        <View style={styles.testGrid}>
+          {NOTIFICATION_TEST_BUTTONS.map((item) => (
+            <Pressable
+              key={item.key}
+              style={styles.testCardBtn}
+              onPress={() => void handleRunNotificationTest(item.key)}
+            >
+              <Text style={styles.testCardTitle}>{item.label}</Text>
+              <Text style={styles.testCardSubtitle}>{item.subtitle}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </Accordion>
+
       <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Mantenimiento" icon="⚙️">
         <SettingRow styles={styles} label="Copia de Seguridad" subtitle="Exporta tus datos localmente">
           <Pressable style={styles.backupBtn} onPress={() => void handleBackup()}>
@@ -491,11 +570,12 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
   slider: { marginHorizontal: -4, height: 30 },
   
   valueText: { color: theme.colors.primary, fontSize: 16, fontWeight: '800', marginRight: 8, width: 45, textAlign: 'right' },
+  helperText: { color: theme.colors.muted, fontSize: 12, lineHeight: 17, marginTop: 6 },
   
   applyBtn: { backgroundColor: theme.colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-  applyBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
+  applyBtnText: { color: theme.colors.onPrimary, fontSize: 14, fontWeight: '800' },
   backupBtn: { backgroundColor: theme.colors.success, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-  backupBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
+  backupBtnText: { color: theme.colors.onPrimary, fontSize: 14, fontWeight: '800' },
   pressed: { opacity: 0.75 },
 
   timeInput: { backgroundColor: theme.colors.surfaceAlt, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, color: theme.colors.text, fontSize: 16, fontWeight: '700', width: 65, textAlign: 'center', borderWidth: 1, borderColor: theme.colors.border },
@@ -503,10 +583,10 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
   urlInputBox: { paddingVertical: 8, gap: 12 },
   inputLabel: { color: theme.colors.text, fontSize: 14, fontWeight: '700', marginBottom: -4 },
   urlInput: { backgroundColor: theme.colors.background, color: theme.colors.text, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, fontSize: 15 },
-  colorRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
   colorSwatch: {
-    width: 38,
-    height: 38,
+    width: 46,
+    height: 46,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -519,6 +599,32 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
     borderWidth: 2
   },
   colorSwatchText: { color: '#ffffff', fontWeight: '900', fontSize: 14 },
+  contrastRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
+  contrastOption: {
+    minWidth: 96,
+    flexGrow: 1,
+    backgroundColor: theme.colors.surfaceAlt,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 2
+  },
+  contrastOptionText: { color: theme.colors.text, fontSize: 14, fontWeight: '800' },
+  contrastOptionSubtext: { color: theme.colors.muted, fontSize: 11, fontWeight: '600' },
+  testGrid: { gap: 10, marginTop: 12 },
+  testCardBtn: {
+    backgroundColor: theme.colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    gap: 2
+  },
+  testCardTitle: { color: theme.colors.text, fontSize: 13, fontWeight: '800' },
+  testCardSubtitle: { color: theme.colors.muted, fontSize: 11, fontWeight: '600' },
   
   locBtn: { paddingVertical: 10 },
   locBtnText: { color: theme.colors.primary, fontWeight: '600', fontSize: 14 },

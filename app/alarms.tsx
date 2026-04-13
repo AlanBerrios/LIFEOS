@@ -40,8 +40,9 @@ export default function AlarmsScreen(): ReactElement {
     try {
       await toggleAlarm(id, !currentEnabled);
       Alert.alert('Alarma', currentEnabled ? 'Alarma desactivada' : 'Alarma activada');
-    } catch {
-      Alert.alert('Error', 'No se pudo actualizar la alarma.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo actualizar la alarma.';
+      Alert.alert('Error', message);
     }
   }
 
@@ -57,8 +58,9 @@ export default function AlarmsScreen(): ReactElement {
         label: newAlarm.label || 'Alarma',
         days: newAlarm.days
       });
-    } catch {
-      Alert.alert('Error', 'No se pudo crear la alarma.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo crear la alarma.';
+      Alert.alert('Error', message);
       return;
     }
 
@@ -244,11 +246,11 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   daySelectBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: lifeTheme.colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   daySelectBtnActive: { backgroundColor: lifeTheme.colors.primary },
   daySelectText: { color: lifeTheme.colors.muted, fontWeight: '700', fontSize: 12 },
-  daySelectTextActive: { color: '#fff' },
+  daySelectTextActive: { color: lifeTheme.colors.onPrimary },
   modalBtns: { flexDirection: 'row', gap: 12, marginTop: 20 },
   cancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center', borderRadius: 14, backgroundColor: lifeTheme.colors.surfaceAlt },
   cancelBtnText: { color: lifeTheme.colors.text, fontWeight: '700' },
   saveBtn: { flex: 2, backgroundColor: lifeTheme.colors.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  saveBtnText: { color: '#fff', fontWeight: '800' }
+  saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' }
   });
 }

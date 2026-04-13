@@ -624,7 +624,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     flex: 1, backgroundColor: lifeTheme.colors.primary,
     borderRadius: 12, paddingVertical: 14, alignItems: 'center'
   },
-  primaryBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  primaryBtnText: { color: lifeTheme.colors.onPrimary, fontSize: 14, fontWeight: '800' },
   cancelBtn: {
     paddingHorizontal: 16, borderRadius: 12, borderWidth: 1,
     borderColor: lifeTheme.colors.border, justifyContent: 'center'
