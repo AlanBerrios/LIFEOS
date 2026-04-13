@@ -134,7 +134,7 @@ export default function NotesScreen(): ReactElement {
     >
       <View style={styles.hdr}>
         <Text style={styles.title}>📝 Bloc de Notas</Text>
-        <Pressable style={styles.addBtn} onPress={openCreate}>
+        <Pressable style={styles.addBtn} onPress={openCreate} accessibilityRole="button" accessibilityLabel="Crear nueva nota">
           <Text style={styles.addBtnText}>+ Nueva</Text>
         </Pressable>
       </View>
@@ -151,7 +151,7 @@ export default function NotesScreen(): ReactElement {
               entering={FadeInDown.delay(idx * 50)}
               layout={Layout.springify()}
             >
-              <Pressable style={styles.noteCard} onPress={() => openEdit(note)}>
+              <Pressable style={styles.noteCard} onPress={() => openEdit(note)} accessibilityRole="button" accessibilityLabel={`Editar nota ${note.title}`}>
               <View style={styles.noteHdr}>
                 <Text style={styles.noteTitle}>{note.title}</Text>
                 <Pressable
@@ -161,6 +161,8 @@ export default function NotesScreen(): ReactElement {
                       { text: 'Sí, borrar', style: 'destructive', onPress: () => deleteNote(note.id) }
                     ]);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Eliminar nota ${note.title}`}
                 >
                   <Text style={styles.delIcon}>🗑</Text>
                 </Pressable>
@@ -208,13 +210,13 @@ export default function NotesScreen(): ReactElement {
             <View style={styles.reminderRow}>
               <Text style={styles.label}>Recordatorio (día y hora)</Text>
               <View style={styles.reminderActionRow}>
-                <Pressable style={styles.reminderPickerBtn} onPress={openReminderPicker}>
+                <Pressable style={styles.reminderPickerBtn} onPress={openReminderPicker} accessibilityRole="button" accessibilityLabel="Seleccionar fecha y hora del recordatorio">
                   <Text style={[styles.reminderPickerText, newNote.reminderAt ? styles.reminderPickerTextActive : null]}>
                     {newNote.reminderAt ? formatReminder(newNote.reminderAt) : 'Seleccionar fecha y hora'}
                   </Text>
                 </Pressable>
                 {newNote.reminderAt ? (
-                  <Pressable style={styles.clearReminderBtn} onPress={clearReminder}>
+                  <Pressable style={styles.clearReminderBtn} onPress={clearReminder} accessibilityRole="button" accessibilityLabel="Quitar recordatorio">
                     <Text style={styles.clearReminderText}>✕</Text>
                   </Pressable>
                 ) : null}
@@ -259,9 +261,9 @@ export default function NotesScreen(): ReactElement {
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
-  content: { paddingHorizontal: 20, gap: 20 },
+  content: { paddingHorizontal: lifeTheme.spacing.lg, gap: lifeTheme.spacing.lg },
   hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  title: { color: lifeTheme.colors.text, fontSize: 24, fontWeight: '900' },
+  title: { color: lifeTheme.colors.text, fontSize: lifeTheme.typography.titleLg, fontWeight: '900' },
   addBtn: { backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
   addBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 13 },
   list: { gap: 12 },
@@ -272,9 +274,9 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   noteHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   noteTitle: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '800', flex: 1 },
   delIcon: { fontSize: 16, opacity: 0.6 },
-  noteContent: { color: lifeTheme.colors.muted, fontSize: 14, lineHeight: 20 },
+  noteContent: { color: lifeTheme.colors.muted, fontSize: lifeTheme.typography.body, lineHeight: 20 },
   noteFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  noteDate: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '600' },
+  noteDate: { color: lifeTheme.colors.muted, fontSize: lifeTheme.typography.caption, fontWeight: '600' },
   reminderBadge: { backgroundColor: 'rgba(124,108,252,0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   reminderText: { color: lifeTheme.colors.primary, fontSize: 11, fontWeight: '700' },
   emptyCard: { padding: 40, alignItems: 'center' },
@@ -285,18 +287,18 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   label: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
   inputTitle: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12, padding: 14, color: lifeTheme.colors.text, fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: lifeTheme.colors.border },
   inputContent: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12, padding: 14, color: lifeTheme.colors.text, fontSize: 15, minHeight: 120, borderWidth: 1, borderColor: lifeTheme.colors.border },
-  reminderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  reminderActionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reminderRow: { gap: 8, alignItems: 'stretch' },
+  reminderActionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%' },
   reminderPickerBtn: {
+    flex: 1,
     backgroundColor: lifeTheme.colors.surfaceAlt,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    minWidth: 180
+    borderColor: lifeTheme.colors.border
   },
-  reminderPickerText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '600' },
+  reminderPickerText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '600', flexShrink: 1 },
   reminderPickerTextActive: { color: lifeTheme.colors.text, fontWeight: '700' },
   clearReminderBtn: {
     width: 30,

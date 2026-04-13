@@ -8,7 +8,8 @@ import { AppState } from 'react-native';
 import { useLifeStore } from '../src/store/useLifeStore';
 import {
   initNotifications,
-  requestNotificationPermission
+  requestNotificationPermission,
+  type NotificationPayloadData
 } from '../src/services/notifications';
 import { checkGeofenceState } from '../src/services/location';
 import { checkScreenTimeDistraction, registerScreenTimeBackgroundTask } from '../src/services/screenTime';
@@ -28,6 +29,79 @@ export default function RootLayout(): ReactElement {
 
   useEffect(() => {
     let mounted = true;
+    const processedActionKeys = new Set<string>();
+
+    const getTaskIdFromData = (data: NotificationPayloadData): string | undefined => {
+      const directTaskId = typeof data.taskId === 'string' ? data.taskId : undefined;
+      if (directTaskId) return directTaskId;
+
+      const legacyTaskId = typeof data.task_id === 'string' ? data.task_id : undefined;
+      if (legacyTaskId) return legacyTaskId;
+
+      const blockId = typeof data.blockId === 'string' ? data.blockId : undefined;
+      if (!blockId) return undefined;
+
+      const block = useLifeStore.getState().timeline.find((item) => item.id === blockId);
+      return block?.task_id;
+    };
+
+    const processNotificationResponse = async (
+      Notifications: typeof import('expo-notifications'),
+      resp: import('expo-notifications').NotificationResponse | null
+    ) => {
+      if (!resp) return;
+
+      const actionId = resp.actionIdentifier;
+      if (actionId === Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+
+      const requestId = resp.notification.request.identifier;
+      const actionKey = `${requestId}:${actionId}`;
+      if (processedActionKeys.has(actionKey)) return;
+      processedActionKeys.add(actionKey);
+      if (processedActionKeys.size > 50) {
+        const oldest = processedActionKeys.values().next().value;
+        if (oldest) processedActionKeys.delete(oldest);
+      }
+
+      const rawData = resp.notification.request.content.data;
+      const data: NotificationPayloadData =
+        rawData && typeof rawData === 'object' ? (rawData as NotificationPayloadData) : {};
+      const taskId = getTaskIdFromData(data);
+
+      if (actionId === 'snooze') {
+        const taskName =
+          (typeof data.taskTitle === 'string' && data.taskTitle.trim()) ||
+          resp.notification.request.content.body?.split(': ').at(-1) ||
+          'Tu tarea';
+        const module = await import('../src/services/notifications');
+        await module.scheduleDistractionWarning(taskName, 5, taskId);
+        return;
+      }
+
+      if (actionId === 'start_task') {
+        if (!taskId) return;
+        const store = useLifeStore.getState();
+        store.startTask(taskId);
+        store.startTaskExecution(taskId);
+        return;
+      }
+
+      if (!taskId) return;
+
+      if (actionId === 'done') {
+        await useLifeStore.getState().confirmCompletionOK(taskId);
+      } else if (actionId === 'skip') {
+        await useLifeStore.getState().reportTaskSkipped(taskId, 'distraction', 'Marcado desde notificación');
+      } else if (actionId === 'postpone') {
+        const postponedUntil = new Date(Date.now() + 60 * 60_000);
+        await useLifeStore.getState().reportTaskPostponed(
+          taskId,
+          'need_more_time',
+          'Pospuesto desde notificación',
+          postponedUntil
+        );
+      }
+    };
 
     const initApp = async () => {
       try {
@@ -56,32 +130,14 @@ export default function RootLayout(): ReactElement {
     const importNotifs = async () => {
       const Notifications = await import('expo-notifications');
       notifSub = Notifications.addNotificationResponseReceivedListener((resp) => {
-        const actionId = resp.actionIdentifier;
-        const data = resp.notification.request.content.data as { type?: string; taskId?: string };
-        if (actionId === 'snooze') {
-          // Re-trigger after 5 mins silently
-          const taskName = resp.notification.request.content.body?.split(': ')[1] || 'Tu tarea';
-          import('../src/services/notifications').then((module) => {
-            module.scheduleDistractionWarning(taskName, 5);
-          });
-        } else if (actionId === 'start_task') {
-          // Navigating to Home is default because the app opens
-        } else if (data?.type === 'completion_check' && data.taskId) {
-          if (actionId === 'done') {
-            void useLifeStore.getState().confirmCompletionOK(data.taskId);
-          } else if (actionId === 'skip') {
-            void useLifeStore.getState().reportTaskSkipped(data.taskId, 'distraction', 'Marcado desde notificación');
-          } else if (actionId === 'postpone') {
-            const postponedUntil = new Date(Date.now() + 60 * 60_000);
-            void useLifeStore.getState().reportTaskPostponed(
-              data.taskId,
-              'need_more_time',
-              'Pospuesto desde notificación',
-              postponedUntil
-            );
-          }
-        }
+        void processNotificationResponse(Notifications, resp);
       });
+
+      const lastResponse = await Notifications.getLastNotificationResponseAsync();
+      await processNotificationResponse(Notifications, lastResponse);
+      if (typeof Notifications.clearLastNotificationResponseAsync === 'function') {
+        await Notifications.clearLastNotificationResponseAsync();
+      }
     };
     importNotifs();
 

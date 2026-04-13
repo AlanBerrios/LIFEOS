@@ -2,9 +2,31 @@ import type { StateCreator } from 'zustand';
 import { createId } from '../../utils/ids';
 import type { LifeStore } from '../lifeStore.types';
 import type { Alarm, DailyRoutine, QuickNote, StaticEvent, TravelLog } from '../../types';
-import { cancelNotificationsByIds, scheduleAlarm } from '../../services/notifications';
+import { cancelNotificationsByIds, rescheduleAll, scheduleAlarm } from '../../services/notifications';
 
 const ALARM_PERMISSION_ERROR = 'No se pudo programar la alarma. Verifica permisos de notificaciones.';
+
+function eventDedupeKey(event: StaticEvent): string {
+  const title = event.title.trim().toLowerCase();
+  const location = (event.location ?? '').trim().toLowerCase();
+  const start = event.startTime.toISOString();
+  const end = event.endTime.toISOString();
+  return `${title}|${location}|${start}|${end}`;
+}
+
+function dedupeEvents(events: StaticEvent[]): StaticEvent[] {
+  const seen = new Set<string>();
+  const deduped: StaticEvent[] = [];
+
+  for (const event of events) {
+    const key = eventDedupeKey(event);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(event);
+  }
+
+  return deduped;
+}
 
 export const createContentSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
   'addNote' | 'updateNote' | 'deleteNote' | 'addAlarm' | 'toggleAlarm' | 'deleteAlarm' |
@@ -21,18 +43,57 @@ export const createContentSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
         ...state.notes
       ]
     }));
+
+    const state = get();
+    void rescheduleAll(
+      state.timeline,
+      state.tasks,
+      state.settings,
+      state.routines,
+      state.events,
+      state.notes,
+      state.alarms
+    )
+      .then((syncedAlarms) => set({ alarms: syncedAlarms }))
+      .catch((error) => console.log('[LifeOS] Error al resincronizar notificaciones de notas:', error));
   },
 
   updateNote: (id: string, updates: Partial<QuickNote>) => {
     set((state) => ({
       notes: state.notes.map((note) => (note.id === id ? { ...note, ...updates } : note))
     }));
+
+    const state = get();
+    void rescheduleAll(
+      state.timeline,
+      state.tasks,
+      state.settings,
+      state.routines,
+      state.events,
+      state.notes,
+      state.alarms
+    )
+      .then((syncedAlarms) => set({ alarms: syncedAlarms }))
+      .catch((error) => console.log('[LifeOS] Error al resincronizar notificaciones de notas:', error));
   },
 
   deleteNote: (id: string) => {
     set((state) => ({
       notes: state.notes.filter((note) => note.id !== id)
     }));
+
+    const state = get();
+    void rescheduleAll(
+      state.timeline,
+      state.tasks,
+      state.settings,
+      state.routines,
+      state.events,
+      state.notes,
+      state.alarms
+    )
+      .then((syncedAlarms) => set({ alarms: syncedAlarms }))
+      .catch((error) => console.log('[LifeOS] Error al resincronizar notificaciones de notas:', error));
   },
 
   addAlarm: async (alarm) => {
@@ -94,24 +155,76 @@ export const createContentSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
 
   addEvent: (event) => {
     set((state) => ({
-      events: [...state.events, { id: createId('evt'), ...event }]
+      events: dedupeEvents([...state.events, { id: createId('evt'), ...event }])
     }));
+
+    const state = get();
+    void rescheduleAll(
+      state.timeline,
+      state.tasks,
+      state.settings,
+      state.routines,
+      state.events,
+      state.notes,
+      state.alarms
+    )
+      .then((syncedAlarms) => set({ alarms: syncedAlarms }))
+      .catch((error) => console.log('[LifeOS] Error al resincronizar notificaciones de eventos:', error));
   },
 
   updateEvent: (id: string, updates: Partial<StaticEvent>) => {
     set((state) => ({
-      events: state.events.map((event) => (event.id === id ? { ...event, ...updates } : event))
+      events: dedupeEvents(state.events.map((event) => (event.id === id ? { ...event, ...updates } : event)))
     }));
+
+    const state = get();
+    void rescheduleAll(
+      state.timeline,
+      state.tasks,
+      state.settings,
+      state.routines,
+      state.events,
+      state.notes,
+      state.alarms
+    )
+      .then((syncedAlarms) => set({ alarms: syncedAlarms }))
+      .catch((error) => console.log('[LifeOS] Error al resincronizar notificaciones de eventos:', error));
   },
 
   setEvents: (events: StaticEvent[]) => {
-    set({ events });
+    set({ events: dedupeEvents(events) });
+
+    const state = get();
+    void rescheduleAll(
+      state.timeline,
+      state.tasks,
+      state.settings,
+      state.routines,
+      state.events,
+      state.notes,
+      state.alarms
+    )
+      .then((syncedAlarms) => set({ alarms: syncedAlarms }))
+      .catch((error) => console.log('[LifeOS] Error al resincronizar notificaciones de eventos:', error));
   },
 
   deleteEvent: (id: string) => {
     set((state) => ({
       events: state.events.filter((event) => event.id !== id)
     }));
+
+    const state = get();
+    void rescheduleAll(
+      state.timeline,
+      state.tasks,
+      state.settings,
+      state.routines,
+      state.events,
+      state.notes,
+      state.alarms
+    )
+      .then((syncedAlarms) => set({ alarms: syncedAlarms }))
+      .catch((error) => console.log('[LifeOS] Error al resincronizar notificaciones de eventos:', error));
   },
 
   updateRoutineDay: async (dayOfWeek: number, updates: Partial<DailyRoutine>) => {

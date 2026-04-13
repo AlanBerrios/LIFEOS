@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Alert,
@@ -36,6 +36,43 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { UI_ACCENT_TEXT_MODES } from '../../src/theme';
 
 type SettingsStyles = ReturnType<typeof createStyles>;
+
+function clampChannel(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function toHex(channel: number): string {
+  return clampChannel(channel).toString(16).padStart(2, '0').toUpperCase();
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function normalizeHex(input: string): string {
+  const cleaned = input.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+  if (cleaned.length === 3) {
+    return `#${cleaned.split('').map((c) => `${c}${c}`).join('')}`.toUpperCase();
+  }
+  if (cleaned.length === 6) {
+    return `#${cleaned}`.toUpperCase();
+  }
+  return `#${cleaned}`.toUpperCase();
+}
+
+function isValidHex(hex: string): boolean {
+  return /^#[0-9A-F]{6}$/i.test(hex);
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const normalized = normalizeHex(hex);
+  if (!isValidHex(normalized)) return { r: 143, g: 191, b: 0 };
+  return {
+    r: Number.parseInt(normalized.slice(1, 3), 16),
+    g: Number.parseInt(normalized.slice(3, 5), 16),
+    b: Number.parseInt(normalized.slice(5, 7), 16)
+  };
+}
 
 const NOTIFICATION_TEST_BUTTONS: Array<{ key: NotificationTestType; label: string; subtitle: string }> = [
   { key: 'task_start', label: 'Test Tarea Programada', subtitle: 'Aviso de inicio de bloque' },
@@ -119,10 +156,15 @@ export default function SettingsScreen(): ReactElement {
   const routines = useLifeStore((s) => s.routines);
   const events = useLifeStore((s) => s.events);
   const notes = useLifeStore((s) => s.notes);
-  const lastEngine = useLifeStore((s) => s.lastEngine);
-  const lastSolverStatus = useLifeStore((s) => s.lastSolverStatus);
 
   const [icsUrl, setIcsUrl] = useState('');
+  const [customHex, setCustomHex] = useState(settings.uiAccentColor);
+  const [customRgb, setCustomRgb] = useState(hexToRgb(settings.uiAccentColor));
+
+  useEffect(() => {
+    setCustomHex(settings.uiAccentColor.toUpperCase());
+    setCustomRgb(hexToRgb(settings.uiAccentColor));
+  }, [settings.uiAccentColor]);
 
   async function handleBackup() {
     try {
@@ -200,12 +242,48 @@ export default function SettingsScreen(): ReactElement {
   }
 
   async function handleRunNotificationTest(type: NotificationTestType) {
-    const id = await triggerNotificationTest(type);
+    const timelineTaskBlock = timeline.find((block) => block.type === 'task' && block.task_id);
+    const timelineTaskId = timelineTaskBlock?.task_id;
+    const fallbackTask = tasks.find((task) => task.status !== 'completed');
+    const targetTaskId = timelineTaskId ?? fallbackTask?.id;
+    const targetTaskTitle = tasks.find((task) => task.id === targetTaskId)?.title ?? fallbackTask?.title;
+
+    const id = await triggerNotificationTest(type, {
+      taskId: targetTaskId,
+      taskTitle: targetTaskTitle,
+      blockId: timelineTaskBlock?.id
+    });
     if (!id) {
       Alert.alert('Permiso requerido', 'No se pudo ejecutar el test. Revisa permisos de notificaciones.');
       return;
     }
     Alert.alert('🧪 Test enviado', 'Se programó una notificación de prueba para los próximos segundos.');
+  }
+
+  function handleHexChange(raw: string) {
+    const normalized = normalizeHex(raw);
+    setCustomHex(normalized);
+    if (isValidHex(normalized)) {
+      setCustomRgb(hexToRgb(normalized));
+    }
+  }
+
+  function handleRgbChange(channel: 'r' | 'g' | 'b', value: number) {
+    const next = {
+      ...customRgb,
+      [channel]: clampChannel(value)
+    };
+    setCustomRgb(next);
+    setCustomHex(rgbToHex(next.r, next.g, next.b));
+  }
+
+  function applyCustomAccent() {
+    if (!isValidHex(customHex)) {
+      Alert.alert('Color inválido', 'Usa un color HEX válido con 6 dígitos, por ejemplo #22C55E.');
+      return;
+    }
+    updateSettings({ uiAccentColor: customHex.toUpperCase() });
+    Alert.alert('Color aplicado', `Nuevo acento principal: ${customHex.toUpperCase()}`);
   }
 
   async function handlePickIcsFile() {
@@ -273,6 +351,69 @@ export default function SettingsScreen(): ReactElement {
               </Pressable>
             );
           })}
+        </View>
+
+        <View style={styles.divider} />
+        <Text style={styles.inputLabel}>Color Picker libre</Text>
+        <Text style={styles.helperText}>Elige cualquier color con HEX o controles RGB.</Text>
+
+        <View style={styles.pickerCard}>
+          <View style={styles.pickerPreviewRow}>
+            <View style={[styles.pickerPreview, { backgroundColor: customHex }]} />
+            <TextInput
+              style={styles.hexInput}
+              value={customHex}
+              onChangeText={handleHexChange}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={7}
+              placeholder="#22C55E"
+              placeholderTextColor={theme.colors.muted}
+            />
+          </View>
+
+          <Text style={styles.channelLabel}>Rojo: {customRgb.r}</Text>
+          <Slider
+            style={styles.slider}
+            minimumValue={0}
+            maximumValue={255}
+            step={1}
+            value={customRgb.r}
+            onValueChange={(v) => handleRgbChange('r', v)}
+            minimumTrackTintColor="#EF4444"
+            maximumTrackTintColor={theme.colors.border}
+            thumbTintColor="#EF4444"
+          />
+
+          <Text style={styles.channelLabel}>Verde: {customRgb.g}</Text>
+          <Slider
+            style={styles.slider}
+            minimumValue={0}
+            maximumValue={255}
+            step={1}
+            value={customRgb.g}
+            onValueChange={(v) => handleRgbChange('g', v)}
+            minimumTrackTintColor="#22C55E"
+            maximumTrackTintColor={theme.colors.border}
+            thumbTintColor="#22C55E"
+          />
+
+          <Text style={styles.channelLabel}>Azul: {customRgb.b}</Text>
+          <Slider
+            style={styles.slider}
+            minimumValue={0}
+            maximumValue={255}
+            step={1}
+            value={customRgb.b}
+            onValueChange={(v) => handleRgbChange('b', v)}
+            minimumTrackTintColor="#3B82F6"
+            maximumTrackTintColor={theme.colors.border}
+            thumbTintColor="#3B82F6"
+          />
+
+          <Pressable style={styles.applyBtn} onPress={applyCustomAccent}>
+            <Text style={styles.applyBtnText}>Aplicar Color Personalizado</Text>
+          </Pressable>
         </View>
 
         <View style={styles.divider} />
@@ -491,25 +632,11 @@ export default function SettingsScreen(): ReactElement {
       </Accordion>
 
       <View style={styles.footer}>
-        <Text style={styles.footerTitle}>Sistema y Optimizador</Text>
-        <View
-          style={[
-            styles.engineBadge,
-            lastEngine === 'ortools-cpsat' ? styles.badgeGreen :
-            lastEngine === 'greedy-fallback' ? styles.badgeYellow : styles.badgePurple
-          ]}
-        >
-          <Text style={[
-            styles.engineText,
-            lastEngine === 'ortools-cpsat' ? { color: lifeTheme.colors.success } :
-            lastEngine === 'greedy-fallback' ? { color: '#f59e0b' } : { color: lifeTheme.colors.primary }
-          ]}>
-            {lastEngine === 'ortools-cpsat' ? `🔬 OR-Tools (Nube) · ${lastSolverStatus}` :
-             lastEngine === 'greedy-fallback' ? `⚠️ Greedy Alg.` :
-             '📱 Planificador local'}
-          </Text>
-        </View>
-        <Text style={styles.buildInfo}>LifeOS v3.0.0 · Production Build</Text>
+        <Text style={styles.footerTitle}>Características de la app</Text>
+        <Text style={styles.featureLine}>• Planificador local en dispositivo (sin backend remoto obligatorio)</Text>
+        <Text style={styles.featureLine}>• Stack: Expo Router, React Native, TypeScript y Zustand</Text>
+        <Text style={styles.featureLine}>• Notificaciones locales con alarmas, rutinas, eventos y notas</Text>
+        <Text style={styles.buildInfo}>LifeOS v3.1.0 · Build local Android</Text>
       </View>
 
       <View style={styles.footerInfo}>
@@ -571,6 +698,7 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
   
   valueText: { color: theme.colors.primary, fontSize: 16, fontWeight: '800', marginRight: 8, width: 45, textAlign: 'right' },
   helperText: { color: theme.colors.muted, fontSize: 12, lineHeight: 17, marginTop: 6 },
+  channelLabel: { color: theme.colors.text, fontSize: 12, fontWeight: '700', marginTop: 4 },
   
   applyBtn: { backgroundColor: theme.colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
   applyBtnText: { color: theme.colors.onPrimary, fontSize: 14, fontWeight: '800' },
@@ -599,6 +727,35 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
     borderWidth: 2
   },
   colorSwatchText: { color: '#ffffff', fontWeight: '900', fontSize: 14 },
+  pickerCard: {
+    marginTop: 10,
+    backgroundColor: theme.colors.surfaceAlt,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 12,
+    gap: 4
+  },
+  pickerPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
+  pickerPreview: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)'
+  },
+  hexInput: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+    color: theme.colors.text,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    fontWeight: '700'
+  },
   contrastRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
   contrastOption: {
     minWidth: 96,
@@ -633,13 +790,9 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
   dangerTitle: { color: theme.colors.alert, fontSize: 16, fontWeight: '900', marginBottom: 12, textTransform: 'uppercase' },
   dangerBtn: { backgroundColor: `${theme.colors.alert}15`, padding: 16, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: `${theme.colors.alert}55` },
   dangerBtnText: { color: theme.colors.alert, fontWeight: '800', fontSize: 14 },
-  footer: { marginTop: 12, paddingHorizontal: 4, gap: 10 },
+  footer: { marginTop: 12, paddingHorizontal: 4, gap: 8 },
   footerTitle: { color: theme.colors.text, fontSize: 16, fontWeight: '800' },
-  engineBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, alignSelf: 'flex-start' },
-  badgeGreen: { backgroundColor: 'rgba(108,252,184,0.08)', borderColor: 'rgba(108,252,184,0.25)' },
-  badgeYellow: { backgroundColor: 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.25)' },
-  badgePurple: { backgroundColor: 'rgba(124,108,252,0.08)', borderColor: 'rgba(124,108,252,0.25)' },
-  engineText: { fontSize: 10, fontWeight: '700', fontFamily: 'monospace' },
+  featureLine: { color: theme.colors.muted, fontSize: 12, lineHeight: 18 },
   buildInfo: { color: theme.colors.muted, fontSize: 11, fontWeight: '600' },
   
   footerInfo: { alignItems: 'center', paddingVertical: 24 },

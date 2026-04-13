@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Alert,
@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -237,6 +238,8 @@ function DayTasksPanel({
   );
 }
 
+const MemoDayTasksPanel = memo(DayTasksPanel);
+
 // ─── Month View ───────────────────────────────────────────────────────────────
 
 function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
@@ -311,9 +314,9 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
               isToday && styles.dayCellTextToday,
               isSelected && styles.dayCellTextSelected
             ]}>{date.getDate()}</Text>
-            <View style={styles.dotRow}>
+            <View style={styles.dayIndicatorsSlot}>
               {getTaskColorsOn(date).map((color, i) => (
-                <View key={i} style={[styles.calDot, { backgroundColor: color, position: 'relative', bottom: 0 }]} />
+                <View key={i} style={[styles.calDot, { backgroundColor: color }]} />
               ))}
             </View>
           </Pressable>
@@ -322,6 +325,8 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
     </View>
   );
 }
+
+const MemoMonthView = memo(MonthView);
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 
@@ -335,12 +340,14 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+  const { width } = useWindowDimensions();
   const weekStart = startOfWeek(currentDate);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const hours = Array.from({ length: 18 }, (_, i) => i + 6); // 06:00 -> 23:00
-  const hourHeight = 40; // Reduced from 56 for better density
+  const hourHeight = 34;
   const baseHour = 6;
   const timeline = useLifeStore((s) => s.timeline);
+  const dayColWidth = Math.max(112, Math.min(148, Math.round((width - 72) / 3)));
 
   return (
     <View style={styles.weekContainer}>
@@ -349,7 +356,7 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
           <View style={styles.weekHdrRowWide}>
             <View style={styles.hourColSpacerWide} />
             {days.map((d, i) => (
-              <Pressable key={i} style={styles.weekHdrCellWide} onPress={() => onSelectDay(d)}>
+              <Pressable key={i} style={[styles.weekHdrCellWide, { width: dayColWidth }]} onPress={() => onSelectDay(d)}>
                 <Text style={styles.weekHdrDay}>{WEEKDAYS[i]}</Text>
                 <Text style={styles.weekHdrNum}>{d.getDate()}</Text>
               </Pressable>
@@ -396,7 +403,7 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
                 ]);
 
                 return (
-                  <View key={dayIdx} style={styles.dayColWide}>
+                  <View key={dayIdx} style={[styles.dayColWide, { width: dayColWidth }]}>
                     {hours.map((h) => (
                       <View key={h} style={[styles.slotCellWide, { height: hourHeight }]} />
                     ))}
@@ -451,6 +458,8 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
   );
 }
 
+const MemoWeekView = memo(WeekView);
+
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
@@ -460,7 +469,7 @@ function DayView({ date, tasks, events, timeline, onEditEvent }: {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const hours = Array.from({ length: 18 }, (_, i) => i + 6);
-  const hourHeight = 64;
+  const hourHeight = 56;
   const baseHour = 6;
 
   const dayEvents = getEventsForDate(events, date);
@@ -491,6 +500,21 @@ function DayView({ date, tasks, events, timeline, onEditEvent }: {
 
   return (
     <ScrollView style={styles.dayTimelineScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.dayLegendRow}>
+        <View style={styles.dayLegendItem}>
+          <View style={[styles.dayLegendDot, { backgroundColor: lifeTheme.colors.primary }]} />
+          <Text style={styles.dayLegendText}>Tarea</Text>
+        </View>
+        <View style={styles.dayLegendItem}>
+          <View style={[styles.dayLegendDot, { backgroundColor: lifeTheme.colors.primary, opacity: 0.7 }]} />
+          <Text style={styles.dayLegendText}>Evento</Text>
+        </View>
+        <View style={styles.dayLegendItem}>
+          <View style={[styles.dayLegendDot, { backgroundColor: lifeTheme.colors.muted }]} />
+          <Text style={styles.dayLegendText}>Descanso</Text>
+        </View>
+      </View>
+
       <View style={styles.dayTimelineWrapper}>
         <View style={styles.dayHourCol}>
           {hours.map((h) => (
@@ -549,6 +573,8 @@ function DayView({ date, tasks, events, timeline, onEditEvent }: {
     </ScrollView>
   );
 }
+
+const MemoDayView = memo(DayView);
 
 function fmt(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -761,7 +787,7 @@ export default function CalendarScreen(): ReactElement {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const activeTasks = tasks.filter((t) => t.status !== 'completed');
+  const activeTasks = useMemo(() => tasks.filter((t) => t.status !== 'completed'), [tasks]);
 
   function onEditEvent(id: string) {
     setEditingId(id);
@@ -791,15 +817,17 @@ export default function CalendarScreen(): ReactElement {
     return currentDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
   }
 
+  const titleText = useMemo(() => headerTitle(), [view, currentDate]);
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 4 }]}>
       {/* Top bar */}
       <View style={styles.topBar}>
-        <Pressable style={styles.navBtn} onPress={() => navigate(-1)}>
+        <Pressable style={styles.navBtn} onPress={() => navigate(-1)} accessibilityRole="button" accessibilityLabel="Ir al periodo anterior">
           <Text style={styles.navBtnText}>‹</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>{headerTitle()}</Text>
-        <Pressable style={styles.navBtn} onPress={() => navigate(1)}>
+        <Text style={styles.headerTitle}>{titleText}</Text>
+        <Pressable style={styles.navBtn} onPress={() => navigate(1)} accessibilityRole="button" accessibilityLabel="Ir al siguiente periodo">
           <Text style={styles.navBtnText}>›</Text>
         </Pressable>
       </View>
@@ -811,6 +839,8 @@ export default function CalendarScreen(): ReactElement {
             key={v}
             style={[styles.viewTab, view === v && styles.viewTabActive]}
             onPress={() => setView(v)}
+            accessibilityRole="button"
+            accessibilityLabel={`Cambiar a vista ${v === 'month' ? 'mes' : v === 'week' ? 'semana' : 'dia'}`}
           >
             <Text style={[styles.viewTabText, view === v && styles.viewTabTextActive]}>
               {v === 'month' ? 'Mes' : v === 'week' ? 'Semana' : 'Día'}
@@ -822,7 +852,7 @@ export default function CalendarScreen(): ReactElement {
       {/* Calendar body */}
       <View style={[styles.calBody, view === 'month' && styles.calBodyMonth]}>
         {view === 'month' && (
-          <MonthView
+          <MemoMonthView
             currentDate={currentDate}
             selectedDay={selectedDay}
             tasks={activeTasks}
@@ -831,7 +861,7 @@ export default function CalendarScreen(): ReactElement {
           />
         )}
         {view === 'week' && (
-          <WeekView
+          <MemoWeekView
             currentDate={currentDate}
             selectedDay={selectedDay}
             tasks={activeTasks}
@@ -841,17 +871,19 @@ export default function CalendarScreen(): ReactElement {
           />
         )}
         {view === 'day' && (
-          <DayView date={currentDate} tasks={activeTasks} events={events} timeline={timeline} onEditEvent={onEditEvent} />
+          <MemoDayView date={currentDate} tasks={activeTasks} events={events} timeline={timeline} onEditEvent={onEditEvent} />
         )}
       </View>
 
       {/* Selected day info */}
       {view !== 'day' && (
-        <DayTasksPanel date={selectedDay} tasks={activeTasks} events={events} onEditEvent={onEditEvent} />
+        <View style={styles.dayPanelWrap}>
+          <MemoDayTasksPanel date={selectedDay} tasks={activeTasks} events={events} onEditEvent={onEditEvent} />
+        </View>
       )}
 
       {/* FAB */}
-      <Pressable style={[styles.fab, { bottom: 16 }]} onPress={onAddEvent}>
+      <Pressable style={[styles.fab, { bottom: 16 }]} onPress={onAddEvent} accessibilityRole="button" accessibilityLabel="Crear nuevo evento fijo">
         <Text style={styles.fabText}>+ Evento</Text>
       </Pressable>
 
@@ -869,8 +901,8 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12
+    paddingHorizontal: lifeTheme.spacing.md + 2,
+    paddingVertical: lifeTheme.spacing.sm + 2
   },
   navBtn: {
     width: 36,
@@ -883,10 +915,10 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderColor: lifeTheme.colors.border
   },
   navBtnText: { color: lifeTheme.colors.text, fontSize: 22, fontWeight: '700' },
-  headerTitle: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '800', textTransform: 'capitalize' },
+  headerTitle: { color: lifeTheme.colors.text, fontSize: lifeTheme.typography.body, fontWeight: '800', textTransform: 'capitalize' },
   viewSelector: {
     flexDirection: 'row',
-    marginHorizontal: 16,
+    marginHorizontal: lifeTheme.spacing.md + 2,
     backgroundColor: lifeTheme.colors.surface,
     borderRadius: 12,
     padding: 4,
@@ -896,35 +928,38 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   },
   viewTab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 9 },
   viewTabActive: { backgroundColor: lifeTheme.colors.primary },
-  viewTabText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '700' },
+  viewTabText: { color: lifeTheme.colors.muted, fontSize: lifeTheme.typography.bodySm, fontWeight: '700' },
   viewTabTextActive: { color: lifeTheme.colors.onPrimary },
   calBody: { flex: 1 },
   calBodyMonth: { flex: 0 },
   // Month
-  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8 },
-  weekdayHeader: { width: '14.28%', alignItems: 'center', paddingVertical: 6 },
-  weekdayText: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 10, paddingBottom: 10 },
+  weekdayHeader: { width: '14.28%', alignItems: 'center', paddingVertical: 7 },
+  weekdayText: { color: lifeTheme.colors.muted, fontSize: lifeTheme.typography.bodySm, fontWeight: '700' },
   dayCell: {
     width: '14.28%',
     aspectRatio: 1,
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 7,
+    justifyContent: 'space-between',
+    paddingTop: 6,
+    paddingBottom: 5,
     borderRadius: 10,
-    position: 'relative'
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: 'transparent'
   },
   dayCellToday: { backgroundColor: `${lifeTheme.colors.primary}22` },
-  dayCellSelected: { backgroundColor: lifeTheme.colors.primary },
+  dayCellSelected: { backgroundColor: lifeTheme.colors.primary, borderColor: `${lifeTheme.colors.onPrimary}44` },
   dayCellText: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '600' },
   dayCellTextToday: { color: lifeTheme.colors.primary, fontWeight: '800' },
   dayCellTextSelected: { color: lifeTheme.colors.onPrimary, fontWeight: '800' },
-  dotRow: { flexDirection: 'row', gap: 2, position: 'absolute', bottom: 5 },
-  calDot: { width: 4, height: 4, borderRadius: 2 },
+  dayIndicatorsSlot: { minHeight: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
+  calDot: { width: 5, height: 5, borderRadius: 3 },
   // Week Vertical
   weekContainer: { flex: 1 },
   weekHdrRowWide: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: lifeTheme.colors.border, paddingBottom: 8 },
   hourColSpacerWide: { width: 52 },
-  weekHdrCellWide: { width: 150, alignItems: 'center' },
+  weekHdrCellWide: { alignItems: 'center' },
   weekHdrDay: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '700' },
   weekHdrNum: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '800' },
   weekGridScroll: { flex: 1 },
@@ -932,7 +967,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   hourColWide: { width: 52 },
   hourLabelCellWide: { justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: lifeTheme.colors.border },
   hourLabelText: { color: lifeTheme.colors.muted, fontSize: 9, fontWeight: '600' },
-  dayColWide: { width: 150, borderRightWidth: 1, borderRightColor: `${lifeTheme.colors.border}44`, position: 'relative' },
+  dayColWide: { borderRightWidth: 1, borderRightColor: `${lifeTheme.colors.border}44`, position: 'relative' },
   slotCellWide: { borderBottomWidth: 1, borderBottomColor: `${lifeTheme.colors.border}22` },
   weekBlockCard: {
     position: 'absolute',
@@ -967,6 +1002,10 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   emptyDayText: { color: lifeTheme.colors.border, fontSize: 14 },
   // Day view
   dayTimelineScroll: { flex: 1, paddingHorizontal: 12 },
+  dayLegendRow: { flexDirection: 'row', gap: 12, marginBottom: 8, marginTop: 2, flexWrap: 'wrap' },
+  dayLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dayLegendDot: { width: 8, height: 8, borderRadius: 4 },
+  dayLegendText: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '700' },
   dayTimelineWrapper: { flexDirection: 'row' },
   dayHourCol: { width: 52 },
   dayHourLabelCell: { justifyContent: 'flex-start', alignItems: 'center', paddingTop: 4 },
@@ -999,6 +1038,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   dayBlockTitle: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '800' },
   dayBlockMeta: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '600' },
   // Day panel
+  dayPanelWrap: { marginTop: 8 },
   dayPanel: {
     backgroundColor: lifeTheme.colors.surface,
     borderTopWidth: 1,

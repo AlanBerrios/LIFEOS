@@ -1,27 +1,6 @@
 # LIFEOS - To Do priorizado
 
-Actualizado: 12-04-2026 (23:35 UTC)
-
-## PRIORIDAD 0 (BLOQUEANTE)
-
-### Notificaciones y alarmas: estabilizar de punta a punta
-- Problema: el boton de activar/sincronizar no da confianza y en build real no siempre llegan notificaciones (inicio de tarea, descanso, alarmas de rutina).
-- Objetivo: 100% confiable en dispositivo real.
-- Estado en codigo: hardening implementado (resync con persistencia de IDs, validacion de permisos y errores reales en UI).
-- Criterios de aceptacion:
-	- Se reciben notificaciones de tareas programadas.
-	- Se reciben notificaciones de comidas/sueno de rutina.
-	- No hay duplicados por resincronizacion.
-	- Toggle activar/desactivar alarmas funciona de forma consistente.
-	- Al sincronizar reglas desde Settings/Rutinas, las alarmas guardadas conservan IDs nuevos para poder apagarlas luego.
-	- Falta validar en dispositivo real que el resync no duplica ni pierde alarmas.
-
-Implementado en esta sesion (codigo):
-	- `rescheduleAll(...)` ahora devuelve alarmas sincronizadas y todos los callers persisten `notificationIds` nuevos.
-	- `addAlarm` y `toggleAlarm` fallan con error explicito cuando no se pueden programar (ej. permisos denegados).
-	- Settings y Rutinas verifican permisos antes de aplicar/sincronizar reglas.
-	- Nueva seccion "Test" en Settings con un boton por tipo de notificacion (`task_start`, `pending`, `important`, `distraction`, `completion_check`, `alarm`, `routine_sleep`, `routine_meal`, `event`, `note`).
-	- Los tests de notificaciones son aislados y no alteran tareas/rutinas/timeline.
+Actualizado: 13-04-2026 (15:05 UTC)
 
 ## PRIORIDAD 1 (ALTA) - Funcionalidad crítica y bugs
 
@@ -31,11 +10,7 @@ Implementado en esta sesion (codigo):
 	- Confirmar version/commit de la APK instalada.
 	- Rebuild release limpio con `npm run android:release:clean`.
 	- Prueba en dispositivo: validar flujo completo (cierre, replan, filtros, etc).
-
-### Flujo de cierre de tarea desde timeline mejorado
-- Problema: completar tarea desde timeline de Home abre check pero opciones están confusas.
-- Mejora: el pop-up de "¿Qué quieres hacer?" debería canalizar a TaskCompletionCheckDialog correctamente.
-- Adicional: cuando confirmas acción, debería cerrarse automático y reflejarse en timeline.
+	- Exponer en Settings metadata de build: `appVersion + commitHash + buildTimestamp` para trazabilidad QA.
 
 ### Bloque fantasma al completar tareas antes de la hora final
 - Idea: en vez de borrar el bloque por completo del timeline, dejar una versión fantasma de color verde como referencia visual de que ya fue completado.
@@ -51,53 +26,73 @@ Implementado en esta sesion (codigo):
 - Impacto: Motivación + gamificación del Player OS.
 - Datos a capturar: DailySession ya tiene tasksCompleted, tasksSkipped, tasksPostponed; extender para racha.
 
-### Reordenamiento de bloques con drag-and-drop (vs flechas)
-- Cambio: reemplazar botones ↑↓ por drag nativo en bloques.
-- Flujo: al soltar, mostrar modal de confirmación: "¿Reorganizar timeline con este cambio?".
-- Beneficio: UX más natural y rápida en móvil.
-- Nota: mantener soporte mobile-first + iOS.
+### Pop-ups y pickers con diseño consistente de app
+- Problema: varios dialogs siguen con estilo Android nativo y rompen la identidad visual.
+- Objetivo: reemplazar `Alert.alert()` restantes por modales propios/themed.
+- Alcance adicional: evaluar reemplazo del picker nativo de fecha/hora por solución consistente con UI de la app (framework o componente propio).
+- Nota de estado: ya existe base de pop-up custom en Home; falta extender al resto de pantallas.
+	- Priorizar migración por pantallas: `settings`, `notes`, `alarms`, `habits`, `calendar`.
 
-### Metricas: cliquabilidad en resumen de hoy y corrección de pospuestas
-- Problema: tareas pospuestas se cuentan en "trabajo total" aunque no se realizaron.
-- Solución: filtrar status !== 'postponed' antes de calcular totalWorkMinutes.
-- Mejora: cada chip del resumen (Completadas, Saltadas, Pospuestas, Planificadas, Trabajo Total) es clickeable.
-- Pop-up al clickear: lista detallada de tareas dentro de cada categoría.
+### ✅ COMPLETADO - Bugs de hábitos (validación final) (13-04-2026)
+- Se dejó idempotente el registro diario: taps repetidos en un hábito ya completado hoy no desmarcan, no restan racha y no suman EXP adicional.
+- La UI ahora desactiva el botón cuando el hábito ya está marcado en el día para evitar spam accidental.
 
-### UX del Task Pool mejorada
-- Minimizar form de nueva tarea: al apretar "+ Nueva tarea" en el header, colapsa el form para ver pool completo.
-- Filtros: pasar de swipe horizontal a dropdown vertical (más legible y descubible).
-- Filtros expandidos: agregar filtros útiles (ej: por urgencia, prioridad, deadline próxima, pendientes hoy).
-- Resultado visual: bloque completado pasa a verde con "✓ Completado" inline, no espera cambio de filtro.
+### ✅ COMPLETADO - Notas: formateo mejorado de selector fecha/hora (13-04-2026)
+- Se corrigió el layout del selector para que no se salga del modal en pantallas pequeñas/medianas.
+- El botón de fecha/hora ahora ocupa ancho flexible y soporta contenido largo sin romper contenedor.
 
-### Mejora UI de calendarios
-- Calendario mensual:
-	- Separación clara entre número de día e indicadores (puntos/barras de urgencia).
-	- Mejor espaciado entre calendario y lista inferior.
-	- Aumentar tamaño de celdas si es necesario.
-- Calendario semanal:
-	- Aumentar ancho de columnas de días para legibilidad en pantallas pequeñas.
-	- Afinar el zoom restante si todavía se siente grande en pantallas chicas.
-- Calendario diario:
-	- Agregar vista de hoy con bloques de descanso visibles.
-	- Mostrar horario (06:00-23:00) con slots de 30min o 1h.
+### Reactivar inteligencia contextual (anti-distracción real)
+- Problema: `screenTime` está stubeado y no aporta señales de contexto activas.
+- Objetivo: recuperar detección de distracción sin inestabilidad.
+- Plan técnico:
+	- Activar con feature flag y fallback seguro.
+	- Registrar telemetría mínima de precisión (falsos positivos/falsos negativos).
+	- Reintentar notificación contextual solo cuando hay tarea activa de alta prioridad.
 
-### Notas: formateo mejorado de selector fecha/hora
-- Problema: botón "Seleccionar fecha y hora" se sale del contenedor modal.
-- Solución: restructurar layout con componentes más compactos o grid responsive.
-- Validación: probar en pantallas de 4.7", 5.5", 6.5".
-
-### Configuración: limpiar "Sistema y Optimizador"
-- Remover: sección antigua de Settings que hacía referencia a backend remoto.
-- Reemplazar con: resumen de características (Expo, TypeScript, Zustand, OR-Tools, tecnologías clave).
-- Agregar: versión de app, links a docs/GitHub.
+### Explicabilidad de replanificación (copiloto transparente)
+- Problema: el usuario aún no ve claramente por qué cambió el plan.
+- Objetivo: mostrar explicación de cambios y decisión aplicada.
+- Plan técnico:
+	- Agregar resumen "qué cambió" y "por qué" en `ReplanificationPrompt`.
+	- Guardar bitácora de decisiones (aceptado/rechazado/motivo) por sesión.
+	- Incluir diff breve de timeline por bloques impactados.
 
 ## PRIORIDAD 3 (BAJA) - Pulido y optimización
 
-- Revisar tipografía y espaciado global para consistencia.
-- Performance: memoización de componentes pesados en calendario.
-- Accesibilidad: labels y contrast ratios.
+- Sin pendientes activos por ahora en este bloque (migrado a completados).
 
-## YA IMPLEMENTADO (RETIRADO DEL PENDIENTE)
+## CAPTURA DE REQUERIMIENTOS (13-04-2026)
+
+- La idea de bloque fantasma verde + manejo del tiempo restante (descanso/reorganización configurable) queda confirmada como requisito de producto.
+- Se mantiene prioridad alta para drag-and-drop con confirmación de reorganización al soltar.
+- Mantener trazabilidad de este bloque hasta implementación efectiva en timeline.
+
+## ROADMAP OPERATIVO DERIVADO DE AUDITORÍA (13-04-2026)
+
+### R0 - Cierre de confiabilidad (2-4 días)
+- Cerrar P0 en dispositivo real con evidencia por escenario:
+	- foreground, background y cold start.
+	- acciones `done/skip/postpone/start_task/snooze` aplicadas realmente.
+	- exactitud horaria de notas/eventos/rutinas/alarmas.
+- Salida: checklist QA firmado + registro de evidencia por prueba.
+
+### R1 - Integridad de timeline (1 semana)
+- Inmutabilidad de eventos fijos a nivel UI/store.
+- Dedupe estable de eventos/tareas en import y reorganización.
+- Salida: 0 desplazamientos de eventos fijos + 0 duplicados tras resincronización repetida.
+
+### R2 - UX de ejecución diaria (1 semana)
+- Task Pool minimizable + filtros verticales y rápidos.
+- Métricas clickeables con detalle de tareas por categoría.
+- Reemplazo progresivo de `Alert.alert()` por modales custom.
+- Salida: flujos críticos consistentes sin alertas nativas.
+
+### R3 - Inteligencia contextual segura (1-2 semanas)
+- Reactivar señales de contexto con feature flag.
+- Medir precisión y ajustar umbrales antes de default ON.
+- Salida: beta estable con recomendaciones contextuales útiles.
+
+## YA IMPLEMENTADO (RETIRADO DEL PENDIENTE) --------------------------------------------------------------------
 
 - Selector de fecha y hora para recordatorios en notas (ya no es texto manual).
 - Modales informativos en metricas (maestria personal, nivel EXP, atributos/habilidades).
@@ -107,3 +102,80 @@ Implementado en esta sesion (codigo):
 - Eliminacion de bloques en timeline (tareas y descansos).
 - Vista semanal/diaria con bloques temporales y soporte de solapamiento por carriles.
 - Selector de paleta amplia + contraste de texto en Settings.
+- Fix anti-exploit de EXP en hábitos (solo otorga XP al completar y no en unmark del mismo día).
+
+### ✅ COMPLETADO - Mejora UI de calendarios (13-04-2026)
+
+- Mensual: separación clara número/indicadores y mejor espaciado.
+- Semanal: zoom reducido y columnas adaptativas para móvil.
+- Diario: descansos visibles + leyenda de tipos de bloque.
+
+### ✅ COMPLETADO - Configuración: limpiar Sistema y Optimizador (13-04-2026)
+
+- Se removió bloque heredado y se reemplazó por resumen de características/tecnologías.
+
+### ✅ COMPLETADO - Color Picker libre en Apariencia (13-04-2026)
+
+- Se agregó selección libre de color con HEX y RGB, manteniendo presets.
+
+### ⏳ PARCIALMENTE COMPLETADO - PRIORIDAD 0: Notificaciones (13-04-2026)
+
+- Problema: algunas notificaciones no llegan a la hora exacta y eso sigue siendo crítico.
+- Objetivo: todas las notificaciones deben llegar cuando corresponde, sin retrasos ni pérdidas.
+- Criterios de aceptacion:
+	- Las notificaciones de tareas, rutinas, alarmas, eventos y notas llegan a la hora prevista.
+	- No hay retrasos apreciables ni pérdidas intermitentes.
+	- Las acciones de notificaciones con multiples opciones guardan la opcion elegida y ejecutan la accion correcta.
+	- Los botones de notificaciones que hoy solo reabren la app deben resolverse para que su accion quede aplicada.
+- Estado actual: fix aplicado en código y pendiente validación final en dispositivo real.
+- Avance técnico aplicado (13-04-2026):
+	- Listener de respuestas de notificación reforzado para app en frío (cold start) con `getLastNotificationResponseAsync`.
+	- Acciones multi-opción (`done`, `skip`, `postpone`, `snooze`, `start_task`) ahora intentan aplicar estado real en store cuando hay `taskId`/`blockId`.
+	- Recordatorios de notas y eventos se resincronizan automáticamente al crear/editar/eliminar (ya no depende solo de "Aplicar notificaciones").
+	- Triggers `DATE` de notas/eventos/completion-check pasan a estrategia consistente con canal Android por defecto.
+
+- Problema: en notificaciones con multiples opciones, al pulsar una opcion solo vuelve a abrir la app y no aplica la eleccion.
+- Objetivo: cada boton debe registrar la opcion seleccionada y ejecutar la accion esperada sin perder estado.
+- Impacto: esto afecta la utilidad real de los dialogs de notificacion, por lo que se trata como bloqueante.
+- Estado actual: corregido en código; pendiente confirmar en prueba E2E real que ya no solo reabre la app.
+
+### ✅ COMPLETADO - Flujo de cierre de tarea desde timeline mejorado (13-04-2026)
+
+- Problema original: completar tarea desde timeline de Home abría un flujo confuso/inconsistente.
+- Resultado aplicado: el botón principal del bloque ahora abre directamente el mismo `TaskCompletionCheckDialog` de Task Pool.
+- Nota UX: gestión avanzada queda disponible en long-press del bloque.
+
+### ✅ COMPLETADO - Integridad de IDs y deduplicación de eventos/tareas (13-04-2026)
+
+- Se implementó dedupe y persistencia estable de eventos.
+- Importaciones ICS: IDs determinísticos (`UID + huella estable`) y merge idempotente en almacenamiento.
+- Se evita inserción duplicada en parse/import y en normalización de eventos diarios.
+
+### ✅ COMPLETADO - Reorganización de timeline sin mover eventos fijos (13-04-2026)
+
+- Se bloquearon eventos estáticos/fijos en UI y store para evitar desplazamientos no permitidos.
+- `moveBlock` no aplica cuando el bloque actual o destino es evento estático.
+
+### ✅ COMPLETADO - Reordenamiento de bloques con drag-and-drop (vs flechas) (13-04-2026)
+
+- Reordenamiento migrado a drag vertical con gesto en móvil.
+- Confirmación explícita al soltar para aplicar la reorganización.
+
+### ✅ COMPLETADO - Métricas: cliquabilidad en resumen de hoy y corrección de pospuestas (13-04-2026)
+
+- Corrección aplicada: `Trabajo total` excluye tareas en estado `postponed`.
+- Tarjetas del resumen ahora son clickeables y abren detalle por categoría.
+
+### ✅ COMPLETADO - UX del Task Pool mejorada (13-04-2026)
+
+- Formulario de nueva tarea minimizable desde el header.
+- Filtros migrados a dropdown vertical.
+- Filtros expandidos: urgencia/prioridad/deadline/pendientes hoy.
+- Feedback inline de completado reciente para no depender de cambiar filtro.
+
+### ✅ COMPLETADO - PRIORIDAD 3: Pulido y optimización (13-04-2026)
+
+- Tipografía y espaciado base alineados con tokens del tema en pantallas principales intervenidas (`habits`, `notes`, `calendar`).
+- Performance: memoización aplicada a subcomponentes pesados de calendario (`MonthView`, `WeekView`, `DayView`, `DayTasksPanel`) y filtro de tareas activas memoizado.
+- Accesibilidad: se agregaron labels/roles en acciones críticas de hábitos, notas y calendario.
+

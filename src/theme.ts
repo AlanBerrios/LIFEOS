@@ -90,6 +90,13 @@ export function createLifeTheme(mode: UiThemeMode, primaryColor: string, accentT
       md: 14,
       lg: 20,
       xl: 28
+    },
+    typography: {
+      titleLg: 24,
+      titleMd: 20,
+      body: 15,
+      bodySm: 13,
+      caption: 11
     }
   } as const;
 }

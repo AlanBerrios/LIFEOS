@@ -27,24 +27,14 @@ export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
         if (habit.id !== id) return habit;
         const now = new Date();
         const todayStr = getTodayStr();
-        const isUnmarking = habit.lastCompletedDate === todayStr;
-
-        let newLogs = [...habit.logs];
-        let newLastDate = habit.lastCompletedDate;
-
-        if (isUnmarking) {
-          newLogs = newLogs.filter((log) => new Date(log.timestamp).toISOString().slice(0, 10) !== todayStr);
-          if (newLogs.length > 0) {
-            const sorted = newLogs.map((log) => new Date(log.timestamp).toISOString().slice(0, 10)).sort();
-            newLastDate = sorted[sorted.length - 1];
-          } else {
-            newLastDate = undefined;
-          }
-        } else {
-          newLogs.push({ timestamp: now, value });
-          newLastDate = todayStr;
-          shouldAwardXP = true;
+        const hasLoggedToday = habit.logs.some((log) => new Date(log.timestamp).toISOString().slice(0, 10) === todayStr);
+        if (hasLoggedToday) {
+          return habit;
         }
+
+        const newLogs = [...habit.logs, { timestamp: now, value }];
+        const newLastDate = todayStr;
+        shouldAwardXP = true;
 
         let newStreak = 0;
         if (newLogs.length > 0) {

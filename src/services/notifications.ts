@@ -19,6 +19,29 @@ export const NOTIFICATION_TEST_TYPES = [
 
 export type NotificationTestType = (typeof NOTIFICATION_TEST_TYPES)[number];
 
+export interface NotificationTestContext {
+  taskId?: string;
+  taskTitle?: string;
+  blockId?: string;
+}
+
+export interface NotificationPayloadData {
+  type?: string;
+  id?: string;
+  taskId?: string;
+  task_id?: string;
+  blockId?: string;
+  taskTitle?: string;
+}
+
+function buildDateTrigger(date: Date): Notifications.DateTriggerInput {
+  return {
+    type: Notifications.SchedulableTriggerInputTypes.DATE,
+    date,
+    ...(Platform.OS === 'android' ? { channelId: 'default' } : {})
+  };
+}
+
 // ─── Init (call once from _layout) ───────────────────────────────────────────
 
 export function initNotifications(): void {
@@ -135,7 +158,10 @@ function dateAfterSeconds(seconds: number): Date {
   return date;
 }
 
-export async function triggerNotificationTest(type: NotificationTestType): Promise<string | null> {
+export async function triggerNotificationTest(
+  type: NotificationTestType,
+  context: NotificationTestContext = {}
+): Promise<string | null> {
   const granted = await requestNotificationPermission();
   if (!granted) return null;
 
@@ -161,14 +187,23 @@ export async function triggerNotificationTest(type: NotificationTestType): Promi
       title: '👀 Test: Fuga de atención',
       body: 'Llevas 5 min fuera de la app. ¿Retomamos?',
       sound: true,
-      categoryIdentifier: 'distraction_alert'
+      categoryIdentifier: 'distraction_alert',
+      data: {
+        type: 'distraction',
+        taskId: context.taskId,
+        taskTitle: context.taskTitle ?? 'Tu tarea'
+      } satisfies NotificationPayloadData
     },
     completion_check: {
       title: '🤔 Test: Completion Check',
       body: 'Terminó el bloque de "Deep Work". ¿Lo completaste?',
       sound: true,
       categoryIdentifier: 'completion_check',
-      data: { type: 'completion_check', taskId: 'test-task', blockId: 'test-block' }
+      data: {
+        type: 'completion_check',
+        taskId: context.taskId ?? 'test-task',
+        blockId: context.blockId ?? 'test-block'
+      } satisfies NotificationPayloadData
     },
     alarm: {
       title: '⏰ Test: Alarma',
@@ -201,11 +236,7 @@ export async function triggerNotificationTest(type: NotificationTestType): Promi
 
   return Notifications.scheduleNotificationAsync({
     content: payloadByType[type],
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: triggerDate,
-      channelId: 'default'
-    }
+    trigger: buildDateTrigger(triggerDate)
   });
 }
 
@@ -239,11 +270,7 @@ export async function scheduleTaskNotifications(
         sound: true,
         priority: Notifications.AndroidNotificationPriority.MAX,
       },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: notifyAt,
-        channelId: 'default'
-      }
+      trigger: buildDateTrigger(new Date(notifyAt))
     });
   }
 }
@@ -300,7 +327,8 @@ export async function scheduleImportantTaskAlert(taskTitle: string): Promise<voi
 
 export async function scheduleDistractionWarning(
   taskTitle: string,
-  timeoutMinutes: number
+  timeoutMinutes: number,
+  taskId?: string
 ): Promise<string | null> {
   const granted = await requestNotificationPermission();
   if (!granted) return null;
@@ -310,7 +338,12 @@ export async function scheduleDistractionWarning(
       title: '👀 Fuga de atención detectada',
       body: `Llevas ${timeoutMinutes} min fuera. ¿Te distrajiste? Tienes que terminar: ${taskTitle}`,
       sound: true,
-      categoryIdentifier: 'distraction_alert'
+      categoryIdentifier: 'distraction_alert',
+      data: {
+        type: 'distraction',
+        taskId,
+        taskTitle
+      } satisfies NotificationPayloadData
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
@@ -473,10 +506,7 @@ export async function scheduleCompletionChecks(timeline: ScheduleBlock[]): Promi
         categoryIdentifier: 'completion_check',
         sound: true,
       },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: notifyAt
-      },
+      trigger: buildDateTrigger(new Date(notifyAt)),
     });
   }
 }
@@ -499,10 +529,7 @@ export async function scheduleEventNotifications(events: import('../types').Stat
           sound: true,
           priority: Notifications.AndroidNotificationPriority.HIGH,
         },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: triggerTime
-        },
+        trigger: buildDateTrigger(new Date(triggerTime)),
       });
     }
   }
@@ -515,20 +542,21 @@ export async function scheduleNoteReminders(notes: import('../types').QuickNote[
   const now = Date.now();
   for (const note of notes) {
     if (note.reminderAt) {
-      const trigger = new Date();
+      let trigger: Date;
 
       if (note.reminderAt.includes('T')) {
         const parsed = new Date(note.reminderAt);
         if (Number.isNaN(parsed.getTime())) continue;
-        trigger.setTime(parsed.getTime());
+        if (parsed.getTime() <= now) continue;
+        trigger = parsed;
       } else {
         const [h, m] = note.reminderAt.split(':').map(Number);
         if (!Number.isFinite(h) || !Number.isFinite(m)) continue;
+        trigger = new Date();
         trigger.setHours(h, m, 0, 0);
-      }
-      
-      if (trigger.getTime() <= now) {
-        trigger.setDate(trigger.getDate() + 1);
+        if (trigger.getTime() <= now) {
+          trigger.setDate(trigger.getDate() + 1);
+        }
       }
 
       await Notifications.scheduleNotificationAsync({
@@ -537,11 +565,9 @@ export async function scheduleNoteReminders(notes: import('../types').QuickNote[
           body: note.content,
           data: { type: 'note', id: note.id },
           sound: true,
+          priority: Notifications.AndroidNotificationPriority.HIGH,
         },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: trigger
-        },
+        trigger: buildDateTrigger(trigger),
       });
     }
   }

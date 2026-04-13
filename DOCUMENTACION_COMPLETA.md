@@ -66,45 +66,90 @@ El corazón de LIFEOS es la **ejecución assistida**, no solo la planificación.
 
 # 2. CONTEXTO ACTUAL & AUDITORÍA
 
-**Fecha de auditoría:** 11-04-2026
+**Fecha de auditoría consolidada:** 13-04-2026  
+**Fuentes contrastadas:** `DOCUMENTACION_COMPLETA.md` + `To_do_ideas.txt` + estado real del código.
 
-## 2.1 Estado del Proyecto
+## 2.1 Estado Consolidado del Proyecto (Real)
 
-### Fortalezas ✅
+### Fortalezas vigentes ✅
 
-| Aspecto | Estado |
-|--------|--------|
-| Dirección estratégica | ⭐ Muy buena. Visión clara y diferenciada. |
-| Base arquitectónica | ⭐ Buena. Store persistente, scheduler local + backend, módulos amplios. |
-| Tecnología elegida | ⭐ Sólida. React Native, Zustand, FastAPI, OR-Tools. |
-| Prototipo inicial | ⭐ Funcional. Puedes crear tareas, ver scheduler, reproducir básico. |
+| Aspecto | Estado real (13-04-2026) |
+|--------|----------------------------|
+| Estabilidad base | TypeScript limpio y tests unitarios verdes (7/7). |
+| Núcleo de ejecución | Flujo Completion Check + reason codes + replanificación implementados en store/UI. |
+| Arquitectura de datos | Store en slices funcional (task/habit/execution/settings/content), persistencia activa. |
+| Notificaciones | Hardening aplicado en código para acciones y arranque en frío; falta validación E2E final en dispositivo. |
+| Personalización UI | Calendario refinado, limpieza de settings, color picker libre (HEX/RGB). |
 
-### Debilidades ⚠️
+### Debilidades actuales ⚠️
 
-| Aspecto | Estado | Riesgo |
-|--------|--------|--------|
-| Madurez de implementación | Media | Cuellos de botella técnicos impiden escalar |
-| Estabilidad TypeScript | Baja (errores) | Typecheck falla → no hay confianza en builds |
-| Contrato TS-Python | Desalineado | Scheduler remoto pierde contexto |
-| Store monolítico | Acoplado | Testeo difícil, regressions frecuentes |
-| Tracking de ejecución | Incompleto | No sabemos qué pasó vs qué se planificó |
+| Debilidad | Evidencia actual | Riesgo | Solución recomendada |
+|-----------|------------------|--------|----------------------|
+| Cierre P0 incompleto en campo | Notificaciones aún pendientes de validación E2E real | Falsos cierres, regresión en producción | Protocolo de prueba móvil (foreground/background/cold start) + checklist de aceptación por tipo |
+| Integridad de timeline con eventos fijos | `moveBlock` no bloquea `isStaticEvent/pinned` y los controles se muestran | Eventos inamovibles pueden desplazarse | Bloquear controles/acciones en UI + guardas duras en store para bloques fijos |
+| Duplicados en eventos importados | `parseICS` crea IDs aleatorios por importación | Duplicados al resincronizar/organizar | IDs determinísticos (UID ICS + DTSTART) + dedupe por clave estable antes de persistir |
+| UX inconsistente de diálogos | Persisten múltiples `Alert.alert()` en tabs | Experiencia fragmentada, menor calidad percibida | Migración por lotes a `CustomAlertDialog` + sistema único de confirmaciones |
+| Productividad del Task Pool | Form siempre expandido + filtros horizontales | Fricción en uso diario móvil | Form colapsable + filtro vertical (dropdown) + quick actions contextuales |
+| Métricas no accionables | Cards de resumen no son drill-down | Visibilidad sin capacidad de acción | Hacer cards clickeables con detalle por categoría y navegación contextual |
+| Inteligencia contextual inactiva | `screenTime` está stubeado | Se rompe promesa de anti-distracción | Reactivar signal de contexto con feature flag y telemetría mínima |
+| Documento/roadmap desalineado | Secciones intermedias marcan FASE C como próxima, pero abajo aparece implementada | Confusión de priorización | Recalibrar roadmap operativo con estados: hecho/parcial/pendiente |
 
-## 2.2 Diagnostico Clave
+## 2.2 Matriz Exhaustiva (To Do vs Estado Real vs Solución)
 
-**LIFEOS todavía no está al nivel de su promesa operativa.**
+> Esta matriz **no reemplaza ni elimina** `To_do_ideas.txt`; solo audita su estado y propone implementación.
 
-Razón: Le falta cerrar un **núcleo de estabilidad e integración** antes de expandir funcionalidades complejas.
+| Tema de To Do | Estado auditado | Evidencia actual | Solución técnica propuesta |
+|---------------|-----------------|------------------|----------------------------|
+| Verificar build instalada vs código | Pendiente | Reportes de comportamiento no alineado con código actual | Embedir `appVersion + commitHash + buildTimestamp` en Settings y exigir verificación previa a QA |
+| Cierre de tarea desde timeline | Parcial | Existe `TaskCompletionCheckDialog` en Home, pero hay reporte de falla en build instalada | Instrumentar flujo (logs de acción + estado final) y validar en release real con caso reproducible |
+| Integridad IDs y dedupe eventos/tareas | Pendiente crítico | Importación ICS con ID aleatorio y sin dedupe estable | ID estable (UID/fecha) + merge idempotente (`setEvents` deduplicado por clave) |
+| Reorganizar sin mover eventos fijos | Pendiente crítico | Eventos fijos marcados, pero reordenamiento no bloquea explícitamente | Regla dura: `isStaticEvent || pinned => immutable` en UI y store |
+| Bloque fantasma al completar antes de fin | Pendiente | Home oculta bloque completado inmediatamente (`visibleTimeline`) | Nuevo estado visual `completed_ghost` con no-interacción + setting para activar/desactivar |
+| Reordenamiento drag-and-drop | Pendiente | Reordenamiento actual con flechas ↑↓ | Implementar drag móvil (`react-native-draggable-flatlist` o gesto nativo) + confirmación al soltar |
+| Métricas clickeables y pospuestas | Pendiente | Resumen muestra valores, sin drill-down | Cards `Completadas/Saltadas/Pospuestas/Planificadas/Trabajo` con modal de detalle y navegación |
+| UX Task Pool (colapso + filtros) | Pendiente | Form siempre visible y filtros horizontales | Form minimizable + selector de filtro vertical + persistencia de vista |
+| Pop-ups/pickers consistentes | Parcial | Home usa modal custom; otros tabs siguen con `Alert.alert` y pickers nativos | Fase de estandarización UI: reemplazo progresivo y wrapper único de picker |
+| Bugs hábitos (validación final) | Parcial | Guard XP existe en `habitSlice` | Cerrar con pruebas en dispositivo y test de regresión específico (mark/unmark/reopen app) |
+| Notas: selector fecha/hora responsivo | Pendiente parcial | UI mejoró, pero layout puede tensionar en pantallas pequeñas | Rediseñar fila de recordatorio con stack vertical adaptable y ancho fluido |
+| P0 Notificaciones (acciones + exactitud) | Parcial | Hardening en código y resincronización automática; faltan pruebas E2E reales | Ejecutar protocolo E2E y cerrar con evidencia: timestamps + acción aplicada |
 
-### Analogy
+## 2.3 Gap Analysis Actualizado (Promesa vs Brecha Activa)
 
-Es como construir un edificio:
-- **Cimiento (Estabilidad):** Typecheck 0 errores, tests verdes
-- **Estructura (Contrato):** TS y Python hablan un lenguaje común, versionado
-- **Interior (Ejecución):** Usuario interactúa, feedback → replanificación
-- **Facilidades (Contexto):** Geofencing, anti-distracción, analitica
+| Promesa Operativa | Estado 13-04 | Brecha activa | Cierre recomendado |
+|-------------------|-------------|---------------|--------------------|
+| Detectar y proteger tiempo útil | Parcial | Señales contextuales no activas (`screenTime` stubeado) | Activar captura gradual de contexto (feature flag) y reglas anti-distracción verificables |
+| Convertir en plan ejecutable real | Parcial alto | Falta blindar invariantes (eventos fijos) y dedupe de entradas | Invariantes duras + dedupe idempotente + tests de no-regresión |
+| Asistir durante ejecución | Parcial alto | P0 de notificaciones aún sin cierre E2E | Validación de campo y ajustes por OEM/estado app |
+| Reorganizar cuando contexto cambia | Parcial | Replan local existe, UX de edición avanzada aún limitada | Drag-and-drop con confirmación + políticas de conflicto con fijos |
+| User piloto, sistema copiloto | Parcial | Explicabilidad y trazabilidad de cambios aún acotadas | Añadir “por qué cambió el plan” y bitácora de decisiones en UI |
 
-Hoy: Cimiento inestable  
-Plan: Fijar cimiento (A) → estructura clara (B) → interior funcional (C) → luego facilidades
+## 2.4 Auditoría del Roadmap (A-F) y Recalibración
+
+### Lectura crítica del roadmap actual
+
+- **FASE A:** Cerrada.
+- **FASE B:** Cerrada.
+- **FASE C:** Implementada en código; abierta solo por validación E2E de notificaciones y release real.
+- **FASE D:** Parcialmente absorbida (slices ya existen), falta cierre formal de modularidad/contratos internos.
+- **FASE E:** Debe redefinirse: con runtime local-only, “paridad remoto/local” deja de ser prioridad inmediata y pasa a “consistencia y observabilidad del scheduler local”.
+- **FASE F:** Pendiente real (contexto inteligente todavía no activo).
+
+### Roadmap operativo recomendado (próximo ciclo)
+
+| Bloque | Horizonte | Objetivo | Criterio de salida |
+|--------|-----------|----------|--------------------|
+| R0: Cierre de confiabilidad | 2-4 días | Cerrar P0 de notificaciones y validar build real | Evidencia E2E completa en dispositivo + checklist QA firmado |
+| R1: Integridad del timeline | 1 semana | Inmutabilidad de eventos fijos + dedupe estable + cierre flujo timeline | 0 casos de desplazamiento de fijos y 0 duplicados tras resincronizar |
+| R2: UX de ejecución diaria | 1 semana | Pool más usable + métricas accionables + diálogos consistentes | Flujos críticos sin `Alert.alert` nativo y navegación de métricas funcional |
+| R3: Inteligencia contextual segura | 1-2 semanas | Reactivar señales de contexto sin comprometer estabilidad | Feature flag ON en beta + métricas de precisión/ruido aceptables |
+
+## 2.5 Diagnóstico Final
+
+**LIFEOS ya no está en fase de cimiento inestable; está en fase de consolidación operativa.**
+
+El mayor riesgo actual no es arquitectura base, sino la brecha entre lo implementado en código y lo validado en dispositivo real, más la falta de cierre de integridad del timeline y consistencia UX.
+
+Prioridad recomendada: **cerrar confiabilidad (R0) y luego integridad funcional (R1)** antes de abrir nuevas capas de complejidad (R3).
 
 ---
 
@@ -1467,6 +1512,114 @@ Documentación: DOCUMENTACION_COMPLETA.md § 11
 
 - Ejecutar pruebas E2E en dispositivo real y documentar evidencia de: entrega, no duplicados y consistencia de toggle.
 
+## 11.9 Calendar UI + Settings Cleanup + Color Picker Libre
+
+**Fecha:** 13-04-2026  
+**Estado:** Implementado en código
+
+### Alcance aplicado
+
+- Mejora visual del calendario mensual:
+  - Mayor separación entre número de día e indicadores.
+  - Ajuste de padding y slot dedicado para indicadores para evitar solape visual.
+- Ajuste de calendario semanal:
+  - Densidad vertical reducida (menos zoom percibido).
+  - Ancho de columnas adaptativo según ancho de pantalla para lectura en móviles pequeños.
+- Ajuste de calendario diario:
+  - Leyenda de tipos de bloque (Tarea, Evento, Descanso).
+  - Densidad horaria afinada para reducir saturación visual.
+  - Descansos continúan visibles en la vista.
+- Limpieza de Settings:
+  - Se removió la sección "Sistema y Optimizador" heredada.
+  - Se reemplazó por bloque de características/stack y versión de build.
+- Apariencia:
+  - Se añadió Color Picker real (HEX + sliders RGB + preview + botón aplicar), manteniendo presets como acceso rápido.
+
+### Archivos impactados
+
+- `app/(tabs)/calendar.tsx`
+- `app/(tabs)/settings.tsx`
+
+### Verificación
+
+- TypeScript typecheck: ✅ (`tsc --noEmit`)
+
+## 11.10 Hardening PRIORIDAD 0: acciones de notificación + exactitud notas/eventos
+
+**Fecha:** 13-04-2026  
+**Estado:** Implementado en código, pendiente validación E2E en dispositivo real
+
+### Problemas atacados
+
+- Acciones de notificaciones con botones abrían la app pero no siempre aplicaban la acción elegida.
+- Entrega de recordatorios de notas/eventos dependía de re-aplicar notificaciones manualmente desde Settings.
+
+### Cambios implementados
+
+- `app/_layout.tsx`
+  - Se refactorizó el listener de respuestas para procesar acciones tanto en runtime como en arranque en frío usando `getLastNotificationResponseAsync`.
+  - Se agregó deduplicación de respuestas para evitar doble ejecución de una misma acción.
+  - Se robusteció resolución de `taskId` (directo o por `blockId`) para acciones `done`, `skip`, `postpone`, `start_task` y `snooze`.
+
+- `src/services/notifications.ts`
+  - Se añadió contexto opcional para tests (`taskId`, `taskTitle`, `blockId`) para que pruebas de botones puedan actuar sobre tareas reales.
+  - Se normalizaron triggers `DATE` con helper común y canal Android por defecto.
+  - `scheduleDistractionWarning` ahora puede incluir `taskId` en `data` para ejecutar acciones reales.
+  - Ajuste en notas: recordatorios con `ISO datetime` pasado ya no se empujan automáticamente al día siguiente.
+
+- `src/store/slices/contentSlice.ts`
+  - Se añadió resincronización automática de notificaciones (`rescheduleAll`) al crear/editar/eliminar notas y eventos.
+  - Resultado: los recordatorios no dependen únicamente del botón manual "Aplicar notificaciones".
+
+- `app/(tabs)/settings.tsx`
+  - Tests de notificación ahora intentan usar contexto de tarea real (timeline o primera pendiente), para validar mejor acciones de botones.
+
+### Verificación ejecutada
+
+- TypeScript typecheck: ✅
+- Unit tests (`vitest`): ✅ (7/7)
+
+### Pendiente para cierre real de PRIORIDAD 0
+
+- Ejecutar prueba E2E en dispositivo (app cerrada y en segundo plano) y confirmar:
+  - `done/skip/postpone/start_task/snooze` aplican estado real y no solo abren la app.
+  - Notas y eventos llegan a la hora esperada sin retrasos intermitentes.
+- Checklist operativa creada para ejecución y evidencia: `docs/QA_R0_NOTIFICACIONES_CHECKLIST.md`.
+
+## 11.11 Implementación de mejoras críticas de UX/integridad (13-04-2026)
+
+**Estado:** Implementado en código y validado con typecheck/tests
+
+### Alcance aplicado
+
+- Home Timeline (`app/(tabs)/index.tsx`)
+  - Cierre de tarea simplificado: tap en acción principal abre directamente `TaskCompletionCheckDialog` (mismo flujo que Task Pool).
+  - Reordenamiento por drag vertical con confirmación al soltar.
+  - Eventos estáticos bloqueados visualmente para reordenamiento (`🔒`).
+
+- Integridad de timeline (`src/store/slices/executionSlice.ts`)
+  - `moveBlock` ahora evita mover bloques cuando el actual o destino es evento estático (`isStaticEvent`).
+
+- Integridad de eventos/deduplicación
+  - `src/services/icsParser.ts`: IDs determinísticos de eventos ICS (UID/huella estable) + dedupe en parse.
+  - `src/store/slices/contentSlice.ts`: dedupe al agregar/actualizar/setear eventos.
+  - `src/utils/events.ts`: dedupe de ocurrencias en expansión diaria de eventos recurrentes.
+
+- Métricas (`app/(tabs)/stats.tsx`)
+  - Tarjetas de “Resumen de Hoy” ahora son clickeables con modal de detalle por categoría.
+  - Corrección de “Trabajo total”: excluye tareas pospuestas del cálculo.
+
+- Task Pool (`app/(tabs)/pool.tsx`)
+  - Formulario minimizable desde el header.
+  - Filtros migrados a dropdown vertical.
+  - Filtros expandidos: mes, pendientes hoy, prioridad alta, deadline cercana.
+  - Feedback inline de tareas recién completadas para no depender de cambio de filtro.
+
+### Verificación ejecutada
+
+- `npm run typecheck`: ✅
+- `npm run test -- --run`: ✅ (7/7)
+
 ---
 
 **Siguiente paso recomendado:** Iniciar FASE D (Refactor modular del Store) o FASE F (IA contextual) según prioridades de producto.
@@ -1475,6 +1628,6 @@ Documentación: DOCUMENTACION_COMPLETA.md § 11
 
 ---
 
-**Documento actualizado:** 12-04-2026  
+**Documento actualizado:** 13-04-2026  
 **Próxima revisión recomendada:** 15-04-2026  
-**Estado:** LISTO PARA PRODUCCIÓN
+**Estado:** P0 EN VALIDACIÓN FINAL

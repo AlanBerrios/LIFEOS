@@ -10,6 +10,8 @@ import {
   View
 } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp, Layout } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
@@ -391,6 +393,7 @@ function BlockCard({
   total,
   now,
   onEditBreak,
+  onRequestMove,
   onTaskCompleted,
   onRequestCompletionCheck,
   showAlert,
@@ -401,6 +404,7 @@ function BlockCard({
   total: number;
   now: Date;
   onEditBreak: (id: string, minutes: number) => void;
+  onRequestMove: (blockId: string, direction: 'up' | 'down') => void;
   onTaskCompleted: (title: string, xp: number) => void;
   onRequestCompletionCheck: (taskId: string) => void;
   showAlert: (title: string, message?: string, buttons?: AlertButtonConfig[]) => void;
@@ -420,6 +424,9 @@ function BlockCard({
   const isRest = block.type === 'rest' || block.type === 'meal' || block.type === 'sleep';
   const isMeal = block.type === 'meal';
   const isSleep = block.type === 'sleep';
+  const isStaticEvent = Boolean(block.isStaticEvent);
+  const isMovableTask = !isRest && !isStaticEvent;
+  const dragOffsetY = useSharedValue(0);
 
   let emoji = '☕';
   if (isMeal) emoji = '🍜';
@@ -440,18 +447,41 @@ function BlockCard({
   const showProgress = progress > 0 && progress < 1;
   const fillColor = isRest ? `${lifeTheme.colors.text}0D` : lifeTheme.colors.softPrimary;
 
+  const dragGesture = Gesture.Pan()
+    .enabled(isMovableTask)
+    .activeOffsetX([-18, 18])
+    .onUpdate((event) => {
+      dragOffsetY.value = event.translationY;
+    })
+    .onEnd((event) => {
+      dragOffsetY.value = withSpring(0, { damping: 16, stiffness: 180 });
+      if (Math.abs(event.translationY) < 36) return;
+
+      const direction: 'up' | 'down' = event.translationY < 0 ? 'up' : 'down';
+      runOnJS(onRequestMove)(block.id, direction);
+    })
+    .onFinalize(() => {
+      dragOffsetY.value = withSpring(0, { damping: 16, stiffness: 180 });
+    });
+
+  const dragStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: dragOffsetY.value }]
+  }));
+
   return (
-    <Animated.View
-      entering={FadeInDown.duration(280)}
-      layout={Layout.springify().damping(14)}
-      style={[
-        styles.block, 
-        isRest ? styles.blockRest : styles.blockTask,
-        isMeal && styles.blockMeal,
-        isSleep && styles.blockSleep,
-        isInProgress && styles.blockInProgress
-      ]}
-    >
+    <GestureDetector gesture={dragGesture}>
+      <Animated.View
+        entering={FadeInDown.duration(280)}
+        layout={Layout.springify().damping(14)}
+        style={[
+          styles.block,
+          dragStyle,
+          isRest ? styles.blockRest : styles.blockTask,
+          isMeal && styles.blockMeal,
+          isSleep && styles.blockSleep,
+          isInProgress && styles.blockInProgress
+        ]}
+      >
       {/* Liquid Fill Overlay */}
       {showProgress && (
         <View 
@@ -487,49 +517,60 @@ function BlockCard({
       </View>
 
       <View style={styles.blockCtrl}>
-        {!isRest && (
+        {isMovableTask && (
           <>
             <Pressable
-              style={[styles.ctrlBtn, index === 0 && styles.ctrlBtnDisabled]}
-              onPress={() => index > 0 && moveBlock(block.id, 'up')}
-              disabled={index === 0}
+              style={styles.ctrlBtn}
+              onPress={() => {
+                showAlert(
+                  'Reorganizar timeline',
+                  'Arrastra verticalmente y suelta para mover. ¿Aplicar movimiento ahora?',
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    {
+                      text: 'Mover arriba',
+                      onPress: () => onRequestMove(block.id, 'up')
+                    },
+                    {
+                      text: 'Mover abajo',
+                      onPress: () => onRequestMove(block.id, 'down')
+                    }
+                  ]
+                );
+              }}
             >
-              <Text style={[styles.ctrlIcon, index === 0 && styles.ctrlIconDisabled]}>↑</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.ctrlBtn, index >= total - 1 && styles.ctrlBtnDisabled]}
-              onPress={() => index < total - 1 && moveBlock(block.id, 'down')}
-              disabled={index >= total - 1}
-            >
-              <Text style={[styles.ctrlIcon, index >= total - 1 && styles.ctrlIconDisabled]}>↓</Text>
+              <Text style={styles.ctrlIcon}>↕</Text>
             </Pressable>
             {block.task_id && (
               <Pressable
                 style={[styles.ctrlBtn, styles.ctrlBtnDone, isInProgress && styles.ctrlBtnInProgress]}
-                onPress={() => {
-                  showAlert('Gestión de Tarea', `¿Qué quieres hacer con "${block.title}"?`, [
+                onPress={() => onRequestCompletionCheck(block.task_id!)}
+                onLongPress={() => {
+                  showAlert('Gestión de Tarea', `Opciones para "${block.title}"`, [
                     { text: 'X Cancelar', style: 'cancel' },
-                    { text: '🗑 Eliminar bloque', style: 'destructive', onPress: () => deleteBlock(block.id) },
-                    { text: '⏭️ Saltar', onPress: () => skipTask(block.task_id!) },
-                    { text: '⏳ Posponer', onPress: () => postponeTask(block.task_id!) },
                     {
-                      text: '✅ Cerrar bloque',
+                      text: isInProgress ? '🔁 Reiniciar' : '▶ Iniciar',
                       onPress: () => {
-                        onRequestCompletionCheck(block.task_id!);
+                        if (!isInProgress) {
+                          useLifeStore.getState().startTask(block.task_id!);
+                        }
                       }
                     },
+                    { text: '⏭️ Saltar', onPress: () => skipTask(block.task_id!) },
+                    { text: '⏳ Posponer', onPress: () => postponeTask(block.task_id!) },
+                    { text: '🗑 Eliminar bloque', style: 'destructive', onPress: () => deleteBlock(block.id) }
                   ]);
-                }}
-                onLongPress={() => {
-                   if (!isInProgress) {
-                     useLifeStore.getState().startTask(block.task_id!);
-                   }
                 }}
               >
                 <Text style={styles.ctrlIconDone}>{isInProgress ? '⌛' : '✓'}</Text>
               </Pressable>
             )}
           </>
+        )}
+        {!isRest && isStaticEvent && (
+          <View style={[styles.ctrlBtn, styles.ctrlBtnLocked]}>
+            <Text style={styles.ctrlIconLocked}>🔒</Text>
+          </View>
         )}
         {isRest && (
           <Pressable
@@ -546,7 +587,8 @@ function BlockCard({
           </Pressable>
         )}
       </View>
-    </Animated.View>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -809,6 +851,16 @@ export default function DashboardScreen(): ReactElement {
                   total={visibleTimeline.length}
                   now={now}
                   onEditBreak={(id, mins) => setEditBreak({ id, minutes: mins })}
+                  onRequestMove={(blockId, direction) => {
+                    const title = direction === 'up' ? 'Mover bloque hacia arriba' : 'Mover bloque hacia abajo';
+                    showAlert('Reorganizar timeline', `${title}. ¿Confirmas el cambio?`, [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Sí, reorganizar',
+                        onPress: () => useLifeStore.getState().moveBlock(blockId, direction)
+                      }
+                    ]);
+                  }}
                   onTaskCompleted={(title, xp) => {
                     if (xp > 0) {
                       showFeedback('🏆 Tarea completada', `${title} · +${xp} EXP en Enfoque`);
@@ -1035,9 +1087,11 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   ctrlBtnDisabled: { opacity: 0.3 },
   ctrlBtnDone: { backgroundColor: `${lifeTheme.colors.success}15` },
   ctrlBtnInProgress: { backgroundColor: `${lifeTheme.colors.primary}20` },
+  ctrlBtnLocked: { backgroundColor: `${lifeTheme.colors.alert}15` },
   ctrlIcon: { fontSize: 16, color: lifeTheme.colors.text, fontWeight: '700' },
   ctrlIconDisabled: { color: lifeTheme.colors.muted },
   ctrlIconDone: { fontSize: 16, color: lifeTheme.colors.success, fontWeight: '900' },
+  ctrlIconLocked: { fontSize: 14 },
   liquidFill: {
     position: 'absolute',
     left: 0,

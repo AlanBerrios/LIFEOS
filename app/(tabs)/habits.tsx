@@ -83,6 +83,8 @@ export default function HabitsScreen(): ReactElement {
   }
 
   function handleLog(id: string) {
+    const habit = habits.find((h) => h.id === id);
+    if (habit?.lastCompletedDate === getTodayStr()) return;
     logHabit(id, 1);
   }
 
@@ -134,7 +136,9 @@ export default function HabitsScreen(): ReactElement {
             <Text style={styles.emptyText}>No tienes hábitos configurados.{'\n'}¡Crea uno para empezar tu racha!</Text>
           </View>
         ) : (
-          habits.map((habit, idx) => (
+          habits.map((habit, idx) => {
+            const isCompletedToday = habit.lastCompletedDate === getTodayStr();
+            return (
             <Animated.View
               key={habit.id}
               entering={FadeInDown.delay(idx * 50)}
@@ -157,18 +161,23 @@ export default function HabitsScreen(): ReactElement {
                   style={({ pressed }) => [
                     styles.logBtn,
                     pressed && { opacity: 0.7 },
-                    habit.lastCompletedDate === getTodayStr() && styles.logBtnDone
+                    isCompletedToday && styles.logBtnDone
                   ]}
                   onPress={() => handleLog(habit.id)}
+                  disabled={isCompletedToday}
+                  accessibilityRole="button"
+                  accessibilityLabel={isCompletedToday ? `Habito ${habit.name} completado hoy` : `Marcar habito ${habit.name} como completado`}
                 >
                   <Text style={styles.logBtnText}>
-                    {habit.lastCompletedDate === getTodayStr() ? '✅ Hecho' : '💪 Marcar'}
+                    {isCompletedToday ? '✅ Hecho hoy' : '💪 Marcar'}
                   </Text>
                 </Pressable>
                 
                 <Pressable
                    style={styles.editBtn}
                    onPress={() => handleEdit(habit)}
+                   accessibilityRole="button"
+                   accessibilityLabel={`Editar habito ${habit.name}`}
                 >
                    <Text style={styles.delBtnText}>✏️</Text>
                 </Pressable>
@@ -181,12 +190,15 @@ export default function HabitsScreen(): ReactElement {
                       { text: 'Eliminar', style: 'destructive', onPress: () => deleteHabit(habit.id) }
                     ]);
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Eliminar habito ${habit.name}`}
                 >
                   <Text style={styles.delBtnText}>🗑</Text>
                 </Pressable>
               </View>
             </Animated.View>
-          ))
+          );
+          })
         )}
       </View>
 
@@ -286,9 +298,9 @@ export default function HabitsScreen(): ReactElement {
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
-  content: { paddingHorizontal: 20, gap: 20 },
+  content: { paddingHorizontal: lifeTheme.spacing.lg, gap: lifeTheme.spacing.lg },
   hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  title: { color: lifeTheme.colors.text, fontSize: 24, fontWeight: '900' },
+  title: { color: lifeTheme.colors.text, fontSize: lifeTheme.typography.titleLg, fontWeight: '900' },
   addBtn: { backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
   addBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 13 },
   modalSuggestions: { gap: 8, marginBottom: 8 },
@@ -330,7 +342,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   habitMain: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   habitEmoji: { fontSize: 24 },
   habitName: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800' },
-  habitGoal: { color: lifeTheme.colors.muted, fontSize: 12 },
+  habitGoal: { color: lifeTheme.colors.muted, fontSize: lifeTheme.typography.bodySm },
   streakBadge: { backgroundColor: 'rgba(252,108,143,0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   streakText: { color: lifeTheme.colors.alert, fontWeight: '900', fontSize: 12 },
   habitActions: { flexDirection: 'row', gap: 8 },

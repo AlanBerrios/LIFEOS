@@ -12,6 +12,14 @@ export function getEventsForDate(events: StaticEvent[], date: Date): StaticEvent
   const dayOfMonth = date.getDate();
 
   const results: StaticEvent[] = [];
+  const seenOccurrences = new Set<string>();
+
+  const pushUnique = (event: StaticEvent) => {
+    const key = `${event.id}|${event.startTime.toISOString()}|${event.endTime.toISOString()}`;
+    if (seenOccurrences.has(key)) return;
+    seenOccurrences.add(key);
+    results.push(event);
+  };
 
   for (const event of events) {
     const eventStartDate = new Date(event.startTime);
@@ -20,7 +28,7 @@ export function getEventsForDate(events: StaticEvent[], date: Date): StaticEvent
 
     // 1. Regular event on this exact day
     if (eventStartTime === targetTime) {
-      results.push(event);
+      pushUnique(event);
       continue;
     }
 
@@ -65,7 +73,7 @@ export function getEventsForDate(events: StaticEvent[], date: Date): StaticEvent
         occurrence.startTime = start;
         occurrence.endTime = end;
         
-        results.push(occurrence);
+        pushUnique(occurrence);
       }
     }
   }

@@ -120,6 +120,12 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
 
       const current = blocks[index];
       const target = blocks[targetIndex];
+
+      // Eventos estáticos/fijos son inmutables dentro del timeline.
+      if (current.isStaticEvent || target.isStaticEvent) {
+        return state;
+      }
+
       const currentDuration = current.end_time.getTime() - current.start_time.getTime();
       const targetDuration = target.end_time.getTime() - target.start_time.getTime();
       const firstStart = index < targetIndex ? current.start_time : target.start_time;
@@ -131,8 +137,8 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       const secondStart = firstEnd;
       const secondEnd = new Date(secondStart.getTime() + secondDuration);
 
-      blocks[Math.min(index, targetIndex)] = { ...first, start_time: firstStart, end_time: firstEnd, pinned: true };
-      blocks[Math.max(index, targetIndex)] = { ...second, start_time: secondStart, end_time: secondEnd, pinned: true };
+      blocks[Math.min(index, targetIndex)] = { ...first, start_time: firstStart, end_time: firstEnd };
+      blocks[Math.max(index, targetIndex)] = { ...second, start_time: secondStart, end_time: secondEnd };
       return { timeline: blocks };
     });
   },

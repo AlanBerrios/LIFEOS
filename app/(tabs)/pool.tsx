@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Alert,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -70,7 +71,28 @@ function getUrgencyOptions(lifeTheme: ReturnType<typeof useAppTheme>): { value: 
   ];
 }
 
-type FilterType = 'all' | 'today' | 'this_week' | 'pool' | 'completed';
+type FilterType =
+  | 'all'
+  | 'today'
+  | 'this_week'
+  | 'this_month'
+  | 'pool'
+  | 'pending_today'
+  | 'priority_high'
+  | 'due_soon'
+  | 'completed';
+
+const FILTER_OPTIONS: Array<{ key: FilterType; label: string }> = [
+  { key: 'all', label: 'Todas' },
+  { key: 'today', label: 'Hoy' },
+  { key: 'this_week', label: 'Semana' },
+  { key: 'this_month', label: 'Mes' },
+  { key: 'pool', label: 'Pendientes' },
+  { key: 'pending_today', label: 'Pendientes hoy' },
+  { key: 'priority_high', label: 'Prioridad alta' },
+  { key: 'due_soon', label: 'Deadline cercana' },
+  { key: 'completed', label: 'Completadas' }
+];
 
 // ─── Android-safe DatePicker ──────────────────────────────────────────────────
 // Android DateTimePicker crashes when mode="datetime".
@@ -174,6 +196,9 @@ export default function PoolScreen(): ReactElement {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [isFormCollapsed, setIsFormCollapsed] = useState(false);
+  const [isFilterMenuVisible, setIsFilterMenuVisible] = useState(false);
+  const [recentlyCompletedTaskIds, setRecentlyCompletedTaskIds] = useState<string[]>([]);
   const [completionTask, setCompletionTask] = useState<Task | null>(null);
   const [isSubmittingCompletion, setIsSubmittingCompletion] = useState(false);
   const [replanPreview, setReplanPreview] = useState<{
@@ -184,13 +209,40 @@ export default function PoolScreen(): ReactElement {
   // Sort: urgency > priority > completed last
   const sorted = useMemo(() => {
     const urgOrd: Record<TaskUrgency, number> = { today: 4, this_week: 3, this_month: 2, someday: 1 };
+    const nowMs = Date.now();
+    const dueSoonLimitMs = 48 * 60 * 60 * 1000;
+    const keepRecentlyCompleted = (task: Task) => recentlyCompletedTaskIds.includes(task.id);
     let list: Task[];
 
-    if (filter === 'all')       list = [...tasks];
-    else if (filter === 'pool') list = tasks.filter((t) => t.status !== 'completed');
-    else if (filter === 'completed') list = tasks.filter((t) => t.status === 'completed');
-    else if (filter === 'today')    list = tasks.filter((t) => t.urgency === 'today' && t.status !== 'completed');
-    else                             list = tasks.filter((t) => t.urgency === 'this_week' && t.status !== 'completed');
+    if (filter === 'all') {
+      list = [...tasks];
+    } else if (filter === 'pool') {
+      list = tasks.filter((t) => t.status !== 'completed' || keepRecentlyCompleted(t));
+    } else if (filter === 'completed') {
+      list = tasks.filter((t) => t.status === 'completed');
+    } else if (filter === 'today') {
+      list = tasks.filter((t) => t.urgency === 'today' && (t.status !== 'completed' || keepRecentlyCompleted(t)));
+    } else if (filter === 'this_week') {
+      list = tasks.filter((t) => t.urgency === 'this_week' && (t.status !== 'completed' || keepRecentlyCompleted(t)));
+    } else if (filter === 'this_month') {
+      list = tasks.filter((t) => t.urgency === 'this_month' && (t.status !== 'completed' || keepRecentlyCompleted(t)));
+    } else if (filter === 'pending_today') {
+      list = tasks.filter(
+        (t) =>
+          (t.urgency === 'today' || t.status === 'scheduled' || t.status === 'in_progress') &&
+          (t.status !== 'completed' || keepRecentlyCompleted(t))
+      );
+    } else if (filter === 'priority_high') {
+      list = tasks.filter((t) => t.priority >= 4 && (t.status !== 'completed' || keepRecentlyCompleted(t)));
+    } else {
+      list = tasks.filter(
+        (t) =>
+          !!t.deadline &&
+          t.deadline.getTime() > nowMs &&
+          t.deadline.getTime() - nowMs <= dueSoonLimitMs &&
+          (t.status !== 'completed' || keepRecentlyCompleted(t))
+      );
+    }
 
     return list.sort((a, b) => {
       if (a.status === 'completed' && b.status !== 'completed') return 1;
@@ -198,11 +250,35 @@ export default function PoolScreen(): ReactElement {
       const uDiff = urgOrd[b.urgency ?? 'someday'] - urgOrd[a.urgency ?? 'someday'];
       return uDiff !== 0 ? uDiff : b.priority - a.priority;
     });
-  }, [tasks, filter]);
+  }, [tasks, filter, recentlyCompletedTaskIds]);
 
-  function resetForm() { setEditingId(null); setForm(DEFAULT_FORM); }
+  function resetForm() {
+    setEditingId(null);
+    setForm(DEFAULT_FORM);
+  }
+
+  function toggleTaskForm() {
+    if (isFormCollapsed) {
+      resetForm();
+      setIsFormCollapsed(false);
+      return;
+    }
+
+    if (editingId) {
+      resetForm();
+    }
+    setIsFormCollapsed(true);
+  }
+
+  function markRecentlyCompleted(taskId: string) {
+    setRecentlyCompletedTaskIds((prev) => (prev.includes(taskId) ? prev : [taskId, ...prev].slice(0, 20)));
+    setTimeout(() => {
+      setRecentlyCompletedTaskIds((prev) => prev.filter((id) => id !== taskId));
+    }, 3000);
+  }
 
   function handleEdit(task: Task) {
+    setIsFormCollapsed(false);
     setEditingId(task.id);
     setForm({
       title: task.title,
@@ -228,6 +304,7 @@ export default function PoolScreen(): ReactElement {
     setIsSubmittingCompletion(true);
     try {
       await confirmCompletionOK(taskId);
+      markRecentlyCompleted(taskId);
       setCompletionTask(null);
     } finally {
       setIsSubmittingCompletion(false);
@@ -321,7 +398,12 @@ export default function PoolScreen(): ReactElement {
     >
       {/* Header */}
       <View style={styles.hdr}>
-        <Text style={styles.title}>📋 Task Pool</Text>
+        <View style={styles.hdrLeft}>
+          <Text style={styles.title}>📋 Task Pool</Text>
+          <Pressable style={styles.formToggleBtn} onPress={toggleTaskForm}>
+            <Text style={styles.formToggleText}>{isFormCollapsed ? '+ Nueva tarea' : '− Minimizar form'}</Text>
+          </Pressable>
+        </View>
         <View style={styles.badges}>
           <View style={[styles.badge, { borderColor: `${lifeTheme.colors.alert}55` }]}>
             <Text style={[styles.badgeNum, { color: lifeTheme.colors.alert }]}>{todayCount}</Text>
@@ -339,6 +421,12 @@ export default function PoolScreen(): ReactElement {
       </View>
 
       {/* Form */}
+      {isFormCollapsed ? (
+        <Pressable style={styles.formCollapsedCard} onPress={toggleTaskForm}>
+          <Text style={styles.formCollapsedTitle}>+ Crear tarea nueva</Text>
+          <Text style={styles.formCollapsedSubtitle}>Abre el formulario cuando necesites capturar una tarea.</Text>
+        </Pressable>
+      ) : (
       <View style={styles.card}>
         <Text style={styles.cardTitle}>{editingId ? '✏️ Editar tarea' : '+ Nueva tarea'}</Text>
 
@@ -473,29 +561,43 @@ export default function PoolScreen(): ReactElement {
           )}
         </View>
       </View>
+      )}
 
       {/* Filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.filterRow}>
-          {([
-            { key: 'all',       label: 'Todas' },
-            { key: 'today',     label: '🔥 Hoy' },
-            { key: 'this_week', label: '📅 Semana' },
-            { key: 'pool',      label: 'Pendientes' },
-            { key: 'completed', label: '✓ Hechas' }
-          ] as { key: FilterType; label: string }[]).map((f) => (
-            <Pressable
-              key={f.key}
-              style={[styles.filterTab, filter === f.key && styles.filterTabActive]}
-              onPress={() => setFilter(f.key)}
-            >
-              <Text style={[styles.filterTabText, filter === f.key && styles.filterTabTextActive]}>
-                {f.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </ScrollView>
+      <View style={styles.filterDropdownRow}>
+        <Text style={styles.fieldLabel}>Filtro activo</Text>
+        <Pressable style={styles.filterDropdownBtn} onPress={() => setIsFilterMenuVisible(true)}>
+          <Text style={styles.filterDropdownText}>{FILTER_OPTIONS.find((opt) => opt.key === filter)?.label ?? 'Todas'}</Text>
+          <Text style={styles.filterDropdownIcon}>▼</Text>
+        </Pressable>
+      </View>
+
+      <Modal visible={isFilterMenuVisible} transparent animationType="fade" onRequestClose={() => setIsFilterMenuVisible(false)}>
+        <Pressable style={styles.filterModalOverlay} onPress={() => setIsFilterMenuVisible(false)}>
+          <Pressable style={styles.filterModalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.filterModalTitle}>Seleccionar filtro</Text>
+            <View style={styles.filterModalList}>
+              {FILTER_OPTIONS.map((option) => {
+                const active = option.key === filter;
+                return (
+                  <Pressable
+                    key={option.key}
+                    style={[styles.filterModalItem, active && styles.filterModalItemActive]}
+                    onPress={() => {
+                      setFilter(option.key);
+                      setIsFilterMenuVisible(false);
+                    }}
+                  >
+                    <Text style={[styles.filterModalItemText, active && styles.filterModalItemTextActive]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* List header */}
       <View style={styles.listHdr}>
@@ -579,7 +681,18 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
   content: { paddingHorizontal: 16, gap: 14, paddingBottom: 32 },
   hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  hdrLeft: { gap: 8 },
   title: { color: lifeTheme.colors.text, fontSize: 22, fontWeight: '800' },
+  formToggleBtn: {
+    alignSelf: 'flex-start',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    backgroundColor: lifeTheme.colors.surface
+  },
+  formToggleText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
   badges: { flexDirection: 'row', gap: 6 },
   badge: {
     backgroundColor: lifeTheme.colors.surface, borderRadius: 10,
@@ -593,6 +706,16 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderWidth: 1, borderColor: lifeTheme.colors.border, padding: 16, gap: 16
   },
   cardTitle: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '800' },
+  formCollapsedCard: {
+    backgroundColor: lifeTheme.colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 14,
+    gap: 4
+  },
+  formCollapsedTitle: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '800' },
+  formCollapsedSubtitle: { color: lifeTheme.colors.muted, fontSize: 12 },
   input: {
     backgroundColor: lifeTheme.colors.surfaceAlt, borderColor: lifeTheme.colors.border,
     borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
@@ -630,14 +753,50 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderColor: lifeTheme.colors.border, justifyContent: 'center'
   },
   cancelBtnText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '700' },
-  filterRow: { flexDirection: 'row', gap: 6, paddingVertical: 2 },
-  filterTab: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-    backgroundColor: lifeTheme.colors.surface, borderWidth: 1, borderColor: lifeTheme.colors.border
+  filterDropdownRow: { gap: 6 },
+  filterDropdownBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    backgroundColor: lifeTheme.colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 10
   },
-  filterTabActive: { backgroundColor: lifeTheme.colors.softPrimary, borderColor: lifeTheme.colors.primary },
-  filterTabText: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
-  filterTabTextActive: { color: lifeTheme.colors.primary },
+  filterDropdownText: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
+  filterDropdownIcon: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
+  filterModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    paddingHorizontal: 20
+  },
+  filterModalCard: {
+    backgroundColor: lifeTheme.colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 14,
+    gap: 10
+  },
+  filterModalTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800' },
+  filterModalList: { gap: 8 },
+  filterModalItem: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  filterModalItemActive: {
+    borderColor: lifeTheme.colors.primary,
+    backgroundColor: lifeTheme.colors.softPrimary
+  },
+  filterModalItemText: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
+  filterModalItemTextActive: { color: lifeTheme.colors.primary },
   listHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   listHdrTitle: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '800' },
   listHdrCount: { color: lifeTheme.colors.muted, fontSize: 12 },

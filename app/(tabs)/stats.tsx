@@ -93,17 +93,53 @@ export default function StatsScreen(): ReactElement {
   const timeline = useLifeStore((s) => s.timeline);
   const sessions = useLifeStore((s) => s.sessions);
   const userProfile = useLifeStore((s) => s.userProfile);
+  const [summaryDetail, setSummaryDetail] = useState<{ title: string; items: string[] } | null>(null);
 
   const today = todayISO();
   const todaySession: DailySession | undefined = sessions.find((s) => s.date === today);
   const last7 = getLast7Days();
   const sessionMap = Object.fromEntries(sessions.map((s) => [s.date, s]));
+  const taskMap = Object.fromEntries(tasks.map((task) => [task.id, task]));
+
+  const plannedTaskBlocks = timeline.filter((block) => block.type === 'task' && !!block.task_id);
+  const workBlocksWithoutPostponed = plannedTaskBlocks.filter((block) => {
+    const task = block.task_id ? taskMap[block.task_id] : undefined;
+    return task?.status !== 'postponed';
+  });
+
+  const plannedTaskLabels = plannedTaskBlocks.map((block) => {
+    const task = block.task_id ? taskMap[block.task_id] : undefined;
+    const title = task?.title ?? block.title;
+    const start = block.start_time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const end = block.end_time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `${title} (${start}-${end})`;
+  });
+
+  const totalWorkLabels = workBlocksWithoutPostponed.map((block) => {
+    const task = block.task_id ? taskMap[block.task_id] : undefined;
+    const title = task?.title ?? block.title;
+    const mins = Math.round((block.end_time.getTime() - block.start_time.getTime()) / 60_000);
+    return `${title} (${mins} min)`;
+  });
 
   // ── Métricas del día actual ──────────────────────────────────────────────────
   const completedToday = tasks.filter((t) => t.status === 'completed').length;
-  const scheduledToday = timeline.filter((b) => b.type === 'task').length;
-  const totalWork = todaySession?.totalWorkMinutes ?? 0;
+  const scheduledToday = plannedTaskBlocks.length;
+  const totalWork = workBlocksWithoutPostponed.reduce(
+    (sum, block) => sum + (block.end_time.getTime() - block.start_time.getTime()) / 60_000,
+    0
+  );
   const totalDrain = todaySession?.totalCognitiveDrain ?? 0;
+
+  const completedTaskLabels = tasks
+    .filter((task) => task.status === 'completed')
+    .map((task) => task.title);
+  const skippedTaskLabels = tasks
+    .filter((task) => task.status === 'skipped')
+    .map((task) => task.title);
+  const postponedTaskLabels = tasks
+    .filter((task) => task.status === 'postponed')
+    .map((task) => task.title);
 
   // Energía cognitiva: escalar (600 = 1 sesión completa, múltiplos posibles)
   const drainPercent = Math.min(100, Math.round((totalDrain / 600) * 100));
@@ -172,44 +208,69 @@ export default function StatsScreen(): ReactElement {
       <Animated.View entering={FadeInDown.delay(80).duration(300)} style={styles.section}>
         <Text style={styles.sectionTitle}>Resumen de Hoy</Text>
         <View style={styles.statRow}>
-          <StatCard
-            label="Completadas"
-            value={`${completedToday}`}
-            icon="✅"
-            accent={lifeTheme.colors.success}
-            delay={100}
-          />
-          <StatCard
-            label="Saltadas"
-            value={`${tasks.filter(t => t.status === 'skipped').length}`}
-            icon="⏭️"
-            accent={lifeTheme.colors.muted}
-            delay={140}
-          />
-          <StatCard
-            label="Pospuestas"
-            value={`${tasks.filter(t => t.status === 'postponed').length}`}
-            icon="⏳"
-            accent={'#f59e0b'}
-            delay={180}
-          />
+          <Pressable
+            style={styles.statPressable}
+            onPress={() => setSummaryDetail({ title: 'Completadas', items: completedTaskLabels })}
+          >
+            <StatCard
+              label="Completadas"
+              value={`${completedToday}`}
+              icon="✅"
+              accent={lifeTheme.colors.success}
+              delay={100}
+            />
+          </Pressable>
+          <Pressable
+            style={styles.statPressable}
+            onPress={() => setSummaryDetail({ title: 'Saltadas', items: skippedTaskLabels })}
+          >
+            <StatCard
+              label="Saltadas"
+              value={`${tasks.filter(t => t.status === 'skipped').length}`}
+              icon="⏭️"
+              accent={lifeTheme.colors.muted}
+              delay={140}
+            />
+          </Pressable>
+          <Pressable
+            style={styles.statPressable}
+            onPress={() => setSummaryDetail({ title: 'Pospuestas', items: postponedTaskLabels })}
+          >
+            <StatCard
+              label="Pospuestas"
+              value={`${tasks.filter(t => t.status === 'postponed').length}`}
+              icon="⏳"
+              accent={'#f59e0b'}
+              delay={180}
+            />
+          </Pressable>
         </View>
         
         <View style={[styles.statRow, { marginTop: 10 }]}>
-           <StatCard
-            label="Planificadas"
-            value={`${scheduledToday}`}
-            icon="⚡"
-            accent={lifeTheme.colors.primary}
-            delay={220}
-          />
-          <StatCard
-            label="Trabajo total"
-            value={formatMinutes(totalWork)}
-            icon="⏲️"
-            accent={lifeTheme.colors.text}
-            delay={260}
-          />
+          <Pressable
+            style={styles.statPressable}
+            onPress={() => setSummaryDetail({ title: 'Planificadas', items: plannedTaskLabels })}
+          >
+            <StatCard
+              label="Planificadas"
+              value={`${scheduledToday}`}
+              icon="⚡"
+              accent={lifeTheme.colors.primary}
+              delay={220}
+            />
+          </Pressable>
+          <Pressable
+            style={styles.statPressable}
+            onPress={() => setSummaryDetail({ title: 'Trabajo total (sin pospuestas)', items: totalWorkLabels })}
+          >
+            <StatCard
+              label="Trabajo total"
+              value={formatMinutes(Math.round(totalWork))}
+              icon="⏲️"
+              accent={lifeTheme.colors.text}
+              delay={260}
+            />
+          </Pressable>
         </View>
 
         {/* Progreso del dÃ­a */}
@@ -423,7 +484,53 @@ export default function StatsScreen(): ReactElement {
         body={`• Enfoque: crece al completar tareas de trabajo.\n• Vitalidad: crece con hábitos saludables y energía diaria.\n• Disciplina: crece cuando sostienes rutinas y consistencia.\n• Sabiduría: crece al capturar notas y reflexiones útiles.\n\nCada atributo suma al progreso general de tu perfil.`}
         onClose={() => setShowSkillsInfo(false)}
       />
+
+      <SummaryDetailModal
+        visible={summaryDetail != null}
+        title={summaryDetail?.title ?? ''}
+        items={summaryDetail?.items ?? []}
+        onClose={() => setSummaryDetail(null)}
+      />
     </>
+  );
+}
+
+function SummaryDetailModal({
+  visible,
+  title,
+  items,
+  onClose
+}: {
+  visible: boolean;
+  title: string;
+  items: string[];
+  onClose: () => void;
+}): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+          <Text style={styles.modalTitle}>{title}</Text>
+          {items.length === 0 ? (
+            <Text style={styles.modalBody}>No hay elementos para mostrar.</Text>
+          ) : (
+            <ScrollView style={styles.summaryList} contentContainerStyle={styles.summaryListContent}>
+              {items.map((item, idx) => (
+                <View key={`${item}-${idx}`} style={styles.summaryListItem}>
+                  <Text style={styles.summaryListItemText}>{item}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+          <Pressable style={styles.modalCloseBtn} onPress={onClose}>
+            <Text style={styles.modalCloseText}>Cerrar</Text>
+          </Pressable>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -562,6 +669,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     flexDirection: 'row',
     gap: 10
   },
+  statPressable: { flex: 1 },
   statCard: {
     flex: 1,
     backgroundColor: lifeTheme.colors.surfaceAlt,
@@ -775,6 +883,21 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     color: lifeTheme.colors.muted,
     fontSize: 14,
     lineHeight: 21
+  },
+  summaryList: { maxHeight: 280 },
+  summaryListContent: { gap: 8, paddingTop: 2 },
+  summaryListItem: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  summaryListItemText: {
+    color: lifeTheme.colors.text,
+    fontSize: 13,
+    lineHeight: 18
   },
   modalCloseBtn: {
     marginTop: 4,
