@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
+import { useEffect } from 'react';
 import type { ReactElement } from 'react';
 import {
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -18,8 +18,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SwipeableTaskCard } from '../../src/components/SwipeableTaskCard';
 import { TaskCompletionCheckDialog } from '../../src/components/TaskCompletionCheckDialog';
 import { ReplanificationPrompt } from '../../src/components/ReplanificationPrompt';
+import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
+import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 import type { PostponeReason, ScheduleBlock, SkipReason, Task, TaskUrgency } from '../../src/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -27,6 +29,8 @@ import type { PostponeReason, ScheduleBlock, SkipReason, Task, TaskUrgency } fro
 interface FormState {
   title: string;
   description: string;
+  emoji: string;
+  color: string;
   eta_minutes: number;
   priority: 1 | 2 | 3 | 4 | 5;
   cognitive_load: number;
@@ -39,6 +43,8 @@ interface FormState {
 const DEFAULT_FORM: FormState = {
   title: '',
   description: '',
+  emoji: '✨',
+  color: '',
   eta_minutes: 45,
   priority: 3,
   cognitive_load: 5,
@@ -190,8 +196,10 @@ export default function PoolScreen(): ReactElement {
   const confirmCompletionPartial = useLifeStore((s) => s.confirmCompletionPartial);
   const reportTaskSkipped = useLifeStore((s) => s.reportTaskSkipped);
   const reportTaskPostponed = useLifeStore((s) => s.reportTaskPostponed);
+  const lastReplanReason = useLifeStore((s) => s.last_replan_reason);
   const confirmReplan = useLifeStore((s) => s.confirmReplan);
   const rejectReplan = useLifeStore((s) => s.rejectReplan);
+  const pendingTaskEditId = useLifeStore((s) => s.pendingTaskEditId);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
@@ -205,6 +213,7 @@ export default function PoolScreen(): ReactElement {
     previous: ScheduleBlock[];
     next: ScheduleBlock[];
   } | null>(null);
+  const { alertState, showAlert, hideAlert } = useCustomAlert();
 
   // Sort: urgency > priority > completed last
   const sorted = useMemo(() => {
@@ -283,6 +292,8 @@ export default function PoolScreen(): ReactElement {
     setForm({
       title: task.title,
       description: task.description ?? '',
+      emoji: task.emoji ?? '✨',
+      color: task.color ?? '',
       eta_minutes: task.eta_minutes,
       priority: task.priority,
       cognitive_load: task.cognitive_load,
@@ -293,8 +304,19 @@ export default function PoolScreen(): ReactElement {
     });
   }
 
+  useEffect(() => {
+    if (!pendingTaskEditId) return;
+    const task = tasks.find((item) => item.id === pendingTaskEditId);
+    if (!task) {
+      useLifeStore.setState({ pendingTaskEditId: null });
+      return;
+    }
+    handleEdit(task);
+    useLifeStore.setState({ pendingTaskEditId: null });
+  }, [pendingTaskEditId, tasks]);
+
   function handleDelete(id: string) {
-    Alert.alert('Eliminar tarea', '¿Eliminar esta tarea? No se puede deshacer.', [
+    showAlert('Eliminar tarea', '¿Eliminar esta tarea? No se puede deshacer.', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: () => deleteTask(id) }
     ]);
@@ -358,12 +380,14 @@ export default function PoolScreen(): ReactElement {
 
   function handleSubmit() {
     if (!form.title.trim()) {
-      Alert.alert('Campo requerido', 'El título no puede estar vacío.');
+      showAlert('Campo requerido', 'El título no puede estar vacío.');
       return;
     }
     const payload = {
       title: form.title.trim(),
       description: form.description.trim() || undefined,
+      emoji: form.emoji.trim() || undefined,
+      color: form.color.trim() || undefined,
       eta_minutes: form.eta_minutes,
       priority: form.priority,
       cognitive_load: form.cognitive_load,
@@ -380,6 +404,7 @@ export default function PoolScreen(): ReactElement {
   const todayCount = tasks.filter((t) => t.urgency === 'today' && t.status !== 'completed').length;
   const weekCount  = tasks.filter((t) => t.urgency === 'this_week' && t.status !== 'completed').length;
   const doneCount  = tasks.filter((t) => t.status === 'completed').length;
+  const totalCount = tasks.length;
 
   const priorityColors = useMemo(() => getPriorityColors(lifeTheme), [lifeTheme]);
   const urgencyOptions = useMemo(() => getUrgencyOptions(lifeTheme), [lifeTheme]);
@@ -400,6 +425,7 @@ export default function PoolScreen(): ReactElement {
       <View style={styles.hdr}>
         <View style={styles.hdrLeft}>
           <Text style={styles.title}>📋 Task Pool</Text>
+          <Text style={styles.subtitle}>Captura, organiza y prioriza tus tareas antes de programarlas.</Text>
           <Pressable style={styles.formToggleBtn} onPress={toggleTaskForm}>
             <Text style={styles.formToggleText}>{isFormCollapsed ? '+ Nueva tarea' : '− Minimizar form'}</Text>
           </Pressable>
@@ -420,6 +446,14 @@ export default function PoolScreen(): ReactElement {
         </View>
       </View>
 
+      <View style={styles.guideCard}>
+        <Text style={styles.guideTitle}>Cómo aprovechar el Pool</Text>
+        <Text style={styles.guideItem}>• Vuelca todo lo pendiente sin fricción.</Text>
+        <Text style={styles.guideItem}>• Ajusta urgencia, prioridad y duración para ordenar.</Text>
+        <Text style={styles.guideItem}>• Completa desde la lista para registrar tu avance.</Text>
+        <Text style={styles.guideMeta}>Tienes {totalCount} tarea{totalCount !== 1 ? 's' : ''} registradas.</Text>
+      </View>
+
       {/* Form */}
       {isFormCollapsed ? (
         <Pressable style={styles.formCollapsedCard} onPress={toggleTaskForm}>
@@ -429,6 +463,7 @@ export default function PoolScreen(): ReactElement {
       ) : (
       <View style={styles.card}>
         <Text style={styles.cardTitle}>{editingId ? '✏️ Editar tarea' : '+ Nueva tarea'}</Text>
+        <Text style={styles.formHint}>Usa este formulario para definir contexto, tiempo y prioridad.</Text>
 
         <TextInput
           style={styles.input}
@@ -448,6 +483,31 @@ export default function PoolScreen(): ReactElement {
           multiline
           numberOfLines={2}
         />
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.fieldLabel}>Emoji</Text>
+            <TextInput
+              style={styles.input}
+              value={form.emoji}
+              onChangeText={(v) => setForm((f) => ({ ...f, emoji: v.slice(0, 2) }))}
+              placeholder="✨"
+              placeholderTextColor={lifeTheme.colors.muted}
+              maxLength={2}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.fieldLabel}>Color</Text>
+            <TextInput
+              style={styles.input}
+              value={form.color}
+              onChangeText={(v) => setForm((f) => ({ ...f, color: v }))}
+              placeholder="#8FBF00"
+              placeholderTextColor={lifeTheme.colors.muted}
+              autoCapitalize="characters"
+            />
+          </View>
+        </View>
 
         {/* Urgency */}
         <View>
@@ -472,6 +532,7 @@ export default function PoolScreen(): ReactElement {
               </Pressable>
             ))}
           </View>
+          <Text style={styles.fieldHint}>La urgencia define en qué vistas aparece y cómo se prioriza.</Text>
         </View>
 
         {/* Duration */}
@@ -548,6 +609,7 @@ export default function PoolScreen(): ReactElement {
           onClear={() => setForm((f) => ({ ...f, deadline: null }))}
           onConfirm={(d) => setForm((f) => ({ ...f, deadline: d }))}
         />
+        <Text style={styles.fieldHint}>Si hay horario fijo, usa inicio y fin para respetar tu agenda.</Text>
 
         {/* Buttons */}
         <View style={styles.formBtns}>
@@ -570,6 +632,7 @@ export default function PoolScreen(): ReactElement {
           <Text style={styles.filterDropdownText}>{FILTER_OPTIONS.find((opt) => opt.key === filter)?.label ?? 'Todas'}</Text>
           <Text style={styles.filterDropdownIcon}>▼</Text>
         </Pressable>
+        <Text style={styles.filterHint}>Tip: usa "Pendientes hoy" para enfocarte en lo urgente.</Text>
       </View>
 
       <Modal visible={isFilterMenuVisible} transparent animationType="fade" onRequestClose={() => setIsFilterMenuVisible(false)}>
@@ -620,9 +683,9 @@ export default function PoolScreen(): ReactElement {
           sorted.map((task, idx) => (
             <Animated.View
               key={task.id}
-              entering={FadeInDown.delay(idx * 30).duration(240)}
+              entering={FadeInDown.duration(120).delay(idx * 20)}
               exiting={FadeOutUp.duration(160)}
-              layout={Layout.springify().damping(18)}
+              layout={Layout.springify().damping(32).stiffness(120).mass(0.9)}
             >
               <SwipeableTaskCard
                 task={task}
@@ -655,6 +718,7 @@ export default function PoolScreen(): ReactElement {
         visible={replanPreview != null}
         previousBlocks={replanPreview?.previous ?? []}
         nextBlocks={replanPreview?.next ?? []}
+        reason={lastReplanReason}
         onConfirm={() => {
           if (!replanPreview) return;
           void confirmReplan(replanPreview.next);
@@ -670,6 +734,14 @@ export default function PoolScreen(): ReactElement {
       />
 
       <View style={{ height: 24 }} />
+
+      <CustomAlertDialog
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        buttons={alertState.buttons}
+        onDismiss={hideAlert}
+      />
     </ScrollView>
   );
 }
@@ -683,6 +755,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   hdrLeft: { gap: 8 },
   title: { color: lifeTheme.colors.text, fontSize: 22, fontWeight: '800' },
+  subtitle: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18, maxWidth: 260 },
   formToggleBtn: {
     alignSelf: 'flex-start',
     borderRadius: 10,
@@ -701,11 +774,23 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   },
   badgeNum: { fontSize: 14, fontWeight: '800' },
   badgeLbl: { color: lifeTheme.colors.muted, fontSize: 8, fontWeight: '600' },
+  guideCard: {
+    backgroundColor: lifeTheme.colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 14,
+    gap: 6
+  },
+  guideTitle: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '800' },
+  guideItem: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18 },
+  guideMeta: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700', marginTop: 4 },
   card: {
     backgroundColor: lifeTheme.colors.surface, borderRadius: 16,
     borderWidth: 1, borderColor: lifeTheme.colors.border, padding: 16, gap: 16
   },
   cardTitle: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '800' },
+  formHint: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18 },
   formCollapsedCard: {
     backgroundColor: lifeTheme.colors.surface,
     borderRadius: 14,
@@ -723,6 +808,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   },
   textArea: { minHeight: 70, textAlignVertical: 'top' },
   fieldLabel: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  fieldHint: { color: lifeTheme.colors.muted, fontSize: 11, lineHeight: 16, marginTop: 6 },
   urgencyRow: { flexDirection: 'row', gap: 8 },
   urgencyChip: {
     flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 12,
@@ -767,6 +853,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   },
   filterDropdownText: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
   filterDropdownIcon: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
+  filterHint: { color: lifeTheme.colors.muted, fontSize: 11, lineHeight: 16 },
   filterModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',

@@ -167,6 +167,14 @@ export default function StatsScreen(): ReactElement {
   // ── Histórico sparkline ─────────────────────────────────────────────────────────
   const maxCompleted = Math.max(1, ...last7.map((d) => sessionMap[d]?.tasksCompleted ?? 0));
   const xpToNextLevel = (userProfile.level * 100) - userProfile.currentXP;
+  const consistency = userProfile.consistency;
+  const sortedBadges = [...userProfile.badges].sort(
+    (a, b) => b.unlockedAt.getTime() - a.unlockedAt.getTime()
+  );
+  const badgeHistoryLabels = sortedBadges.map((badge) => {
+    const date = badge.unlockedAt.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+    return `${badge.icon} ${badge.title} · ${date}`;
+  });
 
   const [showMasteryInfo, setShowMasteryInfo] = useState(false);
   const [showXpInfo, setShowXpInfo] = useState(false);
@@ -202,6 +210,49 @@ export default function StatsScreen(): ReactElement {
         <Text style={styles.heroSub}>
           Un vistazo a tu productividad cognitiva de hoy y los últimos 7 días.
         </Text>
+      </Animated.View>
+
+      {/* Gamificación de consistencia */}
+      <Animated.View entering={FadeInDown.delay(140).duration(300)} style={styles.section}>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>Consistencia y Logros</Text>
+          <Pressable
+            onPress={() => setSummaryDetail({ title: 'Historial de logros', items: badgeHistoryLabels })}
+          >
+            <Text style={styles.infoLink}>Ver historial</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.streakRow}>
+          <View style={styles.streakCard}>
+            <Text style={styles.streakLabel}>Racha actual</Text>
+            <Text style={styles.streakValue}>{consistency.currentStreak} días</Text>
+          </View>
+          <View style={styles.streakCard}>
+            <Text style={styles.streakLabel}>Mejor racha</Text>
+            <Text style={styles.streakValue}>{consistency.bestStreak} días</Text>
+          </View>
+          <View style={styles.streakCard}>
+            <Text style={styles.streakLabel}>Días activos</Text>
+            <Text style={styles.streakValue}>{consistency.totalActiveDays}</Text>
+          </View>
+        </View>
+
+        <View style={styles.badgesWrap}>
+          {sortedBadges.length === 0 ? (
+            <Text style={styles.badgesEmpty}>Aún no hay badges desbloqueados. Mantén la consistencia para ganar el primero.</Text>
+          ) : (
+            sortedBadges.map((badge) => (
+              <View key={badge.id} style={styles.badgeChip}>
+                <Text style={styles.badgeIcon}>{badge.icon}</Text>
+                <View style={styles.badgeTextWrap}>
+                  <Text style={styles.badgeTitle}>{badge.title}</Text>
+                  <Text style={styles.badgeDesc}>{badge.description}</Text>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
       </Animated.View>
 
       {/* Resumen del dÃ­a */}
@@ -771,6 +822,63 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   loadBars: {
     gap: 10,
     marginTop: 4
+  },
+  streakRow: {
+    flexDirection: 'row',
+    gap: 10
+  },
+  streakCard: {
+    flex: 1,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: lifeTheme.radius.sm,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    gap: 4
+  },
+  streakLabel: {
+    color: lifeTheme.colors.muted,
+    fontSize: 11
+  },
+  streakValue: {
+    color: lifeTheme.colors.primary,
+    fontSize: 18,
+    fontWeight: '900'
+  },
+  badgesWrap: {
+    gap: 8
+  },
+  badgesEmpty: {
+    color: lifeTheme.colors.muted,
+    fontSize: 13,
+    lineHeight: 18
+  },
+  badgeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  badgeIcon: {
+    fontSize: 18
+  },
+  badgeTextWrap: {
+    flex: 1
+  },
+  badgeTitle: {
+    color: lifeTheme.colors.text,
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  badgeDesc: {
+    color: lifeTheme.colors.muted,
+    fontSize: 12
   },
   hbarRow: {
     flexDirection: 'row',

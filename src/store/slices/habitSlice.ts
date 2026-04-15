@@ -2,9 +2,16 @@ import type { StateCreator } from 'zustand';
 import { createId } from '../../utils/ids';
 import { getTodayStr } from '../../utils/date';
 import type { Habit, LifeStore } from '../lifeStore.types';
+import { scheduleRandomHabitReminder } from '../../services/notifications';
+
+async function refreshHabitReminder(get: () => LifeStore, set: (partial: Partial<LifeStore>) => void): Promise<void> {
+  const state = get();
+  const reminderId = await scheduleRandomHabitReminder(state.habits, state.habitReminderNotificationId);
+  set({ habitReminderNotificationId: reminderId });
+}
 
 export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
-  'addHabit' | 'logHabit' | 'updateHabit' | 'deleteHabit'
+  'addHabit' | 'logHabit' | 'unlogHabit' | 'updateHabit' | 'deleteHabit'
 >> = (set, get) => ({
   addHabit: (habit) => {
     set((state) => ({
@@ -18,6 +25,8 @@ export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
         }
       ]
     }));
+
+    void refreshHabitReminder(get, set);
   },
 
   logHabit: (id: string, value: number) => {
@@ -63,18 +72,81 @@ export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
     }));
     if (shouldAwardXP) {
       get().addXP(15, 'vitality');
+      get().addConsistencyActivity();
     }
+
+    void refreshHabitReminder(get, set);
+  },
+
+  unlogHabit: (id: string) => {
+    const todayStr = getTodayStr();
+    let shouldRevertXP = false;
+
+    set((state) => ({
+      habits: state.habits.map((habit) => {
+        if (habit.id !== id) return habit;
+
+        const todayLogs = habit.logs.filter((log) => new Date(log.timestamp).toISOString().slice(0, 10) === todayStr);
+        if (todayLogs.length === 0) return habit;
+
+        shouldRevertXP = true;
+        const nextLogs = habit.logs.filter((log) => new Date(log.timestamp).toISOString().slice(0, 10) !== todayStr);
+        const uniqueDates = Array.from(new Set(nextLogs.map((log) => new Date(log.timestamp).toISOString().slice(0, 10)))).sort().reverse();
+
+        let nextStreak = 0;
+        if (uniqueDates.length > 0) {
+          const mostRecent = uniqueDates[0];
+          const yesterday = new Date(todayStr);
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+          if (mostRecent === yesterdayStr) {
+            nextStreak = 1;
+            let current = new Date(mostRecent);
+            for (let index = 1; index < uniqueDates.length; index++) {
+              current.setDate(current.getDate() - 1);
+              if (uniqueDates[index] === current.toISOString().slice(0, 10)) {
+                nextStreak += 1;
+              } else {
+                break;
+              }
+            }
+          }
+        }
+
+        return {
+          ...habit,
+          logs: nextLogs,
+          lastCompletedDate: nextLogs.some((log) => new Date(log.timestamp).toISOString().slice(0, 10) === todayStr)
+            ? todayStr
+            : nextLogs.length > 0
+              ? new Date(nextLogs[nextLogs.length - 1].timestamp).toISOString().slice(0, 10)
+              : undefined,
+          streak: nextStreak
+        };
+      })
+    }));
+
+    if (shouldRevertXP) {
+      get().addXP(-15, 'vitality');
+    }
+
+    void refreshHabitReminder(get, set);
   },
 
   updateHabit: (id: string, updates: Partial<Habit>) => {
     set((state) => ({
       habits: state.habits.map((habit) => (habit.id === id ? { ...habit, ...updates } : habit))
     }));
+
+    void refreshHabitReminder(get, set);
   },
 
   deleteHabit: (id: string) => {
     set((state) => ({
       habits: state.habits.filter((habit) => habit.id !== id)
     }));
+
+    void refreshHabitReminder(get, set);
   }
 });

@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
-  Alert,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -32,8 +30,11 @@ import * as DocumentPicker from 'expo-document-picker';
 import { router } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { getBuildMetadata } from '../../src/config/buildInfo';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { UI_ACCENT_TEXT_MODES } from '../../src/theme';
+import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
+import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 
 type SettingsStyles = ReturnType<typeof createStyles>;
 
@@ -82,7 +83,9 @@ const NOTIFICATION_TEST_BUTTONS: Array<{ key: NotificationTestType; label: strin
   { key: 'completion_check', label: 'Test Completion Check', subtitle: 'Cierre de bloque con acciones' },
   { key: 'alarm', label: 'Test Alarma', subtitle: 'Notificación tipo alarma' },
   { key: 'routine_sleep', label: 'Test Rutina Sueño', subtitle: 'Recordatorio de descanso' },
+  { key: 'routine_wake', label: 'Test Rutina Despertar', subtitle: 'Recordatorio de inicio de día' },
   { key: 'routine_meal', label: 'Test Rutina Comida', subtitle: 'Bloque de comida' },
+  { key: 'routine_transit', label: 'Test Rutina Traslado', subtitle: 'Bloque de traslado' },
   { key: 'event', label: 'Test Evento', subtitle: 'Recordatorio de evento estático' },
   { key: 'note', label: 'Test Nota', subtitle: 'Recordatorio de nota' }
 ];
@@ -148,6 +151,7 @@ export default function SettingsScreen(): ReactElement {
   const theme = useAppTheme();
   const lifeTheme = theme;
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const buildInfo = useMemo(() => getBuildMetadata(), []);
   const settings = useLifeStore((s) => s.settings);
   const updateSettings = useLifeStore((s) => s.updateSettings);
   const clearAllData = useLifeStore((s) => s.clearAllData);
@@ -160,6 +164,7 @@ export default function SettingsScreen(): ReactElement {
   const [icsUrl, setIcsUrl] = useState('');
   const [customHex, setCustomHex] = useState(settings.uiAccentColor);
   const [customRgb, setCustomRgb] = useState(hexToRgb(settings.uiAccentColor));
+  const { alertState, showAlert, hideAlert } = useCustomAlert();
 
   useEffect(() => {
     setCustomHex(settings.uiAccentColor.toUpperCase());
@@ -177,15 +182,15 @@ export default function SettingsScreen(): ReactElement {
       if (canShare) {
         await Sharing.shareAsync(fileUri, { dialogTitle: 'Copia de seguridad LifeOS' });
       } else {
-        Alert.alert('Error', 'Compartir no está disponible en este dispositivo.');
+        showAlert('Error', 'Compartir no está disponible en este dispositivo.');
       }
     } catch (err) {
-      Alert.alert('Error', 'No se pudo generar la copia de seguridad.');
+      showAlert('Error', 'No se pudo generar la copia de seguridad.');
     }
   }
 
   function handleClearAll() {
-    Alert.alert(
+    showAlert(
       '⚠️ Borrar todo el historial',
       'Esto eliminará todas las tareas, el timeline y las estadísticas. Esta acción no se puede deshacer.',
       [
@@ -207,17 +212,17 @@ export default function SettingsScreen(): ReactElement {
     
     if (type === 'home') {
       updateSettings({ homeLocation: { latitude: coords.latitude, longitude: coords.longitude } });
-      Alert.alert('Ubicación guardada', 'Casa configurada en tu posición actual.');
+      showAlert('Ubicación guardada', 'Casa configurada en tu posición actual.');
     } else {
       updateSettings({ workLocation: { latitude: coords.latitude, longitude: coords.longitude } });
-      Alert.alert('Ubicación guardada', 'Universidad configurada en tu posición actual.');
+      showAlert('Ubicación guardada', 'Universidad configurada en tu posición actual.');
     }
   }
 
   async function handleApplyNotifications() {
     const granted = await requestNotificationPermission();
     if (!granted) {
-      Alert.alert('Permiso requerido', 'Activa notificaciones del sistema para aplicar reglas.');
+      showAlert('Permiso requerido', 'Activa notificaciones del sistema para aplicar reglas.');
       return;
     }
 
@@ -232,7 +237,7 @@ export default function SettingsScreen(): ReactElement {
       const important = tasks.find((t) => t.priority >= 4 && t.status !== 'completed');
       if (important) await scheduleImportantTaskAlert(important.title);
     }
-    Alert.alert('✅ Notificaciones aplicadas', 'La configuración de notificaciones se ha guardado.');
+    showAlert('✅ Notificaciones aplicadas', 'La configuración de notificaciones se ha guardado.');
   }
 
   async function handleSyncIcsUrl() {
@@ -254,10 +259,10 @@ export default function SettingsScreen(): ReactElement {
       blockId: timelineTaskBlock?.id
     });
     if (!id) {
-      Alert.alert('Permiso requerido', 'No se pudo ejecutar el test. Revisa permisos de notificaciones.');
+      showAlert('Permiso requerido', 'No se pudo ejecutar el test. Revisa permisos de notificaciones.');
       return;
     }
-    Alert.alert('🧪 Test enviado', 'Se programó una notificación de prueba para los próximos segundos.');
+    showAlert('🧪 Test enviado', 'Se programó una notificación de prueba para los próximos segundos.');
   }
 
   function handleHexChange(raw: string) {
@@ -279,11 +284,11 @@ export default function SettingsScreen(): ReactElement {
 
   function applyCustomAccent() {
     if (!isValidHex(customHex)) {
-      Alert.alert('Color inválido', 'Usa un color HEX válido con 6 dígitos, por ejemplo #22C55E.');
+      showAlert('Color inválido', 'Usa un color HEX válido con 6 dígitos, por ejemplo #22C55E.');
       return;
     }
     updateSettings({ uiAccentColor: customHex.toUpperCase() });
-    Alert.alert('Color aplicado', `Nuevo acento principal: ${customHex.toUpperCase()}`);
+    showAlert('Color aplicado', `Nuevo acento principal: ${customHex.toUpperCase()}`);
   }
 
   async function handlePickIcsFile() {
@@ -298,13 +303,13 @@ export default function SettingsScreen(): ReactElement {
         const parsedEvents = parseICS(fileContent);
         if (parsedEvents.length > 0) {
           useLifeStore.getState().setEvents(parsedEvents);
-          Alert.alert('Importado', `${parsedEvents.length} eventos importados exitosamente desde el archivo.`);
+          showAlert('Importado', `${parsedEvents.length} eventos importados exitosamente desde el archivo.`);
         } else {
-          Alert.alert('Vacío', 'No se encontraron eventos en el archivo .ics');
+          showAlert('Vacío', 'No se encontraron eventos en el archivo .ics');
         }
       }
     } catch (err) {
-      Alert.alert('Error', 'No se pudo procesar el archivo seleccionado.');
+      showAlert('Error', 'No se pudo procesar el archivo seleccionado.');
       console.log(err);
     }
   }
@@ -478,6 +483,15 @@ export default function SettingsScreen(): ReactElement {
           onValueChange={(v) => updateSettings({ longBreakDurationMinutes: Math.round(v) })}
           minimumTrackTintColor={lifeTheme.colors.primary} maximumTrackTintColor={lifeTheme.colors.border} thumbTintColor={lifeTheme.colors.primary}
         />
+        <View style={styles.divider} />
+        <SettingRow styles={styles} label="Bloque fantasma completado" subtitle="Mantiene visible el bloque hasta su hora final.">
+          <Switch
+            value={settings.keepCompletedGhostBlock}
+            onValueChange={(v) => updateSettings({ keepCompletedGhostBlock: v })}
+            trackColor={{ true: lifeTheme.colors.primary, false: lifeTheme.colors.border }}
+            thumbColor="#fff"
+          />
+        </SettingRow>
       </Accordion>
 
       <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Rutinas y Alarmas" icon="🌙">
@@ -636,7 +650,9 @@ export default function SettingsScreen(): ReactElement {
         <Text style={styles.featureLine}>• Planificador local en dispositivo (sin backend remoto obligatorio)</Text>
         <Text style={styles.featureLine}>• Stack: Expo Router, React Native, TypeScript y Zustand</Text>
         <Text style={styles.featureLine}>• Notificaciones locales con alarmas, rutinas, eventos y notas</Text>
-        <Text style={styles.buildInfo}>LifeOS v3.1.0 · Build local Android</Text>
+        <Text style={styles.buildInfo}>
+          LifeOS v{buildInfo.appVersion} · commit {buildInfo.commitHash} · build {buildInfo.buildTimestamp}
+        </Text>
       </View>
 
       <View style={styles.footerInfo}>
@@ -647,13 +663,21 @@ export default function SettingsScreen(): ReactElement {
         <Pressable 
           style={{ marginTop: 16, backgroundColor: `${lifeTheme.colors.primary}15`, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: `${lifeTheme.colors.primary}55` }}
           onPress={() => {
-            updateSettings({ showTutorial: true });
-            Alert.alert('Tutorial Reiniciado', 'Vuelve al Home para ver la guía.');
+            updateSettings({ showTutorial: true, tutorialStep: 0 });
+            showAlert('Tutorial reiniciado', 'Puedes abrir cualquier pestaña para empezar la guía.');
           }}
         >
           <Text style={{ color: lifeTheme.colors.primary, fontSize: 13, fontWeight: '800' }}>Reiniciar Guía Tutorial</Text>
         </Pressable>
       </View>
+
+      <CustomAlertDialog
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        buttons={alertState.buttons}
+        onDismiss={hideAlert}
+      />
     </ScrollView>
   );
 }

@@ -12,6 +12,8 @@ export const createTaskSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
       id: createId('task'),
       title: task.title.trim(),
       description: task.description?.trim() || undefined,
+      emoji: task.emoji?.trim() || undefined,
+      color: task.color?.trim() || undefined,
       eta_minutes: Math.max(5, Math.round(task.eta_minutes)),
       priority: task.priority,
       cognitive_load: Math.max(1, Math.min(10, Math.round(task.cognitive_load))),
@@ -37,6 +39,14 @@ export const createTaskSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
             updates.description === undefined
               ? task.description
               : updates.description.trim() || undefined,
+          emoji:
+            updates.emoji === undefined
+              ? task.emoji
+              : updates.emoji.trim() || undefined,
+          color:
+            updates.color === undefined
+              ? task.color
+              : updates.color.trim() || undefined,
           eta_minutes:
             updates.eta_minutes === undefined
               ? task.eta_minutes
@@ -62,7 +72,8 @@ export const createTaskSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
   deleteTask: (id: string) => {
     set((state) => ({
       tasks: state.tasks.filter((task) => task.id !== id),
-      timeline: state.timeline.filter((block) => block.task_id !== id)
+      timeline: state.timeline.filter((block) => block.task_id !== id),
+      completedGhostBlocks: state.completedGhostBlocks.filter((block) => block.task_id !== id)
     }));
   },
 
@@ -83,6 +94,7 @@ export const createTaskSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
 
     const xp = (task.priority * 10) + (task.cognitive_load * 2);
     get().addXP(xp, 'focus');
+    get().addConsistencyActivity();
   },
 
   skipTask: (id: string) => {

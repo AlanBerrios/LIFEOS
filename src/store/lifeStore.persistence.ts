@@ -38,7 +38,8 @@ function reviveEvent(event: StaticEvent): StaticEvent {
 function reviveRoutine(routine: DailyRoutine): DailyRoutine {
   return {
     ...routine,
-    meals: routine.meals.map((meal) => ({ ...meal }))
+    meals: (routine.meals ?? []).map((meal) => ({ ...meal })),
+    transits: (routine.transits ?? []).map((transit) => ({ ...transit }))
   };
 }
 
@@ -79,6 +80,13 @@ function reviveExecutionRecord(record: any) {
   };
 }
 
+function reviveReplanDecision(decision: any) {
+  return {
+    ...decision,
+    timestamp: toDateRequired(decision.timestamp)
+  };
+}
+
 function reviveTimer(timer: LifeTimer | null): LifeTimer | null {
   if (!timer) {
     return null;
@@ -93,6 +101,31 @@ function reviveTimer(timer: LifeTimer | null): LifeTimer | null {
   return revived.endsAt.getTime() <= Date.now() ? null : revived;
 }
 
+function reviveUserProfile(snapshotProfile: LifeStore['userProfile'] | undefined, currentProfile: LifeStore['userProfile']): LifeStore['userProfile'] {
+  const source = snapshotProfile ?? currentProfile;
+  const consistency = source.consistency ?? currentProfile.consistency;
+  const badges = (source.badges ?? currentProfile.badges).map((badge) => ({
+    ...badge,
+    unlockedAt: toDateRequired(badge.unlockedAt)
+  }));
+
+  return {
+    ...currentProfile,
+    ...source,
+    skills: {
+      ...currentProfile.skills,
+      ...(source.skills ?? {})
+    },
+    consistency: {
+      currentStreak: consistency.currentStreak ?? 0,
+      bestStreak: consistency.bestStreak ?? 0,
+      totalActiveDays: consistency.totalActiveDays ?? 0,
+      lastActiveDate: consistency.lastActiveDate
+    },
+    badges
+  };
+}
+
 export function createDefaultRoutines(): DailyRoutine[] {
   return Array.from({ length: 7 }).map((_, index) => ({
     dayOfWeek: index,
@@ -101,7 +134,8 @@ export function createDefaultRoutines(): DailyRoutine[] {
     meals: [
       { id: createId('meal'), type: 'desayuno', time: '08:00', durationMinutes: 30 },
       { id: createId('meal'), type: 'almuerzo', time: '13:30', durationMinutes: 60 }
-    ]
+    ],
+    transits: []
   }));
 }
 
@@ -130,11 +164,17 @@ export function revivePersistedState(
     alarms: snapshot.alarms ?? currentState.alarms,
     events: (snapshot.events ?? currentState.events).map(reviveEvent),
     routines: (snapshot.routines ?? currentState.routines).map(reviveRoutine),
+    routineOverrides: snapshot.routineOverrides ?? currentState.routineOverrides,
+    completedGhostBlocks: (snapshot.completedGhostBlocks ?? currentState.completedGhostBlocks).map(reviveBlock),
+    habitReminderNotificationId: snapshot.habitReminderNotificationId ?? currentState.habitReminderNotificationId,
     travelLogs: (snapshot.travelLogs ?? currentState.travelLogs).map(reviveTravelLog),
-    userProfile: snapshot.userProfile ?? currentState.userProfile,
+    userProfile: reviveUserProfile(snapshot.userProfile, currentState.userProfile),
+    rest_days: snapshot.rest_days ?? currentState.rest_days,
     lastEngine: snapshot.lastEngine ?? currentState.lastEngine,
     lastSolverStatus: snapshot.lastSolverStatus ?? currentState.lastSolverStatus,
     isGenerating: snapshot.isGenerating ?? currentState.isGenerating,
+    last_replan_reason: snapshot.last_replan_reason ?? currentState.last_replan_reason,
+    replan_history: (snapshot.replan_history ?? currentState.replan_history).map(reviveReplanDecision),
     execution_records: (snapshot.execution_records ?? currentState.execution_records).map(reviveExecutionRecord),
     pending_completion_check: snapshot.pending_completion_check
       ? {
@@ -159,11 +199,17 @@ export function partializeLifeState(state: LifeStore): Partial<LifeStore> {
     alarms: state.alarms,
     events: state.events,
     routines: state.routines,
+    routineOverrides: state.routineOverrides,
+    completedGhostBlocks: state.completedGhostBlocks,
+    habitReminderNotificationId: state.habitReminderNotificationId,
     travelLogs: state.travelLogs,
     userProfile: state.userProfile,
+    rest_days: state.rest_days,
     lastEngine: state.lastEngine,
     lastSolverStatus: state.lastSolverStatus,
     isGenerating: state.isGenerating,
+    last_replan_reason: state.last_replan_reason,
+    replan_history: state.replan_history,
     execution_records: state.execution_records,
     pending_completion_check: state.pending_completion_check,
     is_replanning: state.is_replanning,

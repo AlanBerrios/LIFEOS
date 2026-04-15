@@ -8,6 +8,7 @@ interface ReplanificationPromptProps {
   visible: boolean;
   previousBlocks: ScheduleBlock[];
   nextBlocks: ScheduleBlock[];
+  reason?: string;
   onConfirm: () => void;
   onReject: () => void;
 }
@@ -22,6 +23,7 @@ export function ReplanificationPrompt({
   visible,
   previousBlocks,
   nextBlocks,
+  reason,
   onConfirm,
   onReject
 }: ReplanificationPromptProps): ReactElement {
@@ -37,6 +39,13 @@ export function ReplanificationPrompt({
           <Text style={styles.subtitle}>
             Se detecto un desvio y se preparo una replanificacion para el resto del dia.
           </Text>
+
+          {reason ? (
+            <View style={styles.reasonBox}>
+              <Text style={styles.reasonLabel}>Motivo detectado</Text>
+              <Text style={styles.reasonText}>{reason}</Text>
+            </View>
+          ) : null}
 
           <View style={styles.kpiRow}>
             <View style={styles.kpiChip}>
@@ -134,6 +143,27 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.6
+  },
+  reasonBox: {
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    borderRadius: 12,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4
+  },
+  reasonLabel: {
+    color: lifeTheme.colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
+  },
+  reasonText: {
+    color: lifeTheme.colors.text,
+    fontSize: 12,
+    lineHeight: 17
   },
   list: {
     borderWidth: 1,

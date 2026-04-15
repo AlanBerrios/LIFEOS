@@ -13,7 +13,8 @@ function shortHash(input: string): string {
 function buildDeterministicEventId(uid: string | undefined, title: string, start: Date, end: Date): string {
   if (uid && uid.trim().length > 0) {
     const normalized = uid.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-    return `ics-${normalized}`;
+    const startStamp = `${start.getUTCFullYear()}${String(start.getUTCMonth() + 1).padStart(2, '0')}${String(start.getUTCDate()).padStart(2, '0')}T${String(start.getUTCHours()).padStart(2, '0')}${String(start.getUTCMinutes()).padStart(2, '0')}`;
+    return `ics-${normalized}-${startStamp}`;
   }
   const raw = `${title.trim().toLowerCase()}|${start.toISOString()}|${end.toISOString()}`;
   return `ics-${shortHash(raw)}`;

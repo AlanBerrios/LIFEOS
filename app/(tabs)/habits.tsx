@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -19,6 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTodayStr } from '../../src/utils/date';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
+import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
+import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 
 const EMOJI_OPTIONS = ['💧', '🏃', '🥗', '🧘', '📚', '💊', '🍎', '💤', '🚶', '💪', '🧠', '✨'];
 
@@ -39,20 +40,33 @@ export default function HabitsScreen(): ReactElement {
   const deleteHabit = useLifeStore((s) => s.deleteHabit);
   const updateHabit = useLifeStore((s) => s.updateHabit);
   const logHabit = useLifeStore((s) => s.logHabit);
+  const unlogHabit = useLifeStore((s) => s.unlogHabit);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null);
-  
+
   const [newHabit, setNewHabit] = useState({
     name: '',
     emoji: '✨',
     goalValue: 1,
     goalUnit: 'check'
   });
+  const { alertState, showAlert, hideAlert } = useCustomAlert();
+  const todayKey = getTodayStr();
+  const totalHabits = habits.length;
+  const completedToday = habits.filter((h) => h.lastCompletedDate === todayKey).length;
+  const longestStreak = habits.length > 0 ? Math.max(...habits.map((h) => h.streak)) : 0;
+
+  function toDateKey(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 
   function handleSave() {
     if (!newHabit.name.trim()) return;
-    
+
     if (editingHabitId) {
       updateHabit(editingHabitId, {
         ...newHabit,
@@ -66,7 +80,7 @@ export default function HabitsScreen(): ReactElement {
         color: lifeTheme.colors.primary
       });
     }
-    
+
     setModalVisible(false);
     setNewHabit({ name: '', emoji: '✨', goalValue: 1, goalUnit: 'check' });
   }
@@ -84,7 +98,10 @@ export default function HabitsScreen(): ReactElement {
 
   function handleLog(id: string) {
     const habit = habits.find((h) => h.id === id);
-    if (habit?.lastCompletedDate === getTodayStr()) return;
+    if (habit?.lastCompletedDate === getTodayStr()) {
+      unlogHabit(id);
+      return;
+    }
     logHabit(id, 1);
   }
 
@@ -101,25 +118,43 @@ export default function HabitsScreen(): ReactElement {
         </Pressable>
       </View>
 
-      {/* Visualizador de Rachas (Gráfico de Barras Lateral) */}
+      <Text style={styles.subtitle}>Construye constancia con pequeños actos diarios.</Text>
+
+      <View style={styles.summaryCard}>
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryValue}>{completedToday}/{totalHabits || 0}</Text>
+          <Text style={styles.summaryLabel}>Hoy</Text>
+        </View>
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryValue}>{longestStreak}</Text>
+          <Text style={styles.summaryLabel}>Mejor racha</Text>
+        </View>
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryValue}>{totalHabits}</Text>
+          <Text style={styles.summaryLabel}>Totales</Text>
+        </View>
+      </View>
+
+      <Text style={styles.helperText}>Tip: toca "Marcar hoy" para registrar; vuelve a tocar para desmarcar.</Text>
+
       {habits.length > 0 && (() => {
-        const maxStreak = Math.max(...habits.map(h => h.streak), 7);
+        const maxStreak = Math.max(...habits.map((h) => h.streak), 7);
         return (
           <View style={styles.streakPanel}>
             <Text style={styles.sectLabel}>Rachas Actuales</Text>
             <View style={styles.streakChart}>
-              {habits.map(h => (
+              {habits.map((h) => (
                 <View key={h.id} style={styles.streakRow}>
                   <Text style={styles.streakRowEmoji}>{h.emoji}</Text>
                   <View style={styles.streakBarTrack}>
-                    <View 
+                    <View
                       style={[
-                        styles.streakBarFill, 
-                        { 
+                        styles.streakBarFill,
+                        {
                           width: `${(h.streak / maxStreak) * 100}%`,
                           backgroundColor: h.streak > 0 ? lifeTheme.colors.alert : lifeTheme.colors.border
                         }
-                      ]} 
+                      ]}
                     />
                   </View>
                   <Text style={styles.streakRowVal}>🔥 {h.streak}</Text>
@@ -133,77 +168,98 @@ export default function HabitsScreen(): ReactElement {
       <View style={styles.list}>
         {habits.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No tienes hábitos configurados.{'\n'}¡Crea uno para empezar tu racha!</Text>
+            <Text style={styles.emptyText}>No tienes hábitos configurados.{"\n"}¡Crea uno para empezar tu racha!</Text>
           </View>
         ) : (
           habits.map((habit, idx) => {
-            const isCompletedToday = habit.lastCompletedDate === getTodayStr();
+            const isCompletedToday = habit.lastCompletedDate === todayKey;
+            const todayTotal = habit.logs.reduce((sum, log) => {
+              const logDate = log.timestamp instanceof Date ? log.timestamp : new Date(log.timestamp);
+              return toDateKey(logDate) === todayKey ? sum + log.value : sum;
+            }, 0);
+            const goalValue = habit.goalValue || 1;
+            const progress = Math.min(1, todayTotal / goalValue);
+
             return (
-            <Animated.View
-              key={habit.id}
-              entering={FadeInDown.delay(idx * 50)}
-              layout={Layout.springify()}
-              style={styles.habitCard}
-            >
-              <View style={styles.habitMain}>
-                <Text style={styles.habitEmoji}>{habit.emoji}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.habitName}>{habit.name}</Text>
-                  <Text style={styles.habitGoal}>Meta: {habit.goalValue} {habit.goalUnit}</Text>
+              <Animated.View
+                key={habit.id}
+                entering={FadeInDown.delay(idx * 50)}
+                layout={Layout.springify()}
+                style={styles.habitCard}
+              >
+                <View style={styles.habitMain}>
+                  <Text style={styles.habitEmoji}>{habit.emoji}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.habitName}>{habit.name}</Text>
+                    <Text style={styles.habitGoal}>Meta: {habit.goalValue} {habit.goalUnit}</Text>
+                  </View>
+                  <View style={[styles.streakBadge, { backgroundColor: `${habit.color ?? lifeTheme.colors.alert}22` }]}>
+                    <Text style={[styles.streakText, { color: habit.color ?? lifeTheme.colors.alert }]}>🔥 {habit.streak}</Text>
+                  </View>
                 </View>
-                <View style={styles.streakBadge}>
-                  <Text style={styles.streakText}>🔥 {habit.streak}</Text>
-                </View>
-              </View>
 
-              <View style={styles.habitActions}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.logBtn,
-                    pressed && { opacity: 0.7 },
-                    isCompletedToday && styles.logBtnDone
-                  ]}
-                  onPress={() => handleLog(habit.id)}
-                  disabled={isCompletedToday}
-                  accessibilityRole="button"
-                  accessibilityLabel={isCompletedToday ? `Habito ${habit.name} completado hoy` : `Marcar habito ${habit.name} como completado`}
-                >
-                  <Text style={styles.logBtnText}>
-                    {isCompletedToday ? '✅ Hecho hoy' : '💪 Marcar'}
+                <View style={styles.habitProgressRow}>
+                  <Text style={styles.habitProgressText}>
+                    Hoy: {Math.min(todayTotal, goalValue)}/{goalValue} {habit.goalUnit}
                   </Text>
-                </Pressable>
-                
-                <Pressable
-                   style={styles.editBtn}
-                   onPress={() => handleEdit(habit)}
-                   accessibilityRole="button"
-                   accessibilityLabel={`Editar habito ${habit.name}`}
-                >
-                   <Text style={styles.delBtnText}>✏️</Text>
-                </Pressable>
+                  <Text style={styles.habitProgressPct}>{Math.round(progress * 100)}%</Text>
+                </View>
+                <View style={styles.habitProgressTrack}>
+                  <View
+                    style={[
+                      styles.habitProgressFill,
+                      { width: `${progress * 100}%`, backgroundColor: habit.color ?? lifeTheme.colors.primary }
+                    ]}
+                  />
+                </View>
 
-                <Pressable
-                  style={styles.delBtn}
-                  onPress={() => {
-                    Alert.alert('Eliminar', `¿Borrar hábito "${habit.name}"?`, [
-                      { text: 'Cancelar', style: 'cancel' },
-                      { text: 'Eliminar', style: 'destructive', onPress: () => deleteHabit(habit.id) }
-                    ]);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Eliminar habito ${habit.name}`}
-                >
-                  <Text style={styles.delBtnText}>🗑</Text>
-                </Pressable>
-              </View>
-            </Animated.View>
-          );
+                <View style={styles.habitActions}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.logBtn,
+                      pressed && { opacity: 0.7 },
+                      isCompletedToday && styles.logBtnDone
+                    ]}
+                    onPress={() => handleLog(habit.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={isCompletedToday ? `Desmarcar habito ${habit.name}` : `Marcar habito ${habit.name} como completado`}
+                  >
+                    <Text style={styles.logBtnText}>
+                      {isCompletedToday ? 'Desmarcar' : 'Marcar hoy'}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={styles.editBtn}
+                    onPress={() => handleEdit(habit)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Editar habito ${habit.name}`}
+                  >
+                    <Text style={styles.delBtnText}>✏️</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={styles.delBtn}
+                    onPress={() => {
+                      showAlert('Eliminar', `¿Borrar hábito "${habit.name}"?`, [
+                        { text: 'Cancelar', style: 'cancel' },
+                        { text: 'Eliminar', style: 'destructive', onPress: () => deleteHabit(habit.id) }
+                      ]);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Eliminar habito ${habit.name}`}
+                  >
+                    <Text style={styles.delBtnText}>🗑</Text>
+                  </Pressable>
+                </View>
+              </Animated.View>
+            );
           })
         )}
       </View>
 
       <Modal visible={modalVisible} transparent animationType="slide">
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
         >
@@ -216,14 +272,14 @@ export default function HabitsScreen(): ReactElement {
                   <Text style={styles.label}>Sugerencias rápidas</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestionList}>
                     {SUGGESTIONS.map((s, i) => (
-                      <Pressable 
-                        key={i} 
+                      <Pressable
+                        key={i}
                         style={styles.suggestionItemSmall}
-                        onPress={() => setNewHabit({ 
-                          name: s.name, 
-                          emoji: s.emoji, 
-                          goalValue: s.goalValue, 
-                          goalUnit: s.goalUnit 
+                        onPress={() => setNewHabit({
+                          name: s.name,
+                          emoji: s.emoji,
+                          goalValue: s.goalValue,
+                          goalUnit: s.goalUnit
                         })}
                       >
                         <Text style={styles.suggestionEmojiSmall}>{s.emoji}</Text>
@@ -232,7 +288,7 @@ export default function HabitsScreen(): ReactElement {
                     ))}
                   </ScrollView>
                 </View>
-                
+
                 <Text style={styles.label}>Nombre</Text>
                 <TextInput
                   style={styles.input}
@@ -290,6 +346,14 @@ export default function HabitsScreen(): ReactElement {
         </KeyboardAvoidingView>
       </Modal>
 
+      <CustomAlertDialog
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        buttons={alertState.buttons}
+        onDismiss={hideAlert}
+      />
+
       <View style={{ height: 40 }} />
     </ScrollView>
   );
@@ -297,76 +361,99 @@ export default function HabitsScreen(): ReactElement {
 
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
-  screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
-  content: { paddingHorizontal: lifeTheme.spacing.lg, gap: lifeTheme.spacing.lg },
-  hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  title: { color: lifeTheme.colors.text, fontSize: lifeTheme.typography.titleLg, fontWeight: '900' },
-  addBtn: { backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
-  addBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 13 },
-  modalSuggestions: { gap: 8, marginBottom: 8 },
-  sectLabel: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginLeft: 4 },
-  suggestionList: { gap: 10, paddingRight: 40 },
-  suggestionItemSmall: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingHorizontal: 10, 
-    paddingVertical: 8, 
-    borderRadius: 12, 
-    backgroundColor: lifeTheme.colors.surfaceAlt, 
-    borderWidth: 1, 
-    borderColor: lifeTheme.colors.border,
-    gap: 6
-  },
-  suggestionEmojiSmall: { fontSize: 14 },
-  suggestionNameSmall: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
-  streakPanel: { 
-    backgroundColor: lifeTheme.colors.surface, 
-    borderRadius: 20, 
-    padding: 16, 
-    borderWidth: 1, 
-    borderColor: lifeTheme.colors.border,
-    marginBottom: 10,
-    gap: 12
-  },
-  streakChart: { gap: 8 },
-  streakRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  streakRowEmoji: { fontSize: 16, width: 24, textAlign: 'center' },
-  streakBarTrack: { flex: 1, height: 8, backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 4, overflow: 'hidden' },
-  streakBarFill: { height: '100%', borderRadius: 4 },
-  streakRowVal: { color: lifeTheme.colors.text, fontWeight: '900', fontSize: 12, width: 34, textAlign: 'right' },
-  list: { gap: 10 },
-  habitCard: {
-    backgroundColor: lifeTheme.colors.surface, borderRadius: 14,
-    borderWidth: 1, borderColor: lifeTheme.colors.border, padding: 12, gap: 12
-  },
-  habitMain: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  habitEmoji: { fontSize: 24 },
-  habitName: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800' },
-  habitGoal: { color: lifeTheme.colors.muted, fontSize: lifeTheme.typography.bodySm },
-  streakBadge: { backgroundColor: 'rgba(252,108,143,0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  streakText: { color: lifeTheme.colors.alert, fontWeight: '900', fontSize: 12 },
-  habitActions: { flexDirection: 'row', gap: 8 },
-  logBtn: { flex: 1, backgroundColor: lifeTheme.colors.primary, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
-  logBtnDone: { backgroundColor: lifeTheme.colors.success },
-  logBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 13 },
-  editBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
-  delBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
-  delBtnText: { fontSize: 14 },
-  emptyCard: { padding: 40, alignItems: 'center' },
-  emptyText: { color: lifeTheme.colors.muted, textAlign: 'center', lineHeight: 22 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },
-  modalCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: 24, padding: 24, gap: 16, borderWidth: 1, borderColor: lifeTheme.colors.border },
-  modalTitle: { color: lifeTheme.colors.text, fontSize: 20, fontWeight: '900', marginBottom: 4 },
-  label: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  input: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12, padding: 14, color: lifeTheme.colors.text, fontSize: 16, borderWidth: 1, borderColor: lifeTheme.colors.border },
-  emojiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  emojiBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: lifeTheme.colors.surfaceAlt, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
-  emojiBtnActive: { borderColor: lifeTheme.colors.primary, backgroundColor: 'rgba(124,108,252,0.1)' },
-  goalRow: { flexDirection: 'row', gap: 12 },
-  modalBtns: { flexDirection: 'row', gap: 12, marginTop: 10 },
-  cancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center' },
-  cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
-  saveBtn: { flex: 2, backgroundColor: lifeTheme.colors.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' }
+    screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
+    content: { paddingHorizontal: lifeTheme.spacing.lg, gap: lifeTheme.spacing.lg },
+    hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    title: { color: lifeTheme.colors.text, fontSize: lifeTheme.typography.titleLg, fontWeight: '900' },
+    subtitle: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18, marginTop: -8 },
+    addBtn: { backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
+    addBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 13 },
+    summaryCard: {
+      backgroundColor: lifeTheme.colors.surface,
+      borderRadius: 18,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: lifeTheme.colors.border,
+      flexDirection: 'row',
+      justifyContent: 'space-between'
+    },
+    summaryItem: { alignItems: 'center', flex: 1, gap: 2 },
+    summaryValue: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '900' },
+    summaryLabel: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '700' },
+    helperText: { color: lifeTheme.colors.muted, fontSize: 11, lineHeight: 16 },
+    modalSuggestions: { gap: 8, marginBottom: 8 },
+    sectLabel: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginLeft: 4 },
+    suggestionList: { gap: 10, paddingRight: 40 },
+    suggestionItemSmall: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 12,
+      backgroundColor: lifeTheme.colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: lifeTheme.colors.border,
+      gap: 6
+    },
+    suggestionEmojiSmall: { fontSize: 14 },
+    suggestionNameSmall: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
+    streakPanel: {
+      backgroundColor: lifeTheme.colors.surface,
+      borderRadius: 20,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: lifeTheme.colors.border,
+      marginBottom: 10,
+      gap: 12
+    },
+    streakChart: { gap: 8 },
+    streakRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    streakRowEmoji: { fontSize: 16, width: 24, textAlign: 'center' },
+    streakBarTrack: { flex: 1, height: 8, backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 4, overflow: 'hidden' },
+    streakBarFill: { height: '100%', borderRadius: 4 },
+    streakRowVal: { color: lifeTheme.colors.text, fontWeight: '900', fontSize: 12, width: 34, textAlign: 'right' },
+    list: { gap: 10 },
+    habitCard: {
+      backgroundColor: lifeTheme.colors.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: lifeTheme.colors.border,
+      padding: 12,
+      gap: 12
+    },
+    habitMain: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    habitEmoji: { fontSize: 24 },
+    habitName: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800' },
+    habitGoal: { color: lifeTheme.colors.muted, fontSize: lifeTheme.typography.bodySm },
+    streakBadge: { backgroundColor: 'rgba(252,108,143,0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+    streakText: { color: lifeTheme.colors.alert, fontWeight: '900', fontSize: 12 },
+    habitProgressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    habitProgressText: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
+    habitProgressPct: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '800' },
+    habitProgressTrack: { height: 6, borderRadius: 999, backgroundColor: lifeTheme.colors.surfaceAlt, overflow: 'hidden' },
+    habitProgressFill: { height: '100%', borderRadius: 999 },
+    habitActions: { flexDirection: 'row', gap: 8 },
+    logBtn: { flex: 1, backgroundColor: lifeTheme.colors.primary, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
+    logBtnDone: { backgroundColor: lifeTheme.colors.success },
+    logBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 13 },
+    editBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
+    delBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
+    delBtnText: { fontSize: 14 },
+    emptyCard: { padding: 40, alignItems: 'center' },
+    emptyText: { color: lifeTheme.colors.muted, textAlign: 'center', lineHeight: 22 },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },
+    modalCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: 24, padding: 24, gap: 16, borderWidth: 1, borderColor: lifeTheme.colors.border },
+    modalTitle: { color: lifeTheme.colors.text, fontSize: 20, fontWeight: '900', marginBottom: 4 },
+    label: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+    input: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12, padding: 14, color: lifeTheme.colors.text, fontSize: 16, borderWidth: 1, borderColor: lifeTheme.colors.border },
+    emojiRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    emojiBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: lifeTheme.colors.surfaceAlt, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
+    emojiBtnActive: { borderColor: lifeTheme.colors.primary, backgroundColor: 'rgba(124,108,252,0.1)' },
+    goalRow: { flexDirection: 'row', gap: 12 },
+    modalBtns: { flexDirection: 'row', gap: 12, marginTop: 10 },
+    cancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center' },
+    cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
+    saveBtn: { flex: 2, backgroundColor: lifeTheme.colors.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+    saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' }
   });
 }

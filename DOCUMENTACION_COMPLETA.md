@@ -1,7 +1,7 @@
 # LIFEOS: Documentación Completa
 
 **Visión, Auditoría, Soluciones y Roadmap Integrados**  
-**Última actualización:** 11-04-2026 (23:10 UTC)
+**Última actualización:** 15-04-2026 (UTC)
 **Estado:** FASE B ✅ Completada, FASE C ✅ Completada, Scheduler Runtime ✅ Local-Only
 
 ---
@@ -323,6 +323,103 @@ Future Signal (Analytics):
 <a name="soluciones-implementadas-fase-a--b"></a>
 
 # 4. SOLUCIONES IMPLEMENTADAS
+
+## 4.0 Actualización de Cierre (13-04-2026) ✅
+
+### Objetivo de este cierre
+Completar al 100% los pendientes críticos de experiencia diaria: coherencia real del timeline, rutinas/alarms operables y control reversible de hábitos.
+
+### Cambios implementados
+
+1. Scheduler con coherencia temporal real
+- El motor local ya no encadena tareas largas en huecos insuficientes.
+- Se introdujeron barreras duras por eventos y rutinas para evitar colocaciones imposibles.
+- Se mantuvieron descansos cortos entre tareas sin romper la coherencia de ventanas.
+
+2. Rutinas como bloques de timeline inamovibles
+- Sueño, comidas y tránsito se materializan como bloques rutinarios en el timeline.
+- Estos bloques no se mueven con reordenamiento manual.
+- Se añadieron metadatos de bloque rutinario para control fino en store/UI.
+
+3. Edición y eliminación de bloques rutinarios solo por día
+- Editar duración de un bloque rutinario desde timeline crea un override diario persistido.
+- Eliminar un bloque rutinario desde timeline lo oculta solo para la fecha actual.
+- La rutina semanal base no se modifica con estas acciones diarias.
+
+4. Alarmas y rutinas: menú unificado mejorado
+- Se agregó gestión de alarmas dentro de la pantalla de rutinas (crear, activar/desactivar, eliminar).
+- Se añadieron secciones y resumen operativo para sueño, despertar, comidas y tránsito.
+
+5. Notificaciones de rutina ampliadas
+- Se incorporaron notificaciones para hora de despertar y bloques de tránsito.
+- Se mantiene sincronización centralizada con resincronización global.
+
+6. Hábitos reversibles
+- Se implementó desmarcado explícito del hábito completado hoy.
+- El desmarcado revierte XP de vitalidad de forma controlada.
+
+7. Ajuste de animaciones en Task Pool
+- Se redujo la intensidad de animación al minimizar el formulario de creación.
+- La transición de la lista ahora es más estable y menos agresiva.
+
+### Resultado de validación
+- `npm run typecheck`: limpio.
+- `npm test`: 7/7 tests passing.
+
+## 4.0.1 Cierre de Gamificación de Consistencia (15-04-2026) ✅
+
+### Objetivo
+Implementar hitos de racha y badges con historial de logros visible en perfil/métricas.
+
+### Cambios implementados
+
+1. Modelo de dominio extendido en perfil
+- `UserProfile` ahora incluye módulo `consistency`:
+  - `currentStreak`, `bestStreak`, `totalActiveDays`, `lastActiveDate`.
+- Se añadió colección `badges` con fecha de desbloqueo por badge.
+
+2. Motor de consistencia y desbloqueo de badges
+- Nueva acción `addConsistencyActivity(date?)` en store.
+- Reglas de hitos:
+  - Rachas: 3, 7, 14, 30 días.
+  - Actividad acumulada: 10, 30, 60 días.
+- Protección anti-duplicado: no cuenta dos veces el mismo día.
+
+3. Integración con flujos reales de ejecución
+- Se dispara consistencia en:
+  - `completeTask()`
+  - `confirmCompletionOK()`
+  - `logHabit()`
+- Efecto adicional: incremento leve de disciplina por día activo.
+
+4. UI en métricas (historial de logros)
+- Nueva sección `Consistencia y Logros` en la pantalla de estadísticas:
+  - Racha actual
+  - Mejor racha
+  - Días activos
+  - Lista de badges desbloqueados
+  - Historial de logros con fecha en modal
+
+5. Persistencia y compatibilidad retroactiva
+- Merge/revive robusto para perfiles antiguos sin campos nuevos.
+- `unlockedAt` revive como `Date`.
+
+### Archivos principales impactados
+- `src/types/index.ts`
+- `src/store/lifeStore.types.ts`
+- `src/store/slices/profileSlice.ts`
+- `src/store/slices/taskSlice.ts`
+- `src/store/slices/habitSlice.ts`
+- `src/store/slices/executionSlice.ts`
+- `src/store/lifeStore.persistence.ts`
+- `src/store/useLifeStore.ts`
+- `src/store/slices/settingsSlice.ts`
+- `app/(tabs)/stats.tsx`
+
+### Resultado de validación
+- `npm test -- src/store/useLifeStore.test.ts`: 7/7 tests passing.
+
+---
 
 ## 4.1 FASE A: Estabilidad Base ✅ COMPLETADA
 

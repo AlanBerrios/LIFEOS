@@ -9,7 +9,8 @@ function New-LifeosImage {
     [int]$Size = 1024,
     [bool]$WithRoundedFrame = $true,
     [bool]$Transparent = $false,
-    [bool]$WithWordmark = $false
+    [bool]$WithWordmark = $false,
+    [double]$ForegroundScale = 1.0
   )
 
   $bmp = New-Object System.Drawing.Bitmap $Size, $Size
@@ -54,6 +55,10 @@ function New-LifeosImage {
     $frameBrush.Dispose(); $framePen.Dispose(); $shapePath.Dispose()
   }
 
+  $g.TranslateTransform([float]($Size / 2), [float]($Size / 2))
+  $g.ScaleTransform([float]$ForegroundScale, [float]$ForegroundScale)
+  $g.TranslateTransform([float](-$Size / 2), [float](-$Size / 2))
+
   $baseY = [float]($Size * 0.67)
   $leftX = [float]($Size * 0.31)
   $baseW = [float]($Size * 0.34)
@@ -95,14 +100,16 @@ function New-LifeosImage {
     $textBrush.Dispose(); $font.Dispose()
   }
 
+  $g.ResetTransform()
+
   $voltBrush.Dispose()
   $g.Dispose()
   $bmp.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
   $bmp.Dispose()
 }
 
-New-LifeosImage -Path (Join-Path $assetsDir 'icon-v3.png') -Size 1024 -WithRoundedFrame $true -Transparent $false -WithWordmark $false
-New-LifeosImage -Path (Join-Path $assetsDir 'adaptive-icon-v3.png') -Size 1024 -WithRoundedFrame $false -Transparent $true -WithWordmark $false
+New-LifeosImage -Path (Join-Path $assetsDir 'icon-v3.png') -Size 1024 -WithRoundedFrame $true -Transparent $false -WithWordmark $false -ForegroundScale 0.9
+New-LifeosImage -Path (Join-Path $assetsDir 'adaptive-icon-v3.png') -Size 1024 -WithRoundedFrame $false -Transparent $true -WithWordmark $false -ForegroundScale 0.9
 New-LifeosImage -Path (Join-Path $assetsDir 'splash-icon-v3.png') -Size 1024 -WithRoundedFrame $false -Transparent $true -WithWordmark $false
 New-LifeosImage -Path (Join-Path $assetsDir 'favicon-v3.png') -Size 256 -WithRoundedFrame $true -Transparent $false -WithWordmark $false
 

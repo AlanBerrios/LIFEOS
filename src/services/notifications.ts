@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import type { Alarm, AppSettings, ScheduleBlock, Task } from '../types';
+import type { Alarm, AppSettings, Habit, ScheduleBlock, Task } from '../types';
 
 export const NOTIFICATION_PERMISSION_ERROR = 'NOTIFICATION_PERMISSION_DENIED';
 
@@ -12,7 +12,9 @@ export const NOTIFICATION_TEST_TYPES = [
   'completion_check',
   'alarm',
   'routine_sleep',
+  'routine_wake',
   'routine_meal',
+  'routine_transit',
   'event',
   'note'
 ] as const;
@@ -215,9 +217,19 @@ export async function triggerNotificationTest(
       body: 'Hora de empezar la desconexión para dormir.',
       sound: true
     },
+    routine_wake: {
+      title: '☀️ Test: Rutina despertar',
+      body: 'Es hora de levantarse y comenzar el día.',
+      sound: true
+    },
     routine_meal: {
       title: '🍴 Test: Rutina comida',
       body: 'Bloque de comida de 45 min.',
+      sound: true
+    },
+    routine_transit: {
+      title: '🚗 Test: Rutina traslado',
+      body: 'Bloque de traslado configurado.',
       sound: true
     },
     event: {
@@ -409,6 +421,16 @@ export async function syncRoutineAlarms(routines: import('../types').DailyRoutin
        trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: expoWeekday, hour: sH, minute: sM }
     });
 
+    const [wakeH, wakeM] = routine.sleepEnd.split(':').map(Number);
+    await Notifications.scheduleNotificationAsync({
+       content: {
+         title: '☀️ Despertar',
+         body: 'Arranca la mañana y revisa tu rutina del día.',
+         sound: true
+       },
+       trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: expoWeekday, hour: wakeH, minute: wakeM }
+    });
+
     // 🍽️ Meal Notifications
     for (const meal of routine.meals) {
       if (!meal.time) continue;
@@ -420,6 +442,19 @@ export async function syncRoutineAlarms(routines: import('../types').DailyRoutin
            sound: true 
          },
          trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: expoWeekday, hour: mH, minute: mM }
+      });
+    }
+
+    for (const transit of routine.transits) {
+      if (!transit.time) continue;
+      const [tH, tM] = transit.time.split(':').map(Number);
+      await Notifications.scheduleNotificationAsync({
+         content: {
+           title: `🚗 ${transit.label}`,
+           body: `Tiempo estimado: ${transit.durationMinutes} min.`,
+           sound: true
+         },
+         trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: expoWeekday, hour: tH, minute: tM }
       });
     }
   }
@@ -571,4 +606,55 @@ export async function scheduleNoteReminders(notes: import('../types').QuickNote[
       });
     }
   }
+}
+
+// ─── Recordatorio aleatorio de hábito ────────────────────────────────────────
+
+function isHabitPendingToday(habit: Habit): boolean {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  if (habit.lastCompletedDate === todayStr) return false;
+  return !habit.logs.some((log) => new Date(log.timestamp).toISOString().slice(0, 10) === todayStr);
+}
+
+function pickRandom<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function getHabitReminderTitle(habit: Habit): string {
+  return `🌱 ¿Ya hiciste ${habit.name}?`;
+}
+
+function getHabitReminderBody(habit: Habit): string {
+  const unit = habit.goalUnit ? ` · Meta: ${habit.goalValue} ${habit.goalUnit}` : '';
+  return `Tienes este hábito pendiente${unit}. Un paso pequeño ahora ayuda a no romper la racha.`;
+}
+
+export async function scheduleRandomHabitReminder(
+  habits: Habit[],
+  previousNotificationId?: string | null
+): Promise<string | null> {
+  const granted = await requestNotificationPermission();
+  if (!granted) return null;
+
+  if (previousNotificationId) {
+    await cancelNotification(previousNotificationId);
+  }
+
+  const pendingHabits = habits.filter(isHabitPendingToday);
+  if (pendingHabits.length === 0) return null;
+
+  const habit = pickRandom(pendingHabits);
+  const delayMinutes = 120 + Math.floor(Math.random() * 240); // 2 a 6 horas
+  const triggerAt = new Date(Date.now() + delayMinutes * 60_000);
+
+  return Notifications.scheduleNotificationAsync({
+    content: {
+      title: getHabitReminderTitle(habit),
+      body: getHabitReminderBody(habit),
+      data: { type: 'habit', id: habit.id, taskTitle: habit.name },
+      sound: true,
+      priority: Notifications.AndroidNotificationPriority.DEFAULT
+    },
+    trigger: buildDateTrigger(triggerAt)
+  });
 }

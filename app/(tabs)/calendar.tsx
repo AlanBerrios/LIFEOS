@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -15,10 +14,15 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
 import { getEventsForDate } from '../../src/utils/events';
 import type { Task, StaticEvent, ScheduleBlock, RecurrenceFrequency } from '../../src/types';
+import { CustomAlertDialog, type AlertButtonConfig } from '../../src/components/CustomAlertDialog';
+import { useCustomAlert } from '../../src/hooks/useCustomAlert';
+
+type ShowAlertFn = (title: string, message?: string, buttons?: AlertButtonConfig[]) => void;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -69,21 +73,103 @@ function urgencyColor(task: Task | undefined, lifeTheme: ReturnType<typeof useAp
   return lifeTheme.colors.muted;
 }
 
+function getTaskAccent(task: Task | undefined, lifeTheme: ReturnType<typeof useAppTheme>): string {
+  return task?.color?.trim() || urgencyColor(task, lifeTheme);
+}
+
+function getTaskEmoji(task: Task | undefined): string {
+  return task?.emoji?.trim() || '✅';
+}
+
+function getEventAccent(event: StaticEvent | undefined, lifeTheme: ReturnType<typeof useAppTheme>): string {
+  return event?.color?.trim() || lifeTheme.colors.primary;
+}
+
+function getEventEmoji(event: StaticEvent | undefined): string {
+  return event?.emoji?.trim() || '📌';
+}
+
+function buildBlockInfoMessage(params: {
+  kind: 'task' | 'event' | 'rest' | 'meal' | 'sleep' | 'transit';
+  title: string;
+  start?: Date;
+  end?: Date;
+  description?: string;
+  location?: string;
+  emoji?: string;
+  color?: string;
+  task?: Task | null;
+  event?: StaticEvent | null;
+}): string {
+  const lines: string[] = [];
+  const duration = params.start && params.end
+    ? Math.max(1, Math.round((params.end.getTime() - params.start.getTime()) / 60000))
+    : null;
+
+  lines.push(`Tipo: ${params.kind}`);
+  if (params.start && params.end) {
+    lines.push(`Horario: ${params.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${params.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+    lines.push(`Duración: ${duration} min`);
+  }
+  if (params.color) lines.push(`Color: ${params.color}`);
+  if (params.emoji) lines.push(`Emoji: ${params.emoji}`);
+
+  if (params.kind === 'task' && params.task) {
+    lines.push(`Prioridad: ${params.task.priority}/5`);
+    lines.push(`Carga cognitiva: ${params.task.cognitive_load}/10`);
+    lines.push(`Duración estimada: ${params.task.eta_minutes} min`);
+    if (params.task.description?.trim()) lines.push(`Descripción: ${params.task.description.trim()}`);
+  }
+
+  if (params.kind === 'event') {
+    if (params.description?.trim()) lines.push(`Descripción: ${params.description.trim()}`);
+    if (params.location?.trim()) lines.push(`Lugar: ${params.location.trim()}`);
+    if (params.event?.recurrence?.frequency && params.event.recurrence.frequency !== 'none') {
+      lines.push(`Repetición: ${params.event.recurrence.frequency}`);
+    }
+  }
+
+  if (params.kind === 'rest') {
+    lines.push('Este es un descanso automático generado para dejar espacio entre bloques y evitar solapes.');
+    if (params.title.toLowerCase().includes('libre')) {
+      lines.push('El bloque “Libre” representa tiempo no asignado que quedó disponible en el timeline.');
+    }
+  }
+
+  if (params.kind === 'meal') {
+    lines.push('Bloque de comida de rutina. Protege tu tiempo de alimentación y evita que se solape con tareas.');
+  }
+
+  if (params.kind === 'sleep') {
+    lines.push('Bloque de sueño de rutina. Mantiene tu jornada coherente y bloquea la noche como descanso.');
+  }
+
+  if (params.kind === 'transit') {
+    lines.push('Bloque de traslado de rutina. Calcula el tiempo necesario para moverte sin cortar otros bloques.');
+  }
+
+  return lines.join('\n');
+}
+
 type TimelineCard = {
   id: string;
   title: string;
   start: Date;
   end: Date;
   color: string;
-  kind: 'Tarea' | 'Evento' | 'Descanso';
+  kind: 'Tarea' | 'Evento' | 'Descanso' | 'Comida' | 'Sueño' | 'Tránsito';
   dotted?: boolean;
   onPress: () => void;
 };
 
-function assignOverlapLanes(cards: TimelineCard[]): Array<TimelineCard & { lane: number; laneCount: number }> {
+function overlap(a: TimelineCard, b: TimelineCard): boolean {
+  return a.start.getTime() < b.end.getTime() && b.start.getTime() < a.end.getTime();
+}
+
+function assignOverlapLanes(cards: TimelineCard[]): Array<TimelineCard & { lane: number; laneCount: number; spanLanes: number }> {
   const ordered = [...cards].sort((a, b) => a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime());
   const laneEnds: number[] = [];
-  const laidOut: Array<TimelineCard & { lane: number; laneCount: number }> = [];
+  const laidOut: Array<TimelineCard & { lane: number; laneCount: number; spanLanes: number }> = [];
 
   for (const card of ordered) {
     let lane = laneEnds.findIndex((endMs) => endMs <= card.start.getTime());
@@ -94,10 +180,23 @@ function assignOverlapLanes(cards: TimelineCard[]): Array<TimelineCard & { lane:
       laneEnds[lane] = card.end.getTime();
     }
 
-    laidOut.push({ ...card, lane, laneCount: 0 });
+    laidOut.push({ ...card, lane, laneCount: 0, spanLanes: 1 });
   }
 
   const laneCount = Math.max(1, laneEnds.length);
+
+  // Expandir a la derecha cuando no haya solape en carriles vecinos.
+  for (const card of laidOut) {
+    let spanLanes = 1;
+    for (let targetLane = card.lane + 1; targetLane < laneCount; targetLane += 1) {
+      const blocksInTargetLane = laidOut.filter((other) => other.lane === targetLane);
+      const hasCollision = blocksInTargetLane.some((other) => overlap(card, other));
+      if (hasCollision) break;
+      spanLanes += 1;
+    }
+    card.spanLanes = spanLanes;
+  }
+
   return laidOut.map((card) => ({ ...card, laneCount }));
 }
 
@@ -181,9 +280,9 @@ function SafeDatePicker({
 // ─── Day Tasks Panel ──────────────────────────────────────────────────────────
 
 function DayTasksPanel({ 
-  date, tasks, events, onEditEvent 
+  date, tasks, events, onOpenEventInfo, onOpenTaskInfo 
 }: { 
-  date: Date; tasks: Task[]; events: StaticEvent[]; onEditEvent: (id: string) => void 
+  date: Date; tasks: Task[]; events: StaticEvent[]; onOpenEventInfo: (id: string) => void; onOpenTaskInfo: (id: string) => void; 
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
@@ -207,10 +306,10 @@ function DayTasksPanel({
       ) : (
         <View style={{ gap: 8 }}>
         {dayEvents.map((evt) => (
-          <Pressable key={evt.id} style={styles.dayTask} onPress={() => onEditEvent(evt.id)}>
-            <Text style={{fontSize: 16}}>📌</Text>
+          <Pressable key={evt.id} style={styles.dayTask} onPress={() => onOpenEventInfo(evt.id)}>
+            <Text style={{fontSize: 16}}>{getEventEmoji(evt)}</Text>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.dayTaskTitle, { color: lifeTheme.colors.primary }]}>{evt.title}</Text>
+              <Text style={[styles.dayTaskTitle, { color: getEventAccent(evt, lifeTheme) }]}>{evt.title}</Text>
               <Text style={styles.dayTaskMeta}>
                 Evento Fijo · {evt.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {evt.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 {evt.reminderMinutes ? ` · Alerta: ${evt.reminderMinutes}m antes` : ''}
@@ -219,17 +318,18 @@ function DayTasksPanel({
           </Pressable>
         ))}
         {dayTasks.map((task) => (
-          <View key={task.id} style={styles.dayTask}>
+          <Pressable key={task.id} style={styles.dayTask} onPress={() => onOpenTaskInfo(task.id)}>
             <View style={[styles.urgencyDot, { backgroundColor: urgencyColor(task, lifeTheme) }]} />
+            <Text style={{fontSize: 16, marginRight: 8}}>{getTaskEmoji(task)}</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.dayTaskTitle}>{task.title}</Text>
+              <Text style={[styles.dayTaskTitle, { color: getTaskAccent(task, lifeTheme) }]}>{task.title}</Text>
               <Text style={styles.dayTaskMeta}>
                 {task.eta_minutes} min · P{task.priority}
                 {task.fixed_start ? ` · ${task.fixed_start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
               </Text>
             </View>
             <View style={[styles.statusDot, task.status === 'completed' ? styles.statusDone : styles.statusPending]} />
-          </View>
+          </Pressable>
         ))}
         </View>
       )}
@@ -275,14 +375,15 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
     });
 
     const colors: string[] = [];
-    if (dayEvents.length > 0) colors.push(lifeTheme.colors.primary);
+    dayEvents.forEach((event) => {
+      const accent = getEventAccent(event, lifeTheme);
+      if (!colors.includes(accent)) colors.push(accent);
+    });
     
     // Get unique urgency colors from tasks
-    const urgencies = Array.from(new Set(dayTasks.map(t => t.urgency)));
-    urgencies.forEach(u => {
-      const dummyTask = { urgency: u } as any;
-      const color = urgencyColor(dummyTask, lifeTheme);
-      if (!colors.includes(color)) colors.push(color);
+    dayTasks.forEach((task) => {
+      const accent = getTaskAccent(task, lifeTheme);
+      if (!colors.includes(accent)) colors.push(accent);
     });
 
     return colors.slice(0, 3);
@@ -330,13 +431,14 @@ const MemoMonthView = memo(MonthView);
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 
-function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
+function WeekView({ currentDate, tasks, events, timeline, onSelectDay, onOpenEventInfo, onOpenBlockInfo }: {
   currentDate: Date;
-  selectedDay: Date;
   tasks: Task[];
   events: StaticEvent[];
+  timeline: ScheduleBlock[];
   onSelectDay: (d: Date) => void;
-  onEditEvent: (id: string) => void;
+  onOpenEventInfo: (id: string) => void;
+  onOpenBlockInfo: (blockId: string) => void;
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
@@ -346,7 +448,6 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
   const hours = Array.from({ length: 18 }, (_, i) => i + 6); // 06:00 -> 23:00
   const hourHeight = 34;
   const baseHour = 6;
-  const timeline = useLifeStore((s) => s.timeline);
   const dayColWidth = Math.max(112, Math.min(148, Math.round((width - 72) / 3)));
 
   return (
@@ -375,9 +476,7 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
 
               {days.map((day, dayIdx) => {
                 const dayEvents = getEventsForDate(events, day);
-                const dayTimelineTasks = timeline.filter(
-                  (b) => (b.type === 'task' || b.type === 'rest') && sameDay(b.start_time, day)
-                );
+                const dayTimelineTasks = timeline.filter((b) => sameDay(b.start_time, day));
 
                 const blocks = assignOverlapLanes([
                   ...dayEvents.map((e) => ({
@@ -385,20 +484,20 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
                     title: e.title,
                     start: e.startTime,
                     end: e.endTime,
-                    color: lifeTheme.colors.primary,
+                    color: getEventAccent(e, lifeTheme),
                     kind: 'Evento' as const,
                     dotted: true,
-                    onPress: () => onEditEvent(e.id)
+                    onPress: () => onOpenEventInfo(e.id)
                   })),
                   ...dayTimelineTasks.map((b) => ({
                     id: `tsk-${b.id}`,
                     title: b.title,
                     start: b.start_time,
                     end: b.end_time,
-                    color: b.type === 'rest' ? lifeTheme.colors.muted : lifeTheme.colors.primary,
-                    kind: b.type === 'rest' ? ('Descanso' as const) : ('Tarea' as const),
-                    dotted: b.type === 'rest',
-                    onPress: () => undefined
+                    color: b.task_id ? getTaskAccent(tasks.find((t) => t.id === b.task_id), lifeTheme) : lifeTheme.colors.muted,
+                    kind: b.type === 'rest' ? ('Descanso' as const) : b.type === 'meal' ? ('Comida' as const) : b.type === 'sleep' ? ('Sueño' as const) : b.type === 'transit' ? ('Tránsito' as const) : ('Tarea' as const),
+                    dotted: b.type !== 'task',
+                    onPress: () => onOpenBlockInfo(b.id)
                   }))
                 ]);
 
@@ -413,9 +512,15 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
                       const endMin = block.end.getHours() * 60 + block.end.getMinutes();
                       const top = ((startMin - baseHour * 60) / 60) * hourHeight;
                       const rawHeight = ((Math.max(endMin, startMin + 15) - startMin) / 60) * hourHeight;
-                      const height = Math.max(26, rawHeight);
+                      const height = Math.max(32, rawHeight);
                       const laneWidth = 100 / block.laneCount;
                       const leftPct = block.lane * laneWidth;
+                      const widthPct = block.spanLanes * laneWidth;
+                      const isTiny = height < 38;
+                      const isShort = height < 54;
+                      const isNarrow = widthPct < 56;
+                      const showMeta = !isTiny && !(isShort && isNarrow);
+                      const titleLines = isTiny || isNarrow ? 1 : 2;
 
                       if (top + height < 0 || top > hours.length * hourHeight) return null;
 
@@ -428,22 +533,16 @@ function WeekView({ currentDate, tasks, events, onSelectDay, onEditEvent }: {
                               top,
                               height,
                               left: `${leftPct}%`,
-                              width: `${laneWidth}%`,
+                              width: `${widthPct}%`,
                               borderLeftColor: block.color,
                               borderStyle: block.dotted ? 'dashed' : 'solid',
                               backgroundColor: block.dotted ? `${block.color}14` : lifeTheme.colors.surface
                             }
                           ]}
-                          onPress={() => {
-                            block.onPress();
-                            Alert.alert(
-                              `${block.kind}: ${block.title}`,
-                              `${fmt(block.start)} - ${fmt(block.end)} (${Math.round((block.end.getTime() - block.start.getTime()) / 60000)} min)`
-                            );
-                          }}
+                          onPress={block.onPress}
                         >
-                          <Text style={styles.weekBlockTitle} numberOfLines={1}>{block.title}</Text>
-                          <Text style={styles.weekBlockMeta}>{fmt(block.start)} - {fmt(block.end)}</Text>
+                          {showMeta && <Text style={styles.weekBlockMetaPill}>{fmt(block.start)} - {fmt(block.end)}</Text>}
+                          <Text style={[styles.weekBlockTitle, !showMeta && styles.weekBlockTitleCompact]} numberOfLines={titleLines}>{block.title}</Text>
                         </Pressable>
                       );
                     })}
@@ -463,8 +562,8 @@ const MemoWeekView = memo(WeekView);
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
-function DayView({ date, tasks, events, timeline, onEditEvent }: { 
-  date: Date; tasks: Task[]; events: StaticEvent[]; timeline: ScheduleBlock[]; onEditEvent: (id: string) => void 
+function DayView({ date, tasks, events, timeline, onOpenEventInfo, onOpenBlockInfo }: {
+  date: Date; tasks: Task[]; events: StaticEvent[]; timeline: ScheduleBlock[]; onOpenEventInfo: (id: string) => void; onOpenBlockInfo: (id: string) => void;
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
@@ -473,7 +572,7 @@ function DayView({ date, tasks, events, timeline, onEditEvent }: {
   const baseHour = 6;
 
   const dayEvents = getEventsForDate(events, date);
-  const dayTimelineTasks = timeline.filter((b) => (b.type === 'task' || b.type === 'rest') && sameDay(b.start_time, date));
+  const dayTimelineTasks = timeline.filter((b) => sameDay(b.start_time, date));
 
   const blocks = assignOverlapLanes([
     ...dayEvents.map((e) => ({
@@ -481,20 +580,20 @@ function DayView({ date, tasks, events, timeline, onEditEvent }: {
       title: e.title,
       start: e.startTime,
       end: e.endTime,
-      color: lifeTheme.colors.primary,
+      color: getEventAccent(e, lifeTheme),
       kind: 'Evento' as const,
       dotted: true,
-      onPress: () => onEditEvent(e.id)
+      onPress: () => onOpenEventInfo(e.id)
     })),
     ...dayTimelineTasks.map((b) => ({
       id: `tsk-${b.id}`,
       title: b.title,
       start: b.start_time,
       end: b.end_time,
-      color: b.type === 'rest' ? lifeTheme.colors.muted : urgencyColor(tasks.find((t) => t.id === b.task_id), lifeTheme),
-      kind: b.type === 'rest' ? ('Descanso' as const) : ('Tarea' as const),
-      dotted: b.type === 'rest',
-      onPress: () => undefined
+      color: b.task_id ? getTaskAccent(tasks.find((t) => t.id === b.task_id), lifeTheme) : lifeTheme.colors.muted,
+      kind: b.type === 'rest' ? ('Descanso' as const) : b.type === 'meal' ? ('Comida' as const) : b.type === 'sleep' ? ('Sueño' as const) : b.type === 'transit' ? ('Tránsito' as const) : ('Tarea' as const),
+      dotted: b.type !== 'task',
+      onPress: () => onOpenBlockInfo(b.id)
     }))
   ]);
 
@@ -534,9 +633,15 @@ function DayView({ date, tasks, events, timeline, onEditEvent }: {
             const endMin = block.end.getHours() * 60 + block.end.getMinutes();
             const top = ((startMin - baseHour * 60) / 60) * hourHeight;
             const rawHeight = ((Math.max(endMin, startMin + 15) - startMin) / 60) * hourHeight;
-            const height = Math.max(28, rawHeight);
+            const height = Math.max(34, rawHeight);
             const laneWidth = 100 / block.laneCount;
             const leftPct = block.lane * laneWidth;
+            const widthPct = block.spanLanes * laneWidth;
+            const isTiny = height < 42;
+            const isShort = height < 64;
+            const isNarrow = widthPct < 52;
+            const showMeta = !isTiny && !(isShort && isNarrow);
+            const titleLines = isTiny || isNarrow ? 1 : 2;
 
             if (top + height < 0 || top > hours.length * hourHeight) return null;
 
@@ -549,22 +654,16 @@ function DayView({ date, tasks, events, timeline, onEditEvent }: {
                     top,
                     height,
                     left: `${leftPct}%`,
-                    width: `${laneWidth}%`,
+                    width: `${widthPct}%`,
                     borderLeftColor: block.color,
                     borderStyle: block.dotted ? 'dashed' : 'solid',
                     backgroundColor: block.dotted ? `${block.color}14` : lifeTheme.colors.surface
                   }
                 ]}
-                onPress={() => {
-                  block.onPress();
-                  Alert.alert(
-                    `${block.kind}: ${block.title}`,
-                    `${fmt(block.start)} - ${fmt(block.end)} (${Math.round((block.end.getTime() - block.start.getTime()) / 60000)} min)`
-                  );
-                }}
+                onPress={block.onPress}
               >
-                <Text style={styles.dayBlockTitle} numberOfLines={1}>{block.title}</Text>
-                <Text style={styles.dayBlockMeta}>{fmt(block.start)} - {fmt(block.end)}</Text>
+                {showMeta && <Text style={styles.dayBlockMetaPill}>{fmt(block.start)} - {fmt(block.end)}</Text>}
+                <Text style={[styles.dayBlockTitle, !showMeta && styles.dayBlockTitleCompact]} numberOfLines={titleLines}>{block.title}</Text>
               </Pressable>
             );
           })}
@@ -583,9 +682,10 @@ function fmt(date: Date): string {
 // ─── Add/Edit Event Modal ──────────────────────────────────────────────────────────
 
 function EventModal({ 
-  visible, editId, onClose 
+  visible, editId, onClose, showAlert
 }: { 
   visible: boolean; editId?: string | null; onClose: () => void; 
+  showAlert: ShowAlertFn;
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
@@ -595,6 +695,9 @@ function EventModal({
   const events = useLifeStore(s => s.events);
 
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [emoji, setEmoji] = useState('📌');
+  const [color, setColor] = useState('');
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [endTime, setEndTime] = useState<Date | null>(null);
   const [remindMin, setRemindMin] = useState(10);
@@ -607,6 +710,9 @@ function EventModal({
       const e = events.find(ev => ev.id === editId);
       if (e) {
         setTitle(e.title);
+        setDescription(e.description ?? '');
+        setEmoji(e.emoji ?? '📌');
+        setColor(e.color ?? '');
         setStartTime(e.startTime);
         setEndTime(e.endTime);
         setRemindMin(e.reminderMinutes || 0);
@@ -616,6 +722,9 @@ function EventModal({
       }
     } else if (visible) {
       setTitle('');
+      setDescription('');
+      setEmoji('📌');
+      setColor('');
       setStartTime(null);
       setEndTime(null);
       setRemindMin(10);
@@ -627,16 +736,19 @@ function EventModal({
 
   function handleSave() {
     if (!title.trim() || !startTime || !endTime) {
-      Alert.alert('Faltan datos', 'El título y las horas son obligatorios.');
+      showAlert('Faltan datos', 'El título y las horas son obligatorios.');
       return;
     }
     if (endTime <= startTime) {
-      Alert.alert('Error', 'La hora de fin debe ser posterior a la de inicio.');
+      showAlert('Error', 'La hora de fin debe ser posterior a la de inicio.');
       return;
     }
 
     const payload: any = {
       title: title.trim(),
+      description: description.trim() || undefined,
+      emoji: emoji.trim() || undefined,
+      color: color.trim() || undefined,
       startTime,
       endTime,
       reminderMinutes: remindMin,
@@ -653,7 +765,7 @@ function EventModal({
 
   function handleDelete() {
     if (!editId) return;
-    Alert.alert('Eliminar Evento', '¿Estás seguro de que quieres eliminar este evento?', [
+    showAlert('Eliminar Evento', '¿Estás seguro de que quieres eliminar este evento?', [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: () => { deleteEvent(editId); onClose(); } }
     ]);
@@ -674,6 +786,41 @@ function EventModal({
             placeholder="Ej: Clase de Programación"
             placeholderTextColor={lifeTheme.colors.muted}
           />
+
+          <Text style={styles.modalLabel}>Descripción (opcional)</Text>
+          <TextInput
+            style={[styles.modalInput, { height: 82, textAlignVertical: 'top' }]}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Notas del evento, contexto o detalles"
+            placeholderTextColor={lifeTheme.colors.muted}
+            multiline
+          />
+
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.modalLabel}>Emoji</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={emoji}
+                onChangeText={(v) => setEmoji(v.slice(0, 2))}
+                placeholder="📌"
+                placeholderTextColor={lifeTheme.colors.muted}
+                maxLength={2}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.modalLabel}>Color</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={color}
+                onChangeText={setColor}
+                placeholder="#8FBF00"
+                placeholderTextColor={lifeTheme.colors.muted}
+                autoCapitalize="characters"
+              />
+            </View>
+          </View>
 
           <SafeDatePicker
             label="Hora de Inicio"
@@ -777,26 +924,125 @@ export default function CalendarScreen(): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const tasks = useLifeStore((s) => s.tasks);
   const events = useLifeStore((s) => s.events);
   const timeline = useLifeStore((s) => s.timeline);
+  const deleteTask = useLifeStore((s) => s.deleteTask);
+  const deleteEvent = useLifeStore((s) => s.deleteEvent);
+  const deleteBlock = useLifeStore((s) => s.deleteBlock);
 
   const [view, setView] = useState<CalendarView>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(new Date());
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const { alertState, showAlert, hideAlert } = useCustomAlert();
 
   const activeTasks = useMemo(() => tasks.filter((t) => t.status !== 'completed'), [tasks]);
-
-  function onEditEvent(id: string) {
-    setEditingId(id);
-    setModalVisible(true);
-  }
 
   function onAddEvent() {
     setEditingId(null);
     setModalVisible(true);
+  }
+
+  function openTaskEditor(taskId: string) {
+    useLifeStore.setState({ pendingTaskEditId: taskId });
+    router.push('/(tabs)/pool' as any);
+  }
+
+  function openTaskInfo(taskId: string) {
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    const emoji = getTaskEmoji(task);
+    const color = getTaskAccent(task, lifeTheme);
+    showAlert(
+      `${emoji} ${task.title}`,
+      buildBlockInfoMessage({
+        kind: 'task',
+        title: task.title,
+        start: task.fixed_start,
+        end: task.fixed_end,
+        description: task.description,
+        emoji,
+        color,
+        task
+      }),
+      [
+        { text: 'Editar', onPress: () => openTaskEditor(task.id) },
+        { text: 'Eliminar', style: 'destructive', onPress: () => deleteTask(task.id) },
+        { text: 'Hecho', style: 'cancel' }
+      ]
+    );
+  }
+
+  function openEventInfo(eventId: string) {
+    const event = events.find((item) => item.id === eventId);
+    if (!event) return;
+    const emoji = getEventEmoji(event);
+    const color = getEventAccent(event, lifeTheme);
+    showAlert(
+      `${emoji} ${event.title}`,
+      buildBlockInfoMessage({
+        kind: 'event',
+        title: event.title,
+        start: event.startTime,
+        end: event.endTime,
+        description: event.description,
+        location: event.location,
+        emoji,
+        color,
+        event
+      }),
+      [
+        { text: 'Editar', onPress: () => { setEditingId(event.id); setModalVisible(true); } },
+        { text: 'Eliminar', style: 'destructive', onPress: () => deleteEvent(event.id) },
+        { text: 'Hecho', style: 'cancel' }
+      ]
+    );
+  }
+
+  function openBlockInfo(blockId: string) {
+    const block = timeline.find((item) => item.id === blockId);
+    if (!block) return;
+
+    const task = block.task_id ? tasks.find((item) => item.id === block.task_id) ?? null : null;
+    const event = block.isStaticEvent ? events.find((item) => item.id === block.id) ?? null : null;
+    const emoji = task ? getTaskEmoji(task) : event ? getEventEmoji(event) : block.type === 'sleep' ? '🌙' : block.type === 'transit' ? '🚗' : block.type === 'meal' ? '🍽' : block.type === 'rest' ? '☕' : '⚡';
+    const color = task ? getTaskAccent(task, lifeTheme) : event ? getEventAccent(event, lifeTheme) : lifeTheme.colors.muted;
+    const kind = block.type === 'meal' ? 'meal' : block.type === 'sleep' ? 'sleep' : block.type === 'transit' ? 'transit' : block.type === 'task' ? 'task' : 'rest';
+
+    showAlert(
+      `${emoji} ${block.title}`,
+      buildBlockInfoMessage({
+        kind,
+        title: block.title,
+        start: block.start_time,
+        end: block.end_time,
+        description: task?.description,
+        emoji,
+        color,
+        task,
+        event
+      }),
+      block.task_id && task
+        ? [
+            { text: 'Editar', onPress: () => openTaskEditor(task.id) },
+            { text: 'Eliminar', style: 'destructive', onPress: () => deleteTask(task.id) },
+            { text: 'Hecho', style: 'cancel' }
+          ]
+        : block.isStaticEvent && event
+          ? [
+              { text: 'Editar', onPress: () => { setEditingId(event.id); setModalVisible(true); } },
+              { text: 'Eliminar', style: 'destructive', onPress: () => deleteEvent(event.id) },
+              { text: 'Hecho', style: 'cancel' }
+            ]
+          : [
+              { text: 'Editar', onPress: () => router.push('/(tabs)/routines' as any) },
+              { text: 'Eliminar', style: 'destructive', onPress: () => deleteBlock(block.id) },
+              { text: 'Hecho', style: 'cancel' }
+            ]
+    );
   }
 
   function navigate(direction: -1 | 1) {
@@ -863,22 +1109,36 @@ export default function CalendarScreen(): ReactElement {
         {view === 'week' && (
           <MemoWeekView
             currentDate={currentDate}
-            selectedDay={selectedDay}
             tasks={activeTasks}
             events={events}
+            timeline={timeline}
             onSelectDay={setSelectedDay}
-            onEditEvent={onEditEvent}
+            onOpenEventInfo={openEventInfo}
+            onOpenBlockInfo={openBlockInfo}
           />
         )}
         {view === 'day' && (
-          <MemoDayView date={currentDate} tasks={activeTasks} events={events} timeline={timeline} onEditEvent={onEditEvent} />
+          <MemoDayView
+            date={currentDate}
+            tasks={activeTasks}
+            events={events}
+            timeline={timeline}
+            onOpenEventInfo={openEventInfo}
+            onOpenBlockInfo={openBlockInfo}
+          />
         )}
       </View>
 
       {/* Selected day info */}
       {view !== 'day' && (
         <View style={styles.dayPanelWrap}>
-          <MemoDayTasksPanel date={selectedDay} tasks={activeTasks} events={events} onEditEvent={onEditEvent} />
+          <MemoDayTasksPanel
+            date={selectedDay}
+            tasks={activeTasks}
+            events={events}
+            onOpenEventInfo={openEventInfo}
+            onOpenTaskInfo={openTaskInfo}
+          />
         </View>
       )}
 
@@ -887,7 +1147,20 @@ export default function CalendarScreen(): ReactElement {
         <Text style={styles.fabText}>+ Evento</Text>
       </Pressable>
 
-      <EventModal visible={modalVisible} editId={editingId} onClose={() => setModalVisible(false)} />
+      <EventModal
+        visible={modalVisible}
+        editId={editingId}
+        onClose={() => setModalVisible(false)}
+        showAlert={showAlert}
+      />
+
+      <CustomAlertDialog
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        buttons={alertState.buttons}
+        onDismiss={hideAlert}
+      />
     </View>
   );
 }
@@ -966,7 +1239,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   weekGridBodyWide: { flexDirection: 'row' },
   hourColWide: { width: 52 },
   hourLabelCellWide: { justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: lifeTheme.colors.border },
-  hourLabelText: { color: lifeTheme.colors.muted, fontSize: 9, fontWeight: '600' },
+  hourLabelText: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '700' },
   dayColWide: { borderRightWidth: 1, borderRightColor: `${lifeTheme.colors.border}44`, position: 'relative' },
   slotCellWide: { borderBottomWidth: 1, borderBottomColor: `${lifeTheme.colors.border}22` },
   weekBlockCard: {
@@ -978,12 +1251,22 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderWidth: 1,
     borderColor: lifeTheme.colors.border,
     borderLeftWidth: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     overflow: 'hidden'
   },
-  weekBlockTitle: { color: lifeTheme.colors.text, fontSize: 11, fontWeight: '800' },
-  weekBlockMeta: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '600' },
+  weekBlockTitle: { color: lifeTheme.colors.text, fontSize: 11, fontWeight: '800', lineHeight: 13, marginTop: 4 },
+  weekBlockTitleCompact: { marginTop: 0, lineHeight: 12 },
+  weekBlockMetaPill: {
+    color: lifeTheme.colors.text,
+    fontSize: 10,
+    fontWeight: '700',
+    alignSelf: 'flex-start',
+    backgroundColor: `${lifeTheme.colors.border}55`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6
+  },
   miniDot: { width: 6, height: 6, borderRadius: 3 },
   // View switches...
 
@@ -1031,12 +1314,22 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderWidth: 1,
     borderColor: lifeTheme.colors.border,
     borderLeftWidth: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     overflow: 'hidden'
   },
-  dayBlockTitle: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '800' },
-  dayBlockMeta: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '600' },
+  dayBlockTitle: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '800', lineHeight: 15, marginTop: 4 },
+  dayBlockTitleCompact: { marginTop: 0, lineHeight: 13 },
+  dayBlockMetaPill: {
+    color: lifeTheme.colors.text,
+    fontSize: 10,
+    fontWeight: '700',
+    alignSelf: 'flex-start',
+    backgroundColor: `${lifeTheme.colors.border}55`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6
+  },
   // Day panel
   dayPanelWrap: { marginTop: 8 },
   dayPanel: {

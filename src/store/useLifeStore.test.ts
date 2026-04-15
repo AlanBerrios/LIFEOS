@@ -62,7 +62,14 @@ describe('useLifeStore replanification', () => {
       userProfile: {
         level: 1,
         currentXP: 0,
-        skills: { focus: 0, vitality: 0, discipline: 0, wisdom: 0 }
+        skills: { focus: 0, vitality: 0, discipline: 0, wisdom: 0 },
+        consistency: {
+          currentStreak: 0,
+          bestStreak: 0,
+          totalActiveDays: 0,
+          lastActiveDate: undefined
+        },
+        badges: []
       },
       routines: useLifeStore.getState().routines
     });
@@ -220,5 +227,89 @@ describe('useLifeStore replanification', () => {
     expect(afterReject.is_replanning).toBe(false);
     expect(afterReject.replan_error).toBeUndefined();
     expect(afterReject.pending_completion_check).toBeUndefined();
+  });
+
+  it('blocks moveBlock when adjacent target is static event', () => {
+    useLifeStore.setState((state) => ({
+      ...state,
+      timeline: [
+        {
+          id: 'task-a',
+          type: 'task',
+          task_id: 'task-a',
+          title: 'Task A',
+          start_time: new Date('2026-04-11T10:00:00.000Z'),
+          end_time: new Date('2026-04-11T10:30:00.000Z')
+        },
+        {
+          id: 'event-fixed',
+          type: 'task',
+          title: 'Evento fijo',
+          start_time: new Date('2026-04-11T10:30:00.000Z'),
+          end_time: new Date('2026-04-11T11:00:00.000Z'),
+          isStaticEvent: true,
+          pinned: true
+        }
+      ]
+    }));
+
+    const before = [...useLifeStore.getState().timeline];
+    const result = useLifeStore.getState().moveBlock('task-a', 'down');
+
+    expect(result.moved).toBe(false);
+    expect(result.reason).toBe('blocked_by_fixed');
+    expect(useLifeStore.getState().timeline).toEqual(before);
+  });
+
+  it('blocks moveBlockToIndex across routine and ghost blocks', () => {
+    useLifeStore.setState((state) => ({
+      ...state,
+      timeline: [
+        {
+          id: 'task-a',
+          type: 'task',
+          task_id: 'task-a',
+          title: 'Task A',
+          start_time: new Date('2026-04-11T08:00:00.000Z'),
+          end_time: new Date('2026-04-11T08:30:00.000Z')
+        },
+        {
+          id: 'routine-lock',
+          type: 'meal',
+          title: 'Rutina comida',
+          start_time: new Date('2026-04-11T08:30:00.000Z'),
+          end_time: new Date('2026-04-11T09:00:00.000Z'),
+          isRoutineBlock: true,
+          routineBlockKey: 'meal-1',
+          pinned: true
+        },
+        {
+          id: 'ghost-lock',
+          type: 'task',
+          task_id: 'task-ghost',
+          title: 'Ghost bloqueado',
+          start_time: new Date('2026-04-11T09:00:00.000Z'),
+          end_time: new Date('2026-04-11T09:30:00.000Z'),
+          isCompletedGhost: true,
+          pinned: true
+        },
+        {
+          id: 'task-b',
+          type: 'task',
+          task_id: 'task-b',
+          title: 'Task B',
+          start_time: new Date('2026-04-11T09:30:00.000Z'),
+          end_time: new Date('2026-04-11T10:00:00.000Z')
+        }
+      ]
+    }));
+
+    const before = [...useLifeStore.getState().timeline];
+    const result = useLifeStore.getState().moveBlockToIndex('task-a', 3);
+
+    expect(result.moved).toBe(false);
+    expect(result.reason).toBe('blocked_by_fixed');
+    expect(result.suggestions).toBeDefined();
+    expect(useLifeStore.getState().timeline).toEqual(before);
   });
 });

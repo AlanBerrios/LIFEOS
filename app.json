@@ -38,6 +38,10 @@
     },
     "extra": {
       "router": {},
+      "buildMetadata": {
+        "commitHash": "4e4c57b",
+        "buildTimestamp": "2026-04-14T05:38:44Z"
+      },
       "eas": {
         "projectId": "9b0d0b38-a4e3-4343-a007-fb2edd693a19"
       }

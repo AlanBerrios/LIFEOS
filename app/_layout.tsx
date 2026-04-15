@@ -1,6 +1,6 @@
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
@@ -8,6 +8,7 @@ import { AppState } from 'react-native';
 import { useLifeStore } from '../src/store/useLifeStore';
 import {
   initNotifications,
+  scheduleRandomHabitReminder,
   requestNotificationPermission,
   type NotificationPayloadData
 } from '../src/services/notifications';
@@ -15,6 +16,9 @@ import { checkGeofenceState } from '../src/services/location';
 import { checkScreenTimeDistraction, registerScreenTimeBackgroundTask } from '../src/services/screenTime';
 import { useAppTheme } from '../src/theme';
 import AppLoadingSplash from '../src/components/AppLoadingSplash';
+import { DailyStartPrompt } from '../src/components/DailyStartPrompt';
+import { RestDayPrompt } from '../src/components/RestDayPrompt';
+import { useDailyStart } from '../src/hooks/useDailyStart';
 
 try {
   initNotifications();
@@ -24,8 +28,13 @@ try {
 
 export default function RootLayout(): ReactElement {
   const [isBooting, setIsBooting] = useState(true);
+  const [showDailyPrompt, setShowDailyPrompt] = useState(false);
+  const [showRestDayPrompt, setShowRestDayPrompt] = useState(false);
   const theme = useAppTheme();
   const uiThemeMode = useLifeStore((s) => s.settings.uiThemeMode ?? 'dark');
+  const router = useRouter();
+  const { shouldShowPrompt, dismissPrompt } = useDailyStart();
+  const markRestDay = useLifeStore((s) => s.markRestDay);
 
   useEffect(() => {
     let mounted = true;
@@ -115,6 +124,12 @@ export default function RootLayout(): ReactElement {
       try {
         useLifeStore.getState().restoreMealTimer();
       } catch(e) { console.log(e); }
+
+      try {
+        const store = useLifeStore.getState();
+        const reminderId = await scheduleRandomHabitReminder(store.habits, store.habitReminderNotificationId);
+        useLifeStore.setState({ habitReminderNotificationId: reminderId });
+      } catch(e) { console.log(e); }
     };
 
     const bootstrap = async () => {
@@ -156,6 +171,41 @@ export default function RootLayout(): ReactElement {
     };
   }, []);
 
+  // Mostrar daily start prompt cuando se detecta inicio de nuevo día
+  useEffect(() => {
+    if (shouldShowPrompt && !isBooting) {
+      setShowDailyPrompt(true);
+    }
+  }, [shouldShowPrompt, isBooting]);
+
+  const handleStartDay = () => {
+    dismissPrompt();
+    setShowDailyPrompt(false);
+    // Navegar a la pestaña "Hoy" para empezar el día
+    router.push('/(tabs)/index');
+  };
+
+  const handleCaptureQuick = () => {
+    dismissPrompt();
+    setShowDailyPrompt(false);
+    // Navegar a la pestaña de tareas para capturar rápidamente
+    router.push('/(tabs)/pool');
+  };
+
+  const handleRestDay = () => {
+    dismissPrompt();
+    setShowDailyPrompt(false);
+    // Mostrar confirmación de día de descanso
+    setShowRestDayPrompt(true);
+  };
+
+  const handleConfirmRestDay = () => {
+    markRestDay();
+    setShowRestDayPrompt(false);
+    // Navegar a la pestaña "Hoy" con un plan vacío (no se generan tareas)
+    router.push('/(tabs)/index');
+  };
+
   if (isBooting) {
     return <AppLoadingSplash />;
   }
@@ -165,6 +215,18 @@ export default function RootLayout(): ReactElement {
       <SafeAreaProvider>
         <StatusBar style={uiThemeMode === 'dark' ? 'light' : 'dark'} backgroundColor="transparent" translucent />
         <Stack screenOptions={{ headerShown: false }} />
+        <DailyStartPrompt
+          visible={showDailyPrompt}
+          onDismiss={() => setShowDailyPrompt(false)}
+          onStartDay={handleStartDay}
+          onCaptureQuick={handleCaptureQuick}
+          onRestDay={handleRestDay}
+        />
+        <RestDayPrompt
+          visible={showRestDayPrompt}
+          onConfirm={handleConfirmRestDay}
+          onCancel={() => setShowRestDayPrompt(false)}
+        />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

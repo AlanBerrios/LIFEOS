@@ -18,7 +18,7 @@ import Slider from '@react-native-community/slider';
 import { getTodayStr } from '../../src/utils/date';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
-import type { TaskUrgency } from '../../src/types';
+import type { ScheduleBlock, StaticEvent, Task, TaskUrgency } from '../../src/types';
 import { createId } from '../../src/utils/ids';
 import { 
   UtensilsCrossed, 
@@ -27,13 +27,105 @@ import {
   FileText,
   SquareTerminal
 } from 'lucide-react-native';
-import { TutorialOverlay } from '../../src/components/TutorialOverlay';
 import { TaskCompletionCheckDialog } from '../../src/components/TaskCompletionCheckDialog';
 import { CustomAlertDialog, AlertButtonConfig } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 
 function fmt(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function blockDurationMin(block: ScheduleBlock): number {
+  return Math.max(1, Math.round((block.end_time.getTime() - block.start_time.getTime()) / 60_000));
+}
+
+function explainRestSource(block: ScheduleBlock, previousBlock?: ScheduleBlock, nextBlock?: ScheduleBlock): string {
+  const parts: string[] = [];
+  if (previousBlock && nextBlock) {
+    parts.push(`Nace entre "${previousBlock.title}" y "${nextBlock.title}" para mantener continuidad sin solapes.`);
+  } else if (previousBlock) {
+    parts.push(`Nace después de "${previousBlock.title}" como buffer del timeline.`);
+  } else if (nextBlock) {
+    parts.push(`Nace antes de "${nextBlock.title}" para evitar huecos incoherentes.`);
+  } else {
+    parts.push('Se genera automáticamente para mantener un plan temporal coherente.');
+  }
+
+  if (block.title.toLowerCase().includes('libre')) {
+    parts.push('"Libre" representa tiempo no asignado que quedó disponible entre bloques obligatorios o tareas planificadas.');
+  } else if (block.title.toLowerCase().includes('descanso')) {
+    parts.push('Este descanso se propone para recuperar energía y sostener foco entre bloques de trabajo.');
+  }
+
+  return parts.join(' ');
+}
+
+function buildBlockInfoMessage(params: {
+  block: ScheduleBlock;
+  task: Task | null;
+  event: StaticEvent | null;
+  previousBlock?: ScheduleBlock;
+  nextBlock?: ScheduleBlock;
+}): string {
+  const { block, task, event, previousBlock, nextBlock } = params;
+  const duration = blockDurationMin(block);
+  const base = [
+    `Tipo: ${block.type}`,
+    `Inicio: ${fmt(block.start_time)}`,
+    `Fin: ${fmt(block.end_time)}`,
+    `Duración: ${duration} min`
+  ];
+
+  if (block.isStaticEvent) {
+    base.push('Naturaleza: Evento fijo (no editable desde timeline).');
+    if (event?.description?.trim()) {
+      base.push(`Descripción: ${event.description.trim()}`);
+    } else {
+      base.push('Descripción: Sin descripción.');
+    }
+    if (event?.location?.trim()) {
+      base.push(`Lugar: ${event.location.trim()}`);
+    }
+    if (event?.recurrence?.frequency && event.recurrence.frequency !== 'none') {
+      base.push(`Repetición: ${event.recurrence.frequency}`);
+    }
+    return base.join('\n');
+  }
+
+  if (block.type === 'task') {
+    base.push('Naturaleza: Tarea de ejecución.');
+    if (task) {
+      base.push(`Prioridad: ${task.priority}/5`);
+      base.push(`Carga cognitiva: ${task.cognitive_load}/10`);
+      base.push(`Estado: ${task.status}`);
+      if (task.description?.trim()) {
+        base.push(`Descripción: ${task.description.trim()}`);
+      }
+    } else {
+      base.push('Detalle: Esta tarea no tiene metadata adicional disponible.');
+    }
+    return base.join('\n');
+  }
+
+  if (block.type === 'rest') {
+    base.push('Naturaleza: Descanso/buffer automático.');
+    base.push(explainRestSource(block, previousBlock, nextBlock));
+    return base.join('\n');
+  }
+
+  if (block.type === 'meal') {
+    base.push('Naturaleza: Bloque de comida/rutina.');
+    base.push(block.isRoutineBlock ? 'Origen: Rutina diaria (ajustable solo para hoy).' : 'Origen: Planificación del día.');
+    return base.join('\n');
+  }
+
+  if (block.type === 'sleep' || block.type === 'transit') {
+    base.push(`Naturaleza: ${block.type === 'sleep' ? 'Descanso nocturno' : 'Traslado'}.`);
+    base.push(block.isRoutineBlock ? 'Origen: Rutina fija del día.' : 'Origen: Planificación automática.');
+    return base.join('\n');
+  }
+
+  return base.join('\n');
 }
 
 // ─── Quick Task Modal ─────────────────────────────────────────────────────────
@@ -51,6 +143,8 @@ function QuickTaskModal({
   const addTask = useLifeStore((s) => s.addTask);
   const [title, setTitle] = useState('');
   const [urgency, setUrgency] = useState<TaskUrgency>('today');
+  const [emoji, setEmoji] = useState('✨');
+  const [color, setColor] = useState('');
   const [eta, setEta] = useState(30);
 
   function handleSave() {
@@ -63,9 +157,13 @@ function QuickTaskModal({
       urgency,
       eta_minutes: eta,
       priority: 3,
-      cognitive_load: 5
+      cognitive_load: 5,
+      emoji: emoji.trim() || undefined,
+      color: color.trim() || undefined
     });
     setTitle('');
+    setEmoji('✨');
+    setColor('');
     onClose();
   }
 
@@ -102,6 +200,31 @@ function QuickTaskModal({
                     </Text>
                   </Pressable>
                 ))}
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalLabel}>Emoji</Text>
+                <TextInput
+                  style={[styles.modalInput, { fontSize: 16, textAlign: 'left' }]}
+                  value={emoji}
+                  onChangeText={(v) => setEmoji(v.slice(0, 2))}
+                  placeholder="✨"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                  maxLength={2}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalLabel}>Color</Text>
+                <TextInput
+                  style={[styles.modalInput, { fontSize: 15, textAlign: 'left' }]}
+                  value={color}
+                  onChangeText={setColor}
+                  placeholder="#8FBF00"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                  autoCapitalize="characters"
+                />
               </View>
             </View>
 
@@ -153,6 +276,9 @@ function QuickEventModal({
   const { alertState, showAlert, hideAlert } = useCustomAlert();
   const addEvent = useLifeStore((s) => s.addEvent);
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [emoji, setEmoji] = useState('📌');
+  const [color, setColor] = useState('');
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [endTime, setEndTime] = useState<Date | null>(null);
   const [remindMin, setRemindMin] = useState(10);
@@ -164,11 +290,17 @@ function QuickEventModal({
     }
     addEvent({
       title: title.trim(),
+      description: description.trim() || undefined,
+      emoji: emoji.trim() || undefined,
+      color: color.trim() || undefined,
       startTime,
       endTime,
       reminderMinutes: remindMin
     });
     setTitle('');
+    setDescription('');
+    setEmoji('📌');
+    setColor('');
     setStartTime(null);
     setEndTime(null);
     onClose();
@@ -188,6 +320,40 @@ function QuickEventModal({
               placeholder="Nombre del evento"
               placeholderTextColor={lifeTheme.colors.muted}
               autoFocus
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalLabel}>Emoji</Text>
+                <TextInput
+                  style={[styles.modalInput, { fontSize: 16, textAlign: 'left' }]}
+                  value={emoji}
+                  onChangeText={(v) => setEmoji(v.slice(0, 2))}
+                  placeholder="📌"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                  maxLength={2}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalLabel}>Color</Text>
+                <TextInput
+                  style={[styles.modalInput, { fontSize: 15, textAlign: 'left' }]}
+                  value={color}
+                  onChangeText={setColor}
+                  placeholder="#8FBF00"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                  autoCapitalize="characters"
+                />
+              </View>
+            </View>
+
+            <TextInput
+              style={[styles.modalInput, { fontSize: 15, textAlign: 'left', minHeight: 72, textAlignVertical: 'top' }]}
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Descripción del evento (opcional)"
+              placeholderTextColor={lifeTheme.colors.muted}
+              multiline
             />
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -344,7 +510,10 @@ function MealOptionsModal({
   
   const today = new Date().getDay();
   const routine = routines.find(r => r.dayOfWeek === today);
-  const routineLunch = routine?.meals.find(m => m.type.toLowerCase() === 'almuerzo');
+  const routineMeal = routine?.meals.find((meal) => {
+    const type = meal.type.toLowerCase();
+    return type.includes('comida') || type.includes('almuerzo');
+  }) ?? routine?.meals[0];
 
   function handleStart(mins: number) {
     void startMealTimer(mins);
@@ -355,13 +524,13 @@ function MealOptionsModal({
     <Modal visible={visible} transparent animationType="fade">
       <Pressable style={styles.overlay} onPress={onClose}>
         <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Opciones de Almuerzo</Text>
-          <Text style={styles.modalLabel}>¿Cuánto tiempo vas a almorzar?</Text>
+          <Text style={styles.modalTitle}>Opciones de Comida</Text>
+          <Text style={styles.modalLabel}>¿Cuánto tiempo vas a comer?</Text>
           
           <View style={{ gap: 10, marginTop: 10 }}>
-            {routineLunch && (
-              <Pressable style={styles.saveBtn} onPress={() => handleStart(routineLunch.durationMinutes)}>
-                <Text style={styles.saveBtnText}>Según rutina ({routineLunch.durationMinutes} min)</Text>
+            {routineMeal && (
+              <Pressable style={styles.saveBtn} onPress={() => handleStart(routineMeal.durationMinutes)}>
+                <Text style={styles.saveBtnText}>Según tu rutina ({routineMeal.durationMinutes} min)</Text>
               </Pressable>
             )}
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -391,6 +560,8 @@ function BlockCard({
   block,
   index,
   total,
+  previousBlock,
+  nextBlock,
   now,
   onEditBreak,
   onRequestMove,
@@ -402,6 +573,8 @@ function BlockCard({
   block: ReturnType<typeof useLifeStore.getState>['timeline'][0];
   index: number;
   total: number;
+  previousBlock?: ReturnType<typeof useLifeStore.getState>['timeline'][0];
+  nextBlock?: ReturnType<typeof useLifeStore.getState>['timeline'][0];
   now: Date;
   onEditBreak: (id: string, minutes: number) => void;
   onRequestMove: (blockId: string, direction: 'up' | 'down') => void;
@@ -412,25 +585,32 @@ function BlockCard({
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
-  const moveBlock = useLifeStore((s) => s.moveBlock);
-  const completeTask = useLifeStore((s) => s.completeTask);
   const skipTask = useLifeStore((s) => s.skipTask);
   const postponeTask = useLifeStore((s) => s.postponeTask);
   const deleteBlock = useLifeStore((s) => s.deleteBlock);
   const tasks = useLifeStore((s) => s.tasks);
+  const events = useLifeStore((s) => s.events);
   const task = block.task_id ? tasks.find(t => t.id === block.task_id) : null;
+  const relatedEvent = block.isStaticEvent ? events.find((event) => event.id === block.id) ?? null : null;
   const isInProgress = task?.status === 'in_progress';
+  const accentColor = task?.color?.trim() || (isGhost ? lifeTheme.colors.success : lifeTheme.colors.primary);
+  const taskEmoji = task?.emoji?.trim() || '🔷';
   const durationMin = Math.round((block.end_time.getTime() - block.start_time.getTime()) / 60_000);
-  const isRest = block.type === 'rest' || block.type === 'meal' || block.type === 'sleep';
+  const isRest = block.type === 'rest' || block.type === 'meal' || block.type === 'sleep' || block.type === 'transit';
   const isMeal = block.type === 'meal';
   const isSleep = block.type === 'sleep';
+  const isTransit = block.type === 'transit';
+  const isGhost = Boolean(block.isCompletedGhost);
+  const isRoutineBlock = Boolean(block.isRoutineBlock);
   const isStaticEvent = Boolean(block.isStaticEvent);
-  const isMovableTask = !isRest && !isStaticEvent;
+  const isMovableTask = !isRest && !isStaticEvent && !isRoutineBlock && !isGhost;
   const dragOffsetY = useSharedValue(0);
 
   let emoji = '☕';
-  if (isMeal) emoji = '🍜';
+  if (isGhost) emoji = '✅';
+  else if (isMeal) emoji = '🍜';
   else if (isSleep) emoji = '🌙';
+  else if (isTransit) emoji = '🚗';
   else if (!isRest) emoji = '🔷';
 
   // Liquid progress calculation
@@ -438,14 +618,16 @@ function BlockCard({
   const endMs = block.end_time.getTime();
   const nowMs = now.getTime();
   let progress = 0;
-  if (nowMs >= startMs && nowMs <= endMs) {
+  if (isGhost) {
+    progress = 1;
+  } else if (nowMs >= startMs && nowMs <= endMs) {
     progress = (nowMs - startMs) / (endMs - startMs);
   } else if (nowMs > endMs) {
     progress = 1;
   }
 
   const showProgress = progress > 0 && progress < 1;
-  const fillColor = isRest ? `${lifeTheme.colors.text}0D` : lifeTheme.colors.softPrimary;
+  const fillColor = isGhost ? `${lifeTheme.colors.success}22` : isRest ? `${lifeTheme.colors.text}0D` : lifeTheme.colors.softPrimary;
 
   const dragGesture = Gesture.Pan()
     .enabled(isMovableTask)
@@ -479,7 +661,9 @@ function BlockCard({
           isRest ? styles.blockRest : styles.blockTask,
           isMeal && styles.blockMeal,
           isSleep && styles.blockSleep,
-          isInProgress && styles.blockInProgress
+          isGhost && styles.blockGhost,
+          isInProgress && styles.blockInProgress,
+          { borderLeftColor: accentColor }
         ]}
       >
       {/* Liquid Fill Overlay */}
@@ -502,12 +686,18 @@ function BlockCard({
         <Text style={[
           isRest ? styles.blockTitleRest : styles.blockTitleTask,
           isMeal && { color: '#fb923c' },
-          isSleep && { color: '#818cf8', fontWeight: '900' }
+          isSleep && { color: '#818cf8', fontWeight: '900' },
+          !isRest && { color: accentColor }
         ]} numberOfLines={2}>
-          {emoji} {block.title}
+          {task ? taskEmoji : emoji} {block.title}
         </Text>
         <View style={styles.blockMetaRow}>
           <Text style={styles.blockDuration}>{durationMin} min</Text>
+          {isGhost && (
+            <View style={styles.ghostBadge}>
+              <Text style={styles.ghostBadgeText}>FANTASMA</Text>
+            </View>
+          )}
           {isInProgress && (
             <View style={styles.inProgressBadge}>
               <Text style={styles.inProgressText}>EN CURSO</Text>
@@ -517,30 +707,23 @@ function BlockCard({
       </View>
 
       <View style={styles.blockCtrl}>
+        <Pressable
+          style={styles.ctrlBtn}
+          onPress={() => {
+            const infoMessage = buildBlockInfoMessage({
+              block,
+              task,
+              event: relatedEvent,
+              previousBlock,
+              nextBlock
+            });
+            showAlert(`Información del bloque`, infoMessage, [{ text: 'Cerrar', style: 'cancel' }]);
+          }}
+        >
+          <Text style={styles.ctrlIcon}>[i]</Text>
+        </Pressable>
         {isMovableTask && (
           <>
-            <Pressable
-              style={styles.ctrlBtn}
-              onPress={() => {
-                showAlert(
-                  'Reorganizar timeline',
-                  'Arrastra verticalmente y suelta para mover. ¿Aplicar movimiento ahora?',
-                  [
-                    { text: 'Cancelar', style: 'cancel' },
-                    {
-                      text: 'Mover arriba',
-                      onPress: () => onRequestMove(block.id, 'up')
-                    },
-                    {
-                      text: 'Mover abajo',
-                      onPress: () => onRequestMove(block.id, 'down')
-                    }
-                  ]
-                );
-              }}
-            >
-              <Text style={styles.ctrlIcon}>↕</Text>
-            </Pressable>
             {block.task_id && (
               <Pressable
                 style={[styles.ctrlBtn, styles.ctrlBtnDone, isInProgress && styles.ctrlBtnInProgress]}
@@ -577,10 +760,16 @@ function BlockCard({
             style={styles.editBreakBtn}
             onPress={() => onEditBreak(block.id, durationMin)}
             onLongPress={() => {
-              showAlert('Eliminar descanso', '¿Eliminar este bloque de descanso?', [
+              showAlert(
+                isRoutineBlock ? 'Ajuste de rutina (solo hoy)' : 'Eliminar descanso',
+                isRoutineBlock
+                  ? 'Este cambio aplica solo al día de hoy y no modifica tu rutina semanal.'
+                  : '¿Eliminar este bloque de descanso?',
+                [
                 { text: 'Cancelar', style: 'cancel' },
-                { text: 'Eliminar 🗑', style: 'destructive', onPress: () => useLifeStore.getState().deleteBlock(block.id) }
-              ]);
+                { text: isRoutineBlock ? 'Ocultar hoy 🗑' : 'Eliminar 🗑', style: 'destructive', onPress: () => useLifeStore.getState().deleteBlock(block.id) }
+              ]
+              );
             }}
           >
             <Text style={styles.editBreakIcon}>✏️</Text>
@@ -601,6 +790,7 @@ export default function DashboardScreen(): ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const timeline = useLifeStore((s) => s.timeline);
+  const completedGhostBlocks = useLifeStore((s) => s.completedGhostBlocks);
   const tasks = useLifeStore((s) => s.tasks);
   const habits = useLifeStore((s) => s.habits);
   const logHabit = useLifeStore((s) => s.logHabit);
@@ -611,9 +801,7 @@ export default function DashboardScreen(): ReactElement {
   const startMealTimer = useLifeStore((s) => s.startMealTimer);
   const stopTimer = useLifeStore((s) => s.stopTimer);
   const activeTimer = useLifeStore((s) => s.activeTimer);
-  const settings = useLifeStore((s) => s.settings);
   const userProfile = useLifeStore((s) => s.userProfile);
-  const updateSettings = useLifeStore((s) => s.updateSettings);
   const confirmCompletionOK = useLifeStore((s) => s.confirmCompletionOK);
   const confirmCompletionPartial = useLifeStore((s) => s.confirmCompletionPartial);
   const reportTaskSkipped = useLifeStore((s) => s.reportTaskSkipped);
@@ -631,7 +819,8 @@ export default function DashboardScreen(): ReactElement {
   const [isSubmittingCompletion, setIsSubmittingCompletion] = useState(false);
 
   useEffect(() => {
-    const itv = setInterval(() => setNow(new Date()), 60000);
+    // Actualizar cada 5 segundos para animación de progreso fluida en tiempo real
+    const itv = setInterval(() => setNow(new Date()), 5000);
     return () => clearInterval(itv);
   }, []);
 
@@ -658,14 +847,19 @@ export default function DashboardScreen(): ReactElement {
   const taskBlocks = timeline.filter((b) => b.type === 'task').length;
   const completionTask = completionTaskId ? tasks.find((t) => t.id === completionTaskId) ?? null : null;
 
-  // Auto-filter completed tasks from timeline
-  const visibleTimeline = timeline.filter((block) => {
-    if (block.task_id) {
-      const task = tasks.find((t) => t.id === block.task_id);
-      return !task || task.status !== 'completed';
-    }
-    return true;
-  });
+  // Auto-filter completed tasks from timeline, but keep ghost blocks until their planned end
+  const visibleTimeline = useMemo(() => {
+    const activeGhostBlocks = completedGhostBlocks.filter((block) => block.end_time.getTime() > now.getTime());
+    const activeTimeline = timeline.filter((block) => {
+      if (block.task_id) {
+        const task = tasks.find((t) => t.id === block.task_id);
+        return !task || task.status !== 'completed';
+      }
+      return true;
+    });
+
+    return [...activeTimeline, ...activeGhostBlocks].sort((a, b) => a.start_time.getTime() - b.start_time.getTime());
+  }, [completedGhostBlocks, now, tasks, timeline]);
 
   function showFeedback(title: string, subtitle: string) {
     setFeedback({ title, subtitle });
@@ -790,7 +984,7 @@ export default function DashboardScreen(): ReactElement {
               >
                 <View style={styles.actionBtnInner}>
                   <UtensilsCrossed size={18} color={lifeTheme.colors.text} />
-                  <Text style={styles.actionBtnLabel}>Almuerzo</Text>
+                  <Text style={styles.actionBtnLabel}>Comida</Text>
                 </View>
               </Pressable>
             )}
@@ -831,10 +1025,6 @@ export default function DashboardScreen(): ReactElement {
         <QuickEventModal visible={quickEventVisible} onClose={() => setQuickEventVisible(false)} />
         <QuickNoteModal visible={quickNoteVisible} onClose={() => setQuickNoteVisible(false)} />
         <MealOptionsModal visible={mealOptionsVisible} onClose={() => setMealOptionsVisible(false)} />
-        <TutorialOverlay 
-          visible={settings.showTutorial} 
-          onComplete={() => updateSettings({ showTutorial: false })} 
-        />
 
 
 
@@ -849,17 +1039,39 @@ export default function DashboardScreen(): ReactElement {
                   block={block}
                   index={idx}
                   total={visibleTimeline.length}
+                  previousBlock={idx > 0 ? visibleTimeline[idx - 1] : undefined}
+                  nextBlock={idx < visibleTimeline.length - 1 ? visibleTimeline[idx + 1] : undefined}
                   now={now}
                   onEditBreak={(id, mins) => setEditBreak({ id, minutes: mins })}
                   onRequestMove={(blockId, direction) => {
-                    const title = direction === 'up' ? 'Mover bloque hacia arriba' : 'Mover bloque hacia abajo';
-                    showAlert('Reorganizar timeline', `${title}. ¿Confirmas el cambio?`, [
-                      { text: 'Cancelar', style: 'cancel' },
-                      {
-                        text: 'Sí, reorganizar',
-                        onPress: () => useLifeStore.getState().moveBlock(blockId, direction)
+                    const result = useLifeStore.getState().moveBlock(blockId, direction);
+                    if (result.moved) return;
+
+                    const suggestions = (result.suggestions ?? []).slice(0, 3);
+                    const suggestionButtons: AlertButtonConfig[] = suggestions.map((suggestion) => ({
+                      text: `Mover a ${fmt(suggestion.startTime)}`,
+                      onPress: () => {
+                        const apply = useLifeStore.getState().moveBlockToIndex(blockId, suggestion.targetIndex);
+                        if (!apply.moved) {
+                          showAlert('No se pudo aplicar', 'Ese espacio ya no está disponible. Intenta arrastrar de nuevo.');
+                        }
                       }
-                    ]);
+                    }));
+
+                    const reasonMessage =
+                      result.reason === 'blocked_by_fixed'
+                        ? 'Ese lugar está bloqueado por un evento o bloque fijo.'
+                        : result.reason === 'out_of_bounds'
+                          ? 'No hay espacio en esa dirección.'
+                          : 'No se puede mover esta tarea desde su posición actual.';
+
+                    showAlert(
+                      'No puedes moverla ahí',
+                      suggestions.length > 0
+                        ? `${reasonMessage}\nOpciones tentativas: ${suggestions.map((s) => fmt(s.startTime)).join(', ')}`
+                        : `${reasonMessage}\nNo hay horarios tentativos disponibles ahora.`,
+                      [{ text: 'Cancelar', style: 'cancel' }, ...suggestionButtons]
+                    );
                   }}
                   onTaskCompleted={(title, xp) => {
                     if (xp > 0) {
@@ -1057,6 +1269,11 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderLeftWidth: 4, 
     borderLeftColor: lifeTheme.colors.primary 
   },
+  blockGhost: {
+    borderLeftWidth: 4,
+    borderLeftColor: lifeTheme.colors.success,
+    backgroundColor: `${lifeTheme.colors.success}10`
+  },
   blockInProgress: {
     borderColor: lifeTheme.colors.primary,
     borderWidth: 2,
@@ -1082,6 +1299,15 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderRadius: 4 
   },
   inProgressText: { color: 'white', fontSize: 10, fontWeight: '900' },
+  ghostBadge: {
+    backgroundColor: `${lifeTheme.colors.success}18`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: `${lifeTheme.colors.success}55`
+  },
+  ghostBadgeText: { color: lifeTheme.colors.success, fontSize: 10, fontWeight: '900' },
   blockCtrl: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   ctrlBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: `${lifeTheme.colors.text}10`, alignItems: 'center', justifyContent: 'center' },
   ctrlBtnDisabled: { opacity: 0.3 },
@@ -1140,7 +1366,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     flex: 1, backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12,
     padding: 13, alignItems: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border
   },
-  cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
+  cancelBtnText: { color: lifeTheme.colors.text, fontWeight: '800' },
   saveBtn: { flex: 1, backgroundColor: lifeTheme.colors.primary, borderRadius: 12, padding: 13, alignItems: 'center' },
   saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' },
   // Actions Grid

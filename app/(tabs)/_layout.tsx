@@ -1,4 +1,5 @@
 import { MaterialTabs } from '../../src/components/MaterialTabs';
+import { TutorialOverlay } from '../../src/components/TutorialOverlay';
 import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,46 +25,49 @@ export default function TabLayout(): ReactElement {
   const styles = createStyles(theme);
 
   return (
-    <MaterialTabs
-      tabBarPosition="bottom"
-      keyboardDismissMode="on-drag"
-      screenOptions={({ route }: { route: { name: string } }) => ({
-        tabBarIndicatorStyle: { height: 0 }, // Hide the default top indicator
-        tabBarStyle: [styles.tabBar, { height: barHeight }],
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.muted,
-        tabBarShowLabel: true,
-        tabBarLabelStyle: {
-          fontSize: 9,
-          fontWeight: '700',
-          textTransform: 'none',
-          marginBottom: Math.max(insets.bottom / 2, 4)
-        },
-        tabBarItemStyle: { padding: 0 },
-        tabBarIcon: ({ focused }: { focused: boolean }) => {
-          const tab = TABS.find((t) => t.name === route.name);
-          if (!tab) return <View style={styles.iconContainer} />;
-          return (
-            <View style={styles.iconContainer}>
-              {focused && <View style={styles.activePill} />}
-              <View style={focused && { transform: [{ scale: 1.1 }] }}>
-                <tab.IconComponent size={22} color={focused ? theme.colors.primary : theme.colors.muted} strokeWidth={focused ? 2.5 : 2} />
+    <>
+      <MaterialTabs
+        tabBarPosition="bottom"
+        keyboardDismissMode="on-drag"
+        screenOptions={({ route }: { route: { name: string } }) => ({
+          tabBarIndicatorStyle: { height: 0 }, // Hide the default top indicator
+          tabBarStyle: [styles.tabBar, { height: barHeight }],
+          tabBarActiveTintColor: theme.colors.primary,
+          tabBarInactiveTintColor: theme.colors.muted,
+          tabBarShowLabel: true,
+          tabBarLabelStyle: {
+            fontSize: 9,
+            fontWeight: '700',
+            textTransform: 'none',
+            marginBottom: Math.max(insets.bottom / 2, 4)
+          },
+          tabBarItemStyle: { padding: 0 },
+          tabBarIcon: ({ focused }: { focused: boolean }) => {
+            const tab = TABS.find((t) => t.name === route.name);
+            if (!tab) return <View style={styles.iconContainer} />;
+            return (
+              <View style={styles.iconContainer}>
+                {focused && <View style={styles.activePill} />}
+                <View style={focused && { transform: [{ scale: 1.1 }] }}>
+                  <tab.IconComponent size={22} color={focused ? theme.colors.primary : theme.colors.muted} strokeWidth={focused ? 2.5 : 2} />
+                </View>
               </View>
-            </View>
-          );
-        }
-      })}
-    >
-      {TABS.map((tab) => (
-        <MaterialTabs.Screen 
-          key={tab.name} 
-          name={tab.name} 
-          options={{
-            tabBarLabel: tab.label
-          }}
-        />
-      ))}
-    </MaterialTabs>
+            );
+          }
+        })}
+      >
+        {TABS.map((tab) => (
+          <MaterialTabs.Screen 
+            key={tab.name} 
+            name={tab.name} 
+            options={{
+              tabBarLabel: tab.label
+            }}
+          />
+        ))}
+      </MaterialTabs>
+      <TutorialOverlay />
+    </>
   );
 }
 

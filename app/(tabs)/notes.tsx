@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
-  Alert,
   Modal,
   Platform,
   Pressable,
@@ -9,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -16,6 +16,8 @@ import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
+import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
+import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 
 function parseReminder(reminderAt?: string): Date | null {
   if (!reminderAt) return null;
@@ -41,6 +43,8 @@ export default function NotesScreen(): ReactElement {
   const insets = useSafeAreaInsets();
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+  const { width } = useWindowDimensions();
+  const isNarrow = width < 390;
   const notes = useLifeStore((s) => s.notes);
   const addNote = useLifeStore((s) => s.addNote);
   const updateNote = useLifeStore((s) => s.updateNote);
@@ -52,6 +56,7 @@ export default function NotesScreen(): ReactElement {
   const [showReminderDatePicker, setShowReminderDatePicker] = useState(false);
   const [showReminderTimePicker, setShowReminderTimePicker] = useState(false);
   const [pendingReminderDate, setPendingReminderDate] = useState<Date | null>(null);
+  const { alertState, showAlert, hideAlert } = useCustomAlert();
 
   function handleSave() {
     if (!newNote.title.trim() && !newNote.content.trim()) return;
@@ -156,7 +161,7 @@ export default function NotesScreen(): ReactElement {
                 <Text style={styles.noteTitle}>{note.title}</Text>
                 <Pressable
                   onPress={() => {
-                    Alert.alert('Eliminar', '¿Borrar esta nota?', [
+                    showAlert('Eliminar', '¿Borrar esta nota?', [
                       { text: 'No', style: 'cancel' },
                       { text: 'Sí, borrar', style: 'destructive', onPress: () => deleteNote(note.id) }
                     ]);
@@ -209,7 +214,7 @@ export default function NotesScreen(): ReactElement {
 
             <View style={styles.reminderRow}>
               <Text style={styles.label}>Recordatorio (día y hora)</Text>
-              <View style={styles.reminderActionRow}>
+              <View style={[styles.reminderActionRow, isNarrow && styles.reminderActionRowNarrow]}>
                 <Pressable style={styles.reminderPickerBtn} onPress={openReminderPicker} accessibilityRole="button" accessibilityLabel="Seleccionar fecha y hora del recordatorio">
                   <Text style={[styles.reminderPickerText, newNote.reminderAt ? styles.reminderPickerTextActive : null]}>
                     {newNote.reminderAt ? formatReminder(newNote.reminderAt) : 'Seleccionar fecha y hora'}
@@ -253,23 +258,38 @@ export default function NotesScreen(): ReactElement {
         </View>
       </Modal>
 
+      <CustomAlertDialog
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        buttons={alertState.buttons}
+        onDismiss={hideAlert}
+      />
+
       <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
 
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
+  const ui = {
+    radiusCard: 16,
+    radiusInput: 12,
+    radiusBtn: 12,
+    border: lifeTheme.colors.border
+  };
+
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
   content: { paddingHorizontal: lifeTheme.spacing.lg, gap: lifeTheme.spacing.lg },
   hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: lifeTheme.colors.text, fontSize: lifeTheme.typography.titleLg, fontWeight: '900' },
-  addBtn: { backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
+  addBtn: { backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: ui.radiusBtn },
   addBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 13 },
   list: { gap: 12 },
   noteCard: {
-    backgroundColor: lifeTheme.colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: lifeTheme.colors.border, padding: 16, gap: 8
+    backgroundColor: lifeTheme.colors.surface, borderRadius: ui.radiusCard,
+    borderWidth: 1, borderColor: ui.border, padding: 16, gap: 8
   },
   noteHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   noteTitle: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '800', flex: 1 },
@@ -282,31 +302,32 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   emptyCard: { padding: 40, alignItems: 'center' },
   emptyText: { color: lifeTheme.colors.muted, textAlign: 'center', lineHeight: 22 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },
-  modalCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: 24, padding: 24, gap: 16, borderWidth: 1, borderColor: lifeTheme.colors.border },
+  modalCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: 24, padding: 24, gap: 16, borderWidth: 1, borderColor: ui.border },
   modalTitle: { color: lifeTheme.colors.text, fontSize: 20, fontWeight: '900', marginBottom: 4 },
   label: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
-  inputTitle: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12, padding: 14, color: lifeTheme.colors.text, fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: lifeTheme.colors.border },
-  inputContent: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12, padding: 14, color: lifeTheme.colors.text, fontSize: 15, minHeight: 120, borderWidth: 1, borderColor: lifeTheme.colors.border },
+  inputTitle: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: ui.radiusInput, padding: 14, color: lifeTheme.colors.text, fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: ui.border },
+  inputContent: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: ui.radiusInput, padding: 14, color: lifeTheme.colors.text, fontSize: 15, minHeight: 120, borderWidth: 1, borderColor: ui.border },
   reminderRow: { gap: 8, alignItems: 'stretch' },
   reminderActionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%' },
+  reminderActionRowNarrow: { flexDirection: 'column', alignItems: 'stretch' },
   reminderPickerBtn: {
     flex: 1,
     backgroundColor: lifeTheme.colors.surfaceAlt,
-    borderRadius: 10,
+    borderRadius: ui.radiusInput,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: lifeTheme.colors.border
+    borderColor: ui.border
   },
   reminderPickerText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '600', flexShrink: 1 },
   reminderPickerTextActive: { color: lifeTheme.colors.text, fontWeight: '700' },
   clearReminderBtn: {
     width: 30,
     height: 30,
-    borderRadius: 8,
+    borderRadius: 10,
     backgroundColor: lifeTheme.colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
+    borderColor: ui.border,
     alignItems: 'center',
     justifyContent: 'center'
   },

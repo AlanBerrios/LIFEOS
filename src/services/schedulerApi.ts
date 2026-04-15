@@ -15,7 +15,7 @@ export const SCHEDULER_CONTRACT_VERSION = '1.0.0';
 
 interface BackendBlock {
   id: string;
-  type: 'task' | 'rest' | 'meal' | 'sleep';
+    type: 'task' | 'rest' | 'meal' | 'sleep' | 'transit';
   task_id?: string;
   title: string;
   start_time: string;   // ISO string

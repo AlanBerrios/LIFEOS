@@ -9,9 +9,11 @@ const ALARM_PERMISSION_ERROR = 'No se pudo programar la alarma. Verifica permiso
 function eventDedupeKey(event: StaticEvent): string {
   const title = event.title.trim().toLowerCase();
   const location = (event.location ?? '').trim().toLowerCase();
+  const emoji = (event.emoji ?? '').trim().toLowerCase();
+  const color = (event.color ?? '').trim().toLowerCase();
   const start = event.startTime.toISOString();
   const end = event.endTime.toISOString();
-  return `${title}|${location}|${start}|${end}`;
+  return `${title}|${location}|${emoji}|${color}|${start}|${end}`;
 }
 
 function dedupeEvents(events: StaticEvent[]): StaticEvent[] {
@@ -155,7 +157,15 @@ export const createContentSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
 
   addEvent: (event) => {
     set((state) => ({
-      events: dedupeEvents([...state.events, { id: createId('evt'), ...event }])
+      events: dedupeEvents([
+        ...state.events,
+        {
+          id: createId('evt'),
+          ...event,
+          emoji: event.emoji?.trim() || undefined,
+          color: event.color?.trim() || undefined
+        }
+      ])
     }));
 
     const state = get();
@@ -174,7 +184,16 @@ export const createContentSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
 
   updateEvent: (id: string, updates: Partial<StaticEvent>) => {
     set((state) => ({
-      events: dedupeEvents(state.events.map((event) => (event.id === id ? { ...event, ...updates } : event)))
+      events: dedupeEvents(state.events.map((event) => (
+        event.id === id
+          ? {
+              ...event,
+              ...updates,
+              emoji: updates.emoji === undefined ? event.emoji : updates.emoji.trim() || undefined,
+              color: updates.color === undefined ? event.color : updates.color.trim() || undefined
+            }
+          : event
+      )))
     }));
 
     const state = get();

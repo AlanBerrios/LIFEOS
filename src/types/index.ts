@@ -13,6 +13,8 @@ export interface Task {
   id: string;
   title: string;
   description?: string;
+  emoji?: string;
+  color?: string;
   eta_minutes: number;
   priority: 1 | 2 | 3 | 4 | 5;
   cognitive_load: number;
@@ -29,7 +31,7 @@ export interface Task {
 
 export interface ScheduleBlock {
   id: string; // Puede ser de una tarea o generado (ej. "rest-1")
-  type: 'task' | 'rest' | 'meal' | 'sleep';
+  type: 'task' | 'rest' | 'meal' | 'sleep' | 'transit';
   task_id?: string;
   title: string;
   start_time: Date;
@@ -40,6 +42,12 @@ export interface ScheduleBlock {
   pinned?: boolean;
   /** Background styling specific to events vs tasks */
   isStaticEvent?: boolean;
+  /** Bloque de rutina diaria; no debe moverse manualmente */
+  isRoutineBlock?: boolean;
+  /** Bloque visual de una tarea completada que se mantiene visible hasta su fin */
+  isCompletedGhost?: boolean;
+  /** Clave estable para overrides diarios (ej: meal:<id>, transit:<id>, sleep) */
+  routineBlockKey?: string;
 }
 
 export type RecurrenceFrequency = 'none' | 'daily' | 'weekly' | 'monthly';
@@ -47,6 +55,9 @@ export type RecurrenceFrequency = 'none' | 'daily' | 'weekly' | 'monthly';
 export interface StaticEvent {
   id: string;
   title: string;
+  description?: string;
+  emoji?: string;
+  color?: string;
   startTime: Date;
   endTime: Date;
   color?: string;
@@ -70,11 +81,41 @@ export interface MealRoutine {
   durationMinutes: number;
 }
 
+export interface TransitRoutine {
+  id: string;
+  label: string;
+  time: string; // HH:mm
+  durationMinutes: number;
+}
+
 export interface DailyRoutine {
   dayOfWeek: number; // 0=Sun ... 6=Sat
   sleepStart: string; // HH:mm
   sleepEnd: string; // HH:mm
   meals: MealRoutine[];
+  transits: TransitRoutine[];
+}
+
+export interface RoutineBlockOverride {
+  routineBlockKey: string;
+  hidden?: boolean;
+  startTime?: string; // HH:mm
+  durationMinutes?: number;
+  title?: string;
+}
+
+export interface RoutineDayOverride {
+  date: string; // YYYY-MM-DD
+  blocks: RoutineBlockOverride[];
+}
+
+export interface ReplanDecision {
+  timestamp: Date;
+  decision: 'accepted' | 'rejected';
+  reason: string;
+  previousBlocks: number;
+  nextBlocks: number;
+  diffMinutes: number;
 }
 
 export interface LifeTimer {
@@ -145,6 +186,30 @@ export interface UserProfile {
     discipline: number; // Rutinas, Consistencia
     wisdom: number;     // Notas, Análisis
   };
+  consistency: {
+    currentStreak: number;
+    bestStreak: number;
+    totalActiveDays: number;
+    lastActiveDate?: string; // YYYY-MM-DD
+  };
+  badges: BadgeUnlock[];
+}
+
+export type BadgeId =
+  | 'streak_3'
+  | 'streak_7'
+  | 'streak_14'
+  | 'streak_30'
+  | 'active_10'
+  | 'active_30'
+  | 'active_60';
+
+export interface BadgeUnlock {
+  id: BadgeId;
+  title: string;
+  description: string;
+  icon: string;
+  unlockedAt: Date;
 }
 
 /** Configuración global de la app */
@@ -163,6 +228,8 @@ export interface AppSettings {
   notifyImportantUnfinished: boolean;
   notifyTaskStartLeadMinutes: number;
   showTutorial: boolean;
+  /** Paso actual del tutorial guiado */
+  tutorialStep: number;
   // --- V2.1 Expansion ---
   /** Hora de dormir (HH:mm) */
   sleepTimeStart: string;
@@ -188,6 +255,10 @@ export interface AppSettings {
   uiAccentColor: string;
   /** Color de texto sobre superficies de acento */
   uiAccentTextMode: 'auto' | 'light' | 'dark';
+  /** Mantiene visible un bloque completado hasta su hora fin */
+  keepCompletedGhostBlock: boolean;
+  /** Última fecha en que se mostró el prompt de inicio del día (YYYY-MM-DD) */
+  last_daily_start_date?: string;
 }
 
 export interface TravelLog {
@@ -244,6 +315,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   notifyImportantUnfinished: true,
   notifyTaskStartLeadMinutes: 5,
   showTutorial: true,
+  tutorialStep: 0,
   sleepTimeStart: '23:00',
   sleepTimeEnd: '07:00',
   enableGeofencing: false,
@@ -252,7 +324,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   alarmsBypassSilent: true,
   uiThemeMode: 'dark',
   uiAccentColor: '#8FBF00',
-  uiAccentTextMode: 'auto'
+  uiAccentTextMode: 'auto',
+  keepCompletedGhostBlock: true
 };
 
 // ============================================

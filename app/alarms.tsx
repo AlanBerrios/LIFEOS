@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -16,6 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { useLifeStore } from '../src/store/useLifeStore';
 import { useAppTheme } from '../src/theme';
+import { CustomAlertDialog } from '../src/components/CustomAlertDialog';
+import { useCustomAlert } from '../src/hooks/useCustomAlert';
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 
@@ -35,20 +36,21 @@ export default function AlarmsScreen(): ReactElement {
     label: 'Despertar',
     days: [1, 2, 3, 4, 5] // Lun-Vie by default
   });
+  const { alertState, showAlert, hideAlert } = useCustomAlert();
 
   async function handleToggle(id: string, currentEnabled: boolean) {
     try {
       await toggleAlarm(id, !currentEnabled);
-      Alert.alert('Alarma', currentEnabled ? 'Alarma desactivada' : 'Alarma activada');
+      showAlert('Alarma', currentEnabled ? 'Alarma desactivada' : 'Alarma activada');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo actualizar la alarma.';
-      Alert.alert('Error', message);
+      showAlert('Error', message);
     }
   }
 
   async function handleCreate() {
     if (!newAlarm.time.match(/^([01]\d|2[0-3]):?([0-5]\d)$/)) {
-      Alert.alert('Error', 'Hora inválida. Usa formato HH:mm (ej: 07:00)');
+      showAlert('Error', 'Hora inválida. Usa formato HH:mm (ej: 07:00)');
       return;
     }
     
@@ -60,7 +62,7 @@ export default function AlarmsScreen(): ReactElement {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo crear la alarma.';
-      Alert.alert('Error', message);
+      showAlert('Error', message);
       return;
     }
 
@@ -134,7 +136,7 @@ export default function AlarmsScreen(): ReactElement {
                 <Pressable
                   style={styles.delBtn}
                   onPress={() => {
-                    Alert.alert('Eliminar', '¿Borrar esta alarma?', [
+                    showAlert('Eliminar', '¿Borrar esta alarma?', [
                       { text: 'Cancelar', style: 'cancel' },
                       { text: 'Borrar', style: 'destructive', onPress: () => void deleteAlarm(alarm.id) }
                     ]);
@@ -201,6 +203,14 @@ export default function AlarmsScreen(): ReactElement {
           </View>
         </View>
       </Modal>
+
+      <CustomAlertDialog
+        visible={alertState.visible}
+        title={alertState.title}
+        message={alertState.message}
+        buttons={alertState.buttons}
+        onDismiss={hideAlert}
+      />
     </View>
   );
 }

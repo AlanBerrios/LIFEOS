@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View, Dimensions, Alert } from 'react-native';
+import { Pressable, StyleSheet, Text, View, Dimensions } from 'react-native';
 import { useMemo } from 'react';
 import type { ReactElement } from 'react';
 import Animated, {
@@ -57,6 +57,10 @@ function getStatusLabel(task: Task): string {
   if (task.status === 'completed') return '✓ Hecha';
   if (task.status === 'scheduled') return 'Programada';
   return 'Pool';
+}
+
+function getTaskAccent(task: Task, lifeTheme: ReturnType<typeof useAppTheme>): string {
+  return task.color?.trim() || getUrgencyColor((task as any).urgency ?? 'someday', lifeTheme);
 }
 
 export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props): ReactElement {
@@ -124,6 +128,8 @@ export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props)
   const statusColor = getStatusColor(task, lifeTheme);
   const urgencyColor = getUrgencyColor(urgency, lifeTheme);
   const priorityColors = getPriorityColors(lifeTheme);
+  const accentColor = getTaskAccent(task, lifeTheme);
+  const emoji = task.emoji?.trim() || URGENCY_ICON[urgency];
 
   return (
     <View style={styles.wrapper}>
@@ -138,12 +144,12 @@ export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props)
       </Animated.View>
 
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.card, isCompleted && styles.cardDone, borderColorStyle, cardStyle]}>
+        <Animated.View style={[styles.card, isCompleted && styles.cardDone, borderColorStyle, cardStyle, { borderLeftColor: accentColor }] }>
           {/* Top row */}
           <View style={styles.topRow}>
             <View style={styles.titleWrap}>
               <View style={styles.titleLine}>
-                <Text style={styles.urgencyDot}>{URGENCY_ICON[urgency]}</Text>
+                <Text style={styles.urgencyDot}>{emoji}</Text>
                 <Text style={[styles.title, isCompleted && styles.titleDone]} numberOfLines={2}>
                   {task.title}
                 </Text>
@@ -152,8 +158,8 @@ export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props)
                 <Text style={styles.desc} numberOfLines={2}>{task.description}</Text>
               ) : null}
             </View>
-            <View style={[styles.statusBadge, { borderColor: statusColor }]}>
-              <Text style={[styles.statusText, { color: statusColor }]}>{getStatusLabel(task)}</Text>
+            <View style={[styles.statusBadge, { borderColor: accentColor }]}>
+              <Text style={[styles.statusText, { color: accentColor }]}>{getStatusLabel(task)}</Text>
             </View>
           </View>
 
@@ -196,12 +202,7 @@ export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props)
             {isCompleted && (
               <Pressable
                 style={styles.deleteBtn}
-                onPress={() => {
-                  Alert.alert('Eliminar', `¿Eliminar "${task.title}"?`, [
-                    { text: 'Cancelar', style: 'cancel' },
-                    { text: 'Eliminar', style: 'destructive', onPress: () => onDelete(task.id) }
-                  ]);
-                }}
+                onPress={() => onDelete(task.id)}
               >
                 <Text style={styles.deleteBtnText}>🗑 Eliminar</Text>
               </Pressable>

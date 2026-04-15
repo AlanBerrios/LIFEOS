@@ -22,6 +22,7 @@ export const createSettingsSlice: StateCreator<LifeStore, [], [], Pick<LifeStore
     set((state) => ({
       tasks: [],
       timeline: [],
+      completedGhostBlocks: [],
       sessions: [],
       activeTimer: null,
       habits: [],
@@ -29,12 +30,20 @@ export const createSettingsSlice: StateCreator<LifeStore, [], [], Pick<LifeStore
       alarms: [],
       events: [],
       routines: [],
+      routineOverrides: [],
       travelLogs: [],
       userProfile: {
         ...state.userProfile,
         currentXP: 0,
         level: 1,
-        skills: { focus: 0, vitality: 0, discipline: 0, wisdom: 0 }
+        skills: { focus: 0, vitality: 0, discipline: 0, wisdom: 0 },
+        consistency: {
+          currentStreak: 0,
+          bestStreak: 0,
+          totalActiveDays: 0,
+          lastActiveDate: undefined
+        },
+        badges: []
       },
       lastEngine: 'idle',
       lastSolverStatus: ''

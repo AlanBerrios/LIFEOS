@@ -1,10 +1,12 @@
-import type { AppSettings, Alarm, DailyRoutine, DailySession, Habit, LifeTimer, QuickNote, ScheduleBlock, StaticEvent, Task, TaskStatus, TravelLog, UserProfile, ExecutionRecord, SkipReason, PostponeReason, PendingCompletionCheck } from '../types';
+import type { AppSettings, Alarm, DailyRoutine, DailySession, Habit, LifeTimer, QuickNote, RoutineDayOverride, ScheduleBlock, StaticEvent, Task, TaskStatus, TravelLog, UserProfile, ExecutionRecord, SkipReason, PostponeReason, PendingCompletionCheck, ReplanDecision } from '../types';
 
 export type { Habit } from '../types';
 
 export interface TaskDraft {
   title: string;
   description?: string;
+  emoji?: string;
+  color?: string;
   eta_minutes: number;
   priority: 1 | 2 | 3 | 4 | 5;
   cognitive_load: number;
@@ -17,6 +19,8 @@ export interface TaskDraft {
 export interface TaskUpdate {
   title?: string;
   description?: string;
+  emoji?: string;
+  color?: string;
   eta_minutes?: number;
   priority?: 1 | 2 | 3 | 4 | 5;
   cognitive_load?: number;
@@ -29,6 +33,18 @@ export interface TaskUpdate {
 
 export type SchedulerEngine = 'ortools-cpsat' | 'greedy-fallback' | 'local-ts' | 'idle';
 
+export interface MoveSuggestion {
+  targetIndex: number;
+  startTime: Date;
+  direction: 'up' | 'down';
+}
+
+export interface MoveBlockResult {
+  moved: boolean;
+  reason?: 'out_of_bounds' | 'blocked_by_fixed' | 'invalid_block';
+  suggestions?: MoveSuggestion[];
+}
+
 export interface LifeStoreState {
   tasks: Task[];
   timeline: ScheduleBlock[];
@@ -40,21 +56,31 @@ export interface LifeStoreState {
   alarms: Alarm[];
   events: StaticEvent[];
   routines: DailyRoutine[];
+  routineOverrides: RoutineDayOverride[];
+  completedGhostBlocks: ScheduleBlock[];
+  habitReminderNotificationId?: string | null;
+  pendingTaskEditId?: string | null;
   travelLogs: TravelLog[];
   userProfile: UserProfile;
   lastEngine: SchedulerEngine;
   lastSolverStatus: string;
   isGenerating: boolean;
+  last_replan_reason?: string;
+  replan_history: ReplanDecision[];
 
   // FASE C: Execution Nucleus
   execution_records: ExecutionRecord[];
   pending_completion_check?: PendingCompletionCheck;
   is_replanning: boolean;
   replan_error?: string;
+
+  // Rest days: array de fechas (YYYY-MM-DD) donde usuario declaró "hoy es descanso"
+  rest_days: string[];
 }
 
 export interface LifeStoreActions {
   addXP: (amount: number, skill: keyof UserProfile['skills']) => void;
+  addConsistencyActivity: (date?: string) => void;
 
   addTask: (task: TaskDraft) => void;
   updateTask: (id: string, updates: TaskUpdate) => void;
@@ -66,12 +92,14 @@ export interface LifeStoreActions {
 
   addHabit: (habit: Omit<Habit, 'id' | 'logs' | 'streak'>) => void;
   logHabit: (id: string, value: number) => void;
+  unlogHabit: (id: string) => void;
   updateHabit: (id: string, updates: Partial<Habit>) => void;
   deleteHabit: (id: string) => void;
 
   generateTimeline: (startTime?: Date) => Promise<void>;
   setTimeline: (blocks: ScheduleBlock[]) => void;
-  moveBlock: (blockId: string, direction: 'up' | 'down') => void;
+  moveBlock: (blockId: string, direction: 'up' | 'down') => MoveBlockResult;
+  moveBlockToIndex: (blockId: string, targetIndex: number) => MoveBlockResult;
   updateBreakDuration: (blockId: string, newMinutes: number) => void;
   deleteBlock: (blockId: string) => void;
 
@@ -99,6 +127,11 @@ export interface LifeStoreActions {
   updateRoutineDay: (dayOfWeek: number, updates: Partial<DailyRoutine>) => Promise<void>;
   addTravelLog: (type: TravelLog['type']) => void;
 
+  // Rest day management
+  markRestDay: (date?: string) => void;
+  clearRestDay: (date?: string) => void;
+  isRestDay: (date?: string) => boolean;
+
   // FASE C: Execution Nucleus Actions
   startTaskExecution: (task_id: string) => void;
   pauseTaskExecution: (task_id: string) => void;
@@ -108,6 +141,13 @@ export interface LifeStoreActions {
   reportTaskSkipped: (task_id: string, reason: SkipReason, details: string) => Promise<void>;
   reportTaskPostponed: (task_id: string, reason: PostponeReason, details: string, postponed_until: Date) => Promise<void>;
   triggerReplanification: () => Promise<void>;
+  addReplanDecision: (
+    decision: 'accepted' | 'rejected',
+    reason: string,
+    previousBlocks: number,
+    nextBlocks: number,
+    diffMinutes: number
+  ) => void;
   confirmReplan: (new_schedule: ScheduleBlock[]) => Promise<void>;
   rejectReplan: () => void;
 }

@@ -6,7 +6,7 @@
 import { createId } from '../utils/ids';
 import { HOUR_MS } from '../utils/time';
 import { getEventsForDate } from '../utils/events';
-import type { AppSettings, ScheduleBlock, Task, TaskUrgency, StaticEvent } from '../types';
+import type { AppSettings, DailyRoutine, RoutineBlockOverride, RoutineDayOverride, ScheduleBlock, StaticEvent, Task, TaskUrgency } from '../types';
 
 const URGENCY_BONUS: Record<TaskUrgency, number> = {
   today: 50,
@@ -106,21 +106,175 @@ function simulatedAnnealing(sequence: Task[], now: Date): Task[] {
   return current;
 }
 
+function buildRoutineBlocks(routines: DailyRoutine[], now: Date, routineOverrides: RoutineDayOverride[]): ScheduleBlock[] {
+  const routine = routines.find((currentRoutine) => currentRoutine.dayOfWeek === now.getDay());
+  if (!routine) return [];
+
+  const blocks: ScheduleBlock[] = [];
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const dayKey = now.toISOString().slice(0, 10);
+  const dayOverride = routineOverrides.find((item) => item.date === dayKey);
+  const overrideMap = new Map<string, RoutineBlockOverride>((dayOverride?.blocks ?? []).map((item) => [item.routineBlockKey, item]));
+
+  const toDateAt = (time: string): Date => {
+    const [hours, minutes] = time.split(':').map(Number);
+    const date = new Date(now);
+    date.setHours(hours, minutes, 0, 0);
+    return date;
+  };
+
+  const sleepStartMinutes = Number(routine.sleepStart.slice(0, 2)) * 60 + Number(routine.sleepStart.slice(3));
+  const sleepEndMinutes = Number(routine.sleepEnd.slice(0, 2)) * 60 + Number(routine.sleepEnd.slice(3));
+  const overnightSleep = sleepStartMinutes > sleepEndMinutes;
+  const inSleepWindow = overnightSleep
+    ? nowMinutes >= sleepStartMinutes || nowMinutes < sleepEndMinutes
+    : nowMinutes >= sleepStartMinutes && nowMinutes < sleepEndMinutes;
+
+  if (inSleepWindow || nowMinutes < sleepStartMinutes || (!overnightSleep && nowMinutes < sleepEndMinutes)) {
+    const sleepOverride = overrideMap.get('sleep');
+    if (!sleepOverride?.hidden) {
+    const sleepStart = inSleepWindow ? new Date(now) : toDateAt(routine.sleepStart);
+    const sleepEnd = toDateAt(routine.sleepEnd);
+    if (overnightSleep && sleepEnd <= sleepStart) {
+      sleepEnd.setDate(sleepEnd.getDate() + 1);
+    }
+
+    if (sleepOverride?.startTime) {
+      const [h, m] = sleepOverride.startTime.split(':').map(Number);
+      sleepStart.setHours(h, m, 0, 0);
+    }
+    if (sleepOverride?.durationMinutes && sleepOverride.durationMinutes > 0) {
+      sleepEnd.setTime(sleepStart.getTime() + sleepOverride.durationMinutes * 60_000);
+    }
+
+    if (sleepEnd > now) {
+      blocks.push({
+        id: createId('rest'),
+        type: 'sleep',
+        title: sleepOverride?.title || 'Descanso nocturno 😴',
+        start_time: sleepStart,
+        end_time: sleepEnd,
+        pinned: true,
+        isRoutineBlock: true,
+        routineBlockKey: 'sleep'
+      });
+    }
+    }
+  }
+
+  for (const meal of routine.meals) {
+    const routineBlockKey = `meal:${meal.id}`;
+    const mealOverride = overrideMap.get(routineBlockKey);
+    if (mealOverride?.hidden) continue;
+
+    const mealStart = toDateAt(meal.time);
+    if (mealOverride?.startTime) {
+      const [h, m] = mealOverride.startTime.split(':').map(Number);
+      mealStart.setHours(h, m, 0, 0);
+    }
+    const duration = mealOverride?.durationMinutes && mealOverride.durationMinutes > 0
+      ? mealOverride.durationMinutes
+      : meal.durationMinutes;
+    const mealEnd = new Date(mealStart.getTime() + duration * 60_000);
+    if (mealEnd <= now) continue;
+
+    blocks.push({
+      id: meal.id,
+      type: 'meal',
+      title: mealOverride?.title || `🍔 ${meal.type}`,
+      start_time: mealStart,
+      end_time: mealEnd,
+      pinned: true,
+      isRoutineBlock: true,
+      routineBlockKey
+    });
+  }
+
+  for (const transit of routine.transits) {
+    const routineBlockKey = `transit:${transit.id}`;
+    const transitOverride = overrideMap.get(routineBlockKey);
+    if (transitOverride?.hidden) continue;
+
+    const transitStart = toDateAt(transit.time);
+    if (transitOverride?.startTime) {
+      const [h, m] = transitOverride.startTime.split(':').map(Number);
+      transitStart.setHours(h, m, 0, 0);
+    }
+    const duration = transitOverride?.durationMinutes && transitOverride.durationMinutes > 0
+      ? transitOverride.durationMinutes
+      : transit.durationMinutes;
+    const transitEnd = new Date(transitStart.getTime() + duration * 60_000);
+    if (transitEnd <= now) continue;
+
+    blocks.push({
+      id: transit.id,
+      type: 'transit',
+      title: transitOverride?.title || `🚗 ${transit.label}`,
+      start_time: transitStart,
+      end_time: transitEnd,
+      pinned: true,
+      isRoutineBlock: true,
+      routineBlockKey
+    });
+  }
+
+  return blocks;
+}
+
+function buildEventBlocks(events: StaticEvent[], now: Date): ScheduleBlock[] {
+  return getEventsForDate(events, now)
+    .filter((event) => event.endTime > now)
+    .map((event) => ({
+      id: event.id,
+      type: 'task' as const,
+      title: `📍 ${event.title}`,
+      start_time: event.startTime,
+      end_time: event.endTime,
+      isStaticEvent: true,
+      pinned: true
+    }));
+}
+
+function findNextCoherentStart(candidateStart: Date, durationMs: number, hardBlocks: ScheduleBlock[]): Date {
+  let start = new Date(candidateStart);
+
+  for (let safety = 0; safety < 48; safety++) {
+    let moved = false;
+
+    for (const block of hardBlocks) {
+      if (block.end_time.getTime() <= start.getTime()) {
+        continue;
+      }
+
+      const candidateEnd = start.getTime() + durationMs;
+      if (candidateEnd <= block.start_time.getTime()) {
+        return start;
+      }
+
+      start = new Date(Math.max(start.getTime(), block.end_time.getTime()));
+      moved = true;
+      break;
+    }
+
+    if (!moved) {
+      return start;
+    }
+  }
+
+  return start;
+}
+
 export function generateTimeline(
   tasks: Task[],
-  events: import('../types').StaticEvent[] = [],
-  routines: import('../types').DailyRoutine[] = [],
+  events: StaticEvent[] = [],
+  routines: DailyRoutine[] = [],
   now: Date,
-  settings?: Partial<AppSettings>
+  _settings?: Partial<AppSettings>,
+  routineOverrides: RoutineDayOverride[] = []
 ): ScheduleBlock[] {
-  const breakMin = settings?.breakDurationMinutes ?? 10;
-  const longBreakMin = settings?.longBreakDurationMinutes ?? 20;
-  const streakLimit = settings?.workStreakLimitMinutes ?? 90;
+  const schedulableTasks = tasks.filter((t) => t.status === 'pool' || t.status === 'scheduled');
   const cognitiveBudget = 600;
-
-  const schedulableTasks = tasks.filter(
-    (t) => t.status === 'pool' || t.status === 'scheduled'
-  );
+  const breakMin = _settings?.breakDurationMinutes ?? 10;
 
   function mergeRestBlocks(unmerged: ScheduleBlock[]): ScheduleBlock[] {
     if (unmerged.length < 2) return unmerged;
@@ -138,67 +292,11 @@ export function generateTimeline(
     return merged;
   }
 
+  const hardBlocks = [...buildRoutineBlocks(routines, now, routineOverrides), ...buildEventBlocks(events, now)]
+    .sort((a, b) => a.start_time.getTime() - b.start_time.getTime());
+
   if (schedulableTasks.length === 0) {
-    const routineBlocks: ScheduleBlock[] = [];
-    const dayRoutine = routines.find((routine) => routine.dayOfWeek === now.getDay());
-
-    if (dayRoutine) {
-      const currentMin = now.getHours() * 60 + now.getMinutes();
-      const [sleepStartH, sleepStartM] = dayRoutine.sleepStart.split(':').map(Number);
-      const [sleepEndH, sleepEndM] = dayRoutine.sleepEnd.split(':').map(Number);
-      const sleepStartMin = sleepStartH * 60 + sleepStartM;
-      const sleepEndMin = sleepEndH * 60 + sleepEndM;
-      const inSleepWindow =
-        sleepStartMin > sleepEndMin
-          ? currentMin >= sleepStartMin || currentMin < sleepEndMin
-          : currentMin >= sleepStartMin && currentMin < sleepEndMin;
-
-      if (inSleepWindow) {
-        const sleepEndDate = new Date(now);
-        if (sleepStartMin > sleepEndMin && currentMin >= sleepStartMin) {
-          sleepEndDate.setDate(sleepEndDate.getDate() + 1);
-        }
-        sleepEndDate.setHours(sleepEndH, sleepEndM, 0, 0);
-        routineBlocks.push({
-          id: createId('rest'),
-          type: 'sleep',
-          title: 'Descanso nocturno 😴',
-          start_time: new Date(now),
-          end_time: sleepEndDate
-        });
-      }
-
-      for (const meal of dayRoutine.meals) {
-        const [mealH, mealM] = meal.time.split(':').map(Number);
-        const mealStart = new Date(now);
-        mealStart.setHours(mealH, mealM, 0, 0);
-        if (mealStart <= now) continue;
-
-        routineBlocks.push({
-          id: createId('rest'),
-          type: 'meal',
-          title: `🍔 ${meal.type}`,
-          start_time: mealStart,
-          end_time: new Date(mealStart.getTime() + meal.durationMinutes * 60_000)
-        });
-      }
-    }
-
-    const eventBlocks = getEventsForDate(events, now)
-      .filter((event) => event.endTime > now)
-      .map((event) => ({
-        id: event.id,
-        type: 'task' as const,
-        title: `📍 ${event.title}`,
-        start_time: event.startTime,
-        end_time: event.endTime,
-        isStaticEvent: true,
-        pinned: true
-      }));
-
-    return mergeRestBlocks(
-      [...routineBlocks, ...eventBlocks].sort((a, b) => a.start_time.getTime() - b.start_time.getTime())
-    );
+    return mergeRestBlocks(hardBlocks);
   }
 
   const scored = scoreAll(schedulableTasks, now);
@@ -239,263 +337,63 @@ export function generateTimeline(
   }
 
   const bestFlexible = beams[0]?.sequence ?? [];
-  const finalSequence = simulatedAnnealing(
-    [...hardFirst.map((s) => s.task), ...bestFlexible],
-    now
-  );
+  const finalSequence = simulatedAnnealing([...hardFirst.map((s) => s.task), ...bestFlexible], now);
 
-  // ── Build timeline blocks ─────────────────────────────────────────────────
-  const blocks: ScheduleBlock[] = [];
+  const blocks: ScheduleBlock[] = [...hardBlocks.map((block) => ({ ...block }))];
   let cursor = new Date(now);
-  const sleepStart = settings?.sleepTimeStart ?? '23:00';
-  const sleepEnd = settings?.sleepTimeEnd ?? '07:00';
-
-  const [sH, sM] = sleepStart.split(':').map(Number);
-  const [eH, eM] = sleepEnd.split(':').map(Number);
-
-  function isSleepTime(dt: Date): boolean {
-    const dayOfWeek = dt.getDay(); // 0 is Sunday
-    const routine = routines.find(r => r.dayOfWeek === dayOfWeek);
-    if (!routine || !routine.sleepStart || !routine.sleepEnd) return false;
-
-    const currentMin = dt.getHours() * 60 + dt.getMinutes();
-    const [sH, sM] = routine.sleepStart.split(':').map(Number);
-    const [eH, eM] = routine.sleepEnd.split(':').map(Number);
-    const startMin = sH * 60 + sM;
-    const endMin = eH * 60 + eM;
-
-    if (startMin > endMin) {
-      return currentMin >= startMin || currentMin < endMin;
-    }
-    return currentMin >= startMin && currentMin < endMin;
-  }
-
-  function getSleepEnd(dt: Date): Date {
-    const dayOfWeek = dt.getDay();
-    const routine = routines.find(r => r.dayOfWeek === dayOfWeek);
-    const sleepEnd = routine?.sleepEnd || '07:00';
-    const [eH, eM] = sleepEnd.split(':').map(Number);
-    const sleepDate = new Date(dt);
-    if (dt.getHours() >= 12) { // It's late evening, sleep ends next morning
-      sleepDate.setDate(sleepDate.getDate() + 1);
-    }
-    sleepDate.setHours(eH, eM, 0, 0);
-    return sleepDate;
-  }
-
-  function getNextMeal(dt: Date): import('../types').MealRoutine | null {
-    const dayOfWeek = dt.getDay();
-    const routine = routines.find(r => r.dayOfWeek === dayOfWeek);
-    if (!routine || !routine.meals) return null;
-    
-    const curMin = dt.getHours() * 60 + dt.getMinutes();
-    
-    // Sort meals contextually
-    const upcoming = routine.meals.filter(m => {
-      const [h, min] = m.time.split(':').map(Number);
-      const mMin = h * 60 + min;
-      return mMin > curMin && (mMin - curMin < 60); // only trigger if within 1 hour radius
-    }).sort((a,b) => {
-       const aMin = Number(a.time.substring(0,2))*60 + Number(a.time.substring(3));
-       const bMin = Number(b.time.substring(0,2))*60 + Number(b.time.substring(3));
-       return aMin - bMin;
-    });
-
-    return upcoming[0] || null;
-  }
-
-  let workStreakMinutes = 0;
-  let cognitiveUsed = 0;
-
-  // expansion logic for recurring events
-  const dailyEvents = getEventsForDate(events, now);
-
-  // Clone and sort events to consume them chronologically
-  const upcomingEvents = dailyEvents
-    .filter(e => e.endTime > now)
-    .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-
-  function pushOpportunisticRest(start: Date, durationMin: number, title: string, type: 'rest' | 'meal' | 'sleep' = 'rest', nextFixedTaskStart?: Date) {
-    let allowMin = durationMin;
-    
-    // Check next static event
-    if (upcomingEvents.length > 0) {
-      const nextEvt = upcomingEvents[0].startTime;
-      if (nextEvt >= start) {
-        const span = (nextEvt.getTime() - start.getTime()) / 60000;
-        if (span < allowMin) allowMin = Math.max(0, span);
-      }
-    }
-    
-    // Check next fixed task
-    if (nextFixedTaskStart && nextFixedTaskStart >= start) {
-      const span = (nextFixedTaskStart.getTime() - start.getTime()) / 60000;
-      if (span < allowMin) allowMin = Math.max(0, span);
-    }
-    
-    // We can also check sleep/meal, but typically they act as their own hard boundaries.
-    
-    if (allowMin >= 2) { // Only push break if there's at least 2 minutes of buffer
-      const end = new Date(start.getTime() + allowMin * 60000);
-      blocks.push({
-        id: createId('rest'),
-        type,
-        title,
-        start_time: start,
-        end_time: end
-      });
-      cursor = end;
-    }
-  }
 
   for (let idx = 0; idx < finalSequence.length; idx++) {
     const task = finalSequence[idx];
-    let taskPlaced = false;
+    const durationMs = task.fixed_start && task.fixed_end
+      ? Math.max(1, task.fixed_end.getTime() - task.fixed_start.getTime())
+      : Math.max(5, task.eta_minutes) * 60_000;
 
-    // Peek ahead for the next fixed task to avoid pushing breaks into it
-    let nextFixed: Date | undefined;
-    for (let k = idx + 1; k < finalSequence.length; k++) {
-      if (finalSequence[k].fixed_start) {
-        nextFixed = finalSequence[k].fixed_start;
-        break;
-      }
-    }
+    const initialStart = task.fixed_start && task.fixed_start > cursor ? new Date(task.fixed_start) : new Date(cursor);
+    const start = findNextCoherentStart(initialStart, durationMs, hardBlocks);
 
-    while (!taskPlaced) {
-      // 1. Process passing Events
-      if (upcomingEvents.length > 0 && upcomingEvents[0].startTime <= cursor) {
-        const evt = upcomingEvents.shift()!;
-        if (evt.endTime > cursor) {
-          blocks.push({
-            id: evt.id,
-            type: 'task', // Render as task but visually we'll know it's static
-            title: `📍 ${evt.title}`,
-            start_time: new Date(Math.max(cursor.getTime(), evt.startTime.getTime())),
-            end_time: evt.endTime,
-            isStaticEvent: true,
-            pinned: true
-          });
-          cursor = evt.endTime;
-          workStreakMinutes = 0;
-          continue; // Re-evaluate task
-        }
-      }
-
-      // Si la tarea tiene hora fija, insertar descanso hasta ese momento
-    if (task.fixed_start && task.fixed_start > cursor) {
-      const waitMinutes = (task.fixed_start.getTime() - cursor.getTime()) / 60_000;
-      if (waitMinutes > 2) {
-        blocks.push({
-          id: createId('rest'),
-          type: 'rest',
-          title: 'Espera / Descanso',
-          start_time: new Date(cursor),
-          end_time: new Date(task.fixed_start)
-        });
-      }
-      cursor = new Date(task.fixed_start);
-      workStreakMinutes = 0;
-    }
-
-    // Menú de Comidas cercano
-    const nextMeal = getNextMeal(cursor);
-    if (nextMeal) {
-      const [mH, mM] = nextMeal.time.split(':').map(Number);
-      const mealStart = new Date(cursor);
-      mealStart.setHours(mH, mM, 0, 0);
-      const mealEnd = new Date(mealStart.getTime() + nextMeal.durationMinutes * 60000);
-      
+    if (start.getTime() > cursor.getTime()) {
       blocks.push({
         id: createId('rest'),
-        type: 'meal',
-        title: `🍔 ${nextMeal.type}`,
-        start_time: mealStart,
-        end_time: mealEnd
-      });
-      cursor = mealEnd;
-      workStreakMinutes = 0;
-      continue;
-    }
-
-    // Saltar tiempo de sueño si el cursor cae ahí
-    if (isSleepTime(cursor)) {
-      const sleepDate = getSleepEnd(cursor);
-      
-      blocks.push({
-        id: createId('rest'),
-        type: 'sleep',
-        title: 'Descanso nocturno 😴',
+        type: 'rest',
+        title: 'Libre',
         start_time: new Date(cursor),
-        end_time: sleepDate
+        end_time: new Date(start)
       });
-      cursor = new Date(sleepDate);
-      workStreakMinutes = 0;
-      continue; // Re-evaluate task
     }
 
-    // Descanso por racha de trabajo
-    if (workStreakMinutes >= streakLimit) {
-      pushOpportunisticRest(new Date(cursor), breakMin, 'Descanso', 'rest', nextFixed);
-      workStreakMinutes = 0;
-    }
-
-    // Descanso cognitivo
-    if (cognitiveUsed >= cognitiveBudget) {
-      pushOpportunisticRest(new Date(cursor), longBreakMin, 'Recarga mental', 'rest', nextFixed);
-      cognitiveUsed = 0;
-    }
-
-    const taskDuration = task.eta_minutes * 60_000;
-    const taskEnd = task.fixed_end ?? new Date(cursor.getTime() + taskDuration);
-    const drain = task.cognitive_load * task.eta_minutes;
+    const end = task.fixed_end && task.fixed_end.getTime() > start.getTime()
+      ? new Date(task.fixed_end)
+      : new Date(start.getTime() + durationMs);
 
     blocks.push({
       id: createId('block'),
       type: 'task',
       task_id: task.id,
       title: task.title,
-      start_time: new Date(cursor),
-      end_time: taskEnd,
-      cognitive_drain: drain
+      start_time: start,
+      end_time: end,
+      cognitive_drain: task.cognitive_load * task.eta_minutes
     });
 
-    cursor = taskEnd;
-    workStreakMinutes += task.eta_minutes;
-    cognitiveUsed += drain;
+    const desiredRestEnd = new Date(end.getTime() + breakMin * 60_000);
+    const nextHardBlock = hardBlocks.find((block) => block.start_time.getTime() >= end.getTime());
+    const restEnd = nextHardBlock && nextHardBlock.start_time.getTime() < desiredRestEnd.getTime()
+      ? new Date(nextHardBlock.start_time)
+      : desiredRestEnd;
 
-    // Descanso corto entre tareas (siempre intenta)
-    pushOpportunisticRest(new Date(cursor), breakMin, 'Descanso', 'rest', nextFixed);
-    
-    taskPlaced = true;
-    } // Ends while(!taskPlaced)
-  } // Ends for loop
-
-  // Add any remaining events for the day
-  while (upcomingEvents.length > 0) {
-    const evt = upcomingEvents.shift()!;
-    // Only add if it's within 24hs to avoid infinite timeline blowing up memory
-    if (evt.startTime.getTime() - now.getTime() < 24 * HOUR_MS) {
-      if (evt.startTime > cursor) {
-         blocks.push({
-           id: createId('rest'),
-           type: 'rest',
-           title: 'Libre',
-           start_time: new Date(cursor),
-           end_time: evt.startTime
-         });
-      }
+    if (restEnd.getTime() - end.getTime() >= 2 * 60_000) {
       blocks.push({
-        id: evt.id,
-        type: 'task',
-        title: `📍 ${evt.title}`,
-        start_time: evt.startTime,
-        end_time: evt.endTime,
-        isStaticEvent: true,
-        pinned: true
+        id: createId('rest'),
+        type: 'rest',
+        title: 'Descanso',
+        start_time: new Date(end),
+        end_time: restEnd
       });
-      cursor = evt.endTime;
+      cursor = restEnd;
+    } else {
+      cursor = end;
     }
   }
 
-  return mergeRestBlocks(blocks);
+  return mergeRestBlocks([...blocks].sort((a, b) => a.start_time.getTime() - b.start_time.getTime()));
 }
