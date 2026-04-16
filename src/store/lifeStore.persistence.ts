@@ -245,7 +245,10 @@ export function revivePersistedState(
         }
       : currentState.pending_completion_check,
     is_replanning: snapshot.is_replanning ?? currentState.is_replanning,
-    replan_error: snapshot.replan_error ?? currentState.replan_error
+    replan_error: snapshot.replan_error ?? currentState.replan_error,
+    pending_schedule_overflow: snapshot.pending_schedule_overflow ?? currentState.pending_schedule_overflow,
+    global_alert: snapshot.global_alert ?? currentState.global_alert,
+    pendingTaskEditId: snapshot.pendingTaskEditId ?? currentState.pendingTaskEditId
   };
 }
 
