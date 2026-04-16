@@ -8,6 +8,7 @@ import { createProfileSlice } from './slices/profileSlice';
 import { createSettingsSlice } from './slices/settingsSlice';
 import { createTaskSlice } from './slices/taskSlice';
 import { createRestDaySlice } from './slices/restDaySlice';
+import { createGlobalAlertSlice } from './slices/globalAlertSlice';
 import { DEFAULT_SETTINGS } from '../types';
 import { createDefaultRoutines, DEFAULT_HABITS, partializeLifeState, revivePersistedState } from './lifeStore.persistence';
 import type { LifeStore } from './lifeStore.types';
@@ -44,16 +45,24 @@ const initialState = {
   },
   lastEngine: 'idle' as const,
   lastSolverStatus: '',
-    isGenerating: false,
-    last_replan_reason: undefined,
-    replan_history: [],
-    // FASE C: Execution Nucleus
-    execution_records: [],
-    pending_completion_check: undefined,
-    is_replanning: false,
-    replan_error: undefined,
-    // Rest days: Set de fechas (YYYY-MM-DD) donde el usuario declaró "hoy es descanso"
-    rest_days: []
+  isGenerating: false,
+  last_replan_reason: undefined,
+  replan_history: [],
+  pending_schedule_overflow: undefined,
+  global_alert: undefined,
+  last_scheduler_parity: undefined,
+  daily_energy_reports: [],
+  energy_suggested_task_ids: [],
+  energy_suggestion_bias: 0,
+  transit_arrival_records: [],
+  pending_transit_arrival_prompt: undefined,
+  // FASE C: Execution Nucleus
+  execution_records: [],
+  pending_completion_check: undefined,
+  is_replanning: false,
+  replan_error: undefined,
+  // Rest days: Set de fechas (YYYY-MM-DD) donde el usuario declaró "hoy es descanso"
+  rest_days: []
 };
 
 export const useLifeStore = create<LifeStore>()(
@@ -66,7 +75,8 @@ export const useLifeStore = create<LifeStore>()(
       ...createExecutionSlice(...args),
       ...createSettingsSlice(...args),
       ...createContentSlice(...args),
-      ...createRestDaySlice(...args)
+      ...createRestDaySlice(...args),
+      ...createGlobalAlertSlice(...args)
     }),
     {
       name: 'lifeos-storage-v4',

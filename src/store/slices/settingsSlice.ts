@@ -46,7 +46,15 @@ export const createSettingsSlice: StateCreator<LifeStore, [], [], Pick<LifeStore
         badges: []
       },
       lastEngine: 'idle',
-      lastSolverStatus: ''
+      lastSolverStatus: '',
+      pending_schedule_overflow: undefined,
+      global_alert: undefined,
+      last_scheduler_parity: undefined,
+      daily_energy_reports: [],
+      energy_suggested_task_ids: [],
+      energy_suggestion_bias: 0,
+      transit_arrival_records: [],
+      pending_transit_arrival_prompt: undefined
     }));
   }
 });

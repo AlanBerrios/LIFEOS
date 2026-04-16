@@ -1,4 +1,4 @@
-import type { DailyRoutine, DailySession, Habit, LifeTimer, QuickNote, ScheduleBlock, StaticEvent, Task, TravelLog } from '../types';
+import type { DailyEnergyReport, DailyRoutine, DailySession, Habit, LifeTimer, QuickNote, ScheduleBlock, StaticEvent, Task, TravelLog } from '../types';
 import { DEFAULT_SETTINGS } from '../types';
 import { toDate, toDateRequired } from '../utils/date';
 import { createId } from '../utils/ids';
@@ -87,6 +87,49 @@ function reviveReplanDecision(decision: any) {
   };
 }
 
+function reviveSchedulerParity(parity: LifeStore['last_scheduler_parity']) {
+  if (!parity) return parity;
+  return {
+    ...parity,
+    checkedAt: toDateRequired(parity.checkedAt)
+  };
+}
+
+function reviveDailyEnergyReport(report: DailyEnergyReport): DailyEnergyReport {
+  return {
+    ...report,
+    created_at: toDateRequired(report.created_at)
+  };
+}
+
+function reviveEnergyTelemetry(telemetry: DailyEnergyReport['telemetry']): DailyEnergyReport['telemetry'] {
+  if (!telemetry) return telemetry;
+  return {
+    ...telemetry,
+    evaluatedAt: toDateRequired(telemetry.evaluatedAt)
+  };
+}
+
+function reviveTransitArrivalRecord(record: LifeStore['transit_arrival_records'][number]): LifeStore['transit_arrival_records'][number] {
+  return {
+    ...record,
+    plannedStart: toDateRequired(record.plannedStart),
+    plannedEnd: toDateRequired(record.plannedEnd),
+    actualArrivalTime: toDateRequired(record.actualArrivalTime)
+  };
+}
+
+function revivePendingTransitArrivalPrompt(
+  prompt: LifeStore['pending_transit_arrival_prompt']
+): LifeStore['pending_transit_arrival_prompt'] {
+  if (!prompt) return prompt;
+  return {
+    ...prompt,
+    plannedStart: toDateRequired(prompt.plannedStart),
+    plannedEnd: toDateRequired(prompt.plannedEnd)
+  };
+}
+
 function reviveTimer(timer: LifeTimer | null): LifeTimer | null {
   if (!timer) {
     return null;
@@ -157,7 +200,15 @@ export function revivePersistedState(
     tasks: (snapshot.tasks ?? currentState.tasks).map(reviveTask),
     timeline: (snapshot.timeline ?? currentState.timeline).map(reviveBlock),
     activeTimer: reviveTimer(snapshot.activeTimer ?? currentState.activeTimer),
-    sessions: (snapshot.sessions ?? currentState.sessions).map((session) => ({ ...session })) as DailySession[],
+    sessions: (snapshot.sessions ?? currentState.sessions).map((session) => ({
+      ...session,
+      energy_reported: session.energy_reported
+        ? {
+            ...session.energy_reported,
+            telemetry: reviveEnergyTelemetry(session.energy_reported.telemetry)
+          }
+        : session.energy_reported
+    })) as DailySession[],
     settings: { ...DEFAULT_SETTINGS, ...(snapshot.settings ?? currentState.settings) },
     habits: (snapshot.habits ?? currentState.habits).map(reviveHabit),
     notes: (snapshot.notes ?? currentState.notes).map(reviveNote),
@@ -175,6 +226,17 @@ export function revivePersistedState(
     isGenerating: snapshot.isGenerating ?? currentState.isGenerating,
     last_replan_reason: snapshot.last_replan_reason ?? currentState.last_replan_reason,
     replan_history: (snapshot.replan_history ?? currentState.replan_history).map(reviveReplanDecision),
+    last_scheduler_parity: reviveSchedulerParity(snapshot.last_scheduler_parity ?? currentState.last_scheduler_parity),
+    daily_energy_reports: (snapshot.daily_energy_reports ?? currentState.daily_energy_reports).map((report) => ({
+      ...reviveDailyEnergyReport(report),
+      telemetry: reviveEnergyTelemetry(report.telemetry)
+    })),
+    energy_suggested_task_ids: snapshot.energy_suggested_task_ids ?? currentState.energy_suggested_task_ids,
+    energy_suggestion_bias: snapshot.energy_suggestion_bias ?? currentState.energy_suggestion_bias,
+    transit_arrival_records: (snapshot.transit_arrival_records ?? currentState.transit_arrival_records).map(reviveTransitArrivalRecord),
+    pending_transit_arrival_prompt: revivePendingTransitArrivalPrompt(
+      snapshot.pending_transit_arrival_prompt ?? currentState.pending_transit_arrival_prompt
+    ),
     execution_records: (snapshot.execution_records ?? currentState.execution_records).map(reviveExecutionRecord),
     pending_completion_check: snapshot.pending_completion_check
       ? {
@@ -210,6 +272,12 @@ export function partializeLifeState(state: LifeStore): Partial<LifeStore> {
     isGenerating: state.isGenerating,
     last_replan_reason: state.last_replan_reason,
     replan_history: state.replan_history,
+    last_scheduler_parity: state.last_scheduler_parity,
+    daily_energy_reports: state.daily_energy_reports,
+    energy_suggested_task_ids: state.energy_suggested_task_ids,
+    energy_suggestion_bias: state.energy_suggestion_bias,
+    transit_arrival_records: state.transit_arrival_records,
+    pending_transit_arrival_prompt: state.pending_transit_arrival_prompt,
     execution_records: state.execution_records,
     pending_completion_check: state.pending_completion_check,
     is_replanning: state.is_replanning,

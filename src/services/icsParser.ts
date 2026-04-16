@@ -1,4 +1,3 @@
-import { Alert } from 'react-native';
 import { useLifeStore } from '../store/useLifeStore';
 import { StaticEvent } from '../types';
 
@@ -43,14 +42,14 @@ export async function fetchAndParseICS(url: string): Promise<boolean> {
     const events = parseICS(text);
     if (events.length > 0) {
       useLifeStore.getState().setEvents(events);
-      Alert.alert('Sincronización Exitosa', `Se han importado ${events.length} eventos estáticos.`);
+      useLifeStore.getState().showGlobalAlert('Sincronización Exitosa', `Se han importado ${events.length} eventos estáticos.`);
       return true;
     } else {
-      Alert.alert('Calendario Vacío', 'No se encontraron eventos en la URL proveída.');
+      useLifeStore.getState().showGlobalAlert('Calendario Vacío', 'No se encontraron eventos en la URL proveída.');
       return false;
     }
   } catch (error: any) {
-    Alert.alert('Error de Sincronización', error.message || 'La URL de ICS es inválida o privada.');
+    useLifeStore.getState().showGlobalAlert('Error de Sincronización', error.message || 'La URL de ICS es inválida o privada.');
     return false;
   }
 }

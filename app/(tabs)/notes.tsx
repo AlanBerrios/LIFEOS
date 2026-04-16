@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,13 +10,13 @@ import {
   useWindowDimensions,
   View
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
 import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
+import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
 
 function parseReminder(reminderAt?: string): Date | null {
   if (!reminderAt) return null;
@@ -103,24 +102,15 @@ export default function NotesScreen(): ReactElement {
     setPendingReminderDate(null);
   }
 
-  function handleReminderDateChange(_event: unknown, selected?: Date) {
+  function handleReminderDateChange(selected: Date) {
     setShowReminderDatePicker(false);
-    if (!selected) return;
-
-    if (Platform.OS === 'android') {
-      setPendingReminderDate(selected);
-      setShowReminderTimePicker(true);
-      return;
-    }
-
-    const base = parseReminder(newNote.reminderAt) ?? new Date();
-    selected.setHours(base.getHours(), base.getMinutes(), 0, 0);
-    setNewNote((prev) => ({ ...prev, reminderAt: selected.toISOString() }));
+    setPendingReminderDate(selected);
+    setShowReminderTimePicker(true);
   }
 
-  function handleReminderTimeChange(_event: unknown, selected?: Date) {
+  function handleReminderTimeChange(selected: Date) {
     setShowReminderTimePicker(false);
-    if (!selected || !pendingReminderDate) {
+    if (!pendingReminderDate) {
       setPendingReminderDate(null);
       return;
     }
@@ -228,23 +218,30 @@ export default function NotesScreen(): ReactElement {
               </View>
             </View>
 
-            {showReminderDatePicker ? (
-              <DateTimePicker
-                value={parseReminder(newNote.reminderAt) ?? new Date()}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                onChange={handleReminderDateChange}
-              />
-            ) : null}
+            <AppDateTimePickerSheet
+              visible={showReminderDatePicker}
+              mode="date"
+              value={parseReminder(newNote.reminderAt) ?? new Date()}
+              title="Seleccionar fecha"
+              subtitle="Elige el día del recordatorio."
+              confirmLabel="Siguiente"
+              onConfirm={handleReminderDateChange}
+              onClose={() => setShowReminderDatePicker(false)}
+            />
 
-            {showReminderTimePicker ? (
-              <DateTimePicker
-                value={pendingReminderDate ?? new Date()}
-                mode="time"
-                display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                onChange={handleReminderTimeChange}
-              />
-            ) : null}
+            <AppDateTimePickerSheet
+              visible={showReminderTimePicker}
+              mode="time"
+              value={pendingReminderDate ?? new Date()}
+              title="Seleccionar hora"
+              subtitle="Elige la hora del recordatorio."
+              confirmLabel="Guardar"
+              onConfirm={handleReminderTimeChange}
+              onClose={() => {
+                setShowReminderTimePicker(false);
+                setPendingReminderDate(null);
+              }}
+            />
 
             <View style={styles.modalBtns}>
               <Pressable style={styles.cancelBtn} onPress={() => setModalVisible(false)}>

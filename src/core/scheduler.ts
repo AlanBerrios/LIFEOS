@@ -6,7 +6,7 @@
 import { createId } from '../utils/ids';
 import { HOUR_MS } from '../utils/time';
 import { getEventsForDate } from '../utils/events';
-import type { AppSettings, DailyRoutine, RoutineBlockOverride, RoutineDayOverride, ScheduleBlock, StaticEvent, Task, TaskUrgency } from '../types';
+import type { AppSettings, DailyRoutine, Habit, RoutineBlockOverride, RoutineDayOverride, ScheduleBlock, StaticEvent, Task, TaskUrgency } from '../types';
 
 const URGENCY_BONUS: Record<TaskUrgency, number> = {
   today: 50,
@@ -22,11 +22,24 @@ const SA_COOLING = 0.97;
 const HARD_DEADLINE_HOURS = 2;
 const HIGH_LOAD_THRESHOLD = 7;
 const MAX_HIGH_LOAD_STREAK = 2;
+const HABIT_REMINDER_MINUTES = 12;
+const HABIT_ANCHORS_MINUTES = [9 * 60 + 30, 13 * 60, 18 * 60 + 30, 21 * 60];
 
 interface ScoredTask {
   task: Task;
   baseScore: number;
   isHardConstraint: boolean;
+}
+
+export function rankTasksByImportance(tasks: Task[], now: Date): Task[] {
+  return scoreAll(tasks, now)
+    .sort((a, b) => {
+      if (a.isHardConstraint !== b.isHardConstraint) {
+        return a.isHardConstraint ? -1 : 1;
+      }
+      return b.baseScore - a.baseScore;
+    })
+    .map((entry) => entry.task);
 }
 
 function deadlineProximityScore(task: Task, now: Date): number {
@@ -50,9 +63,13 @@ function contextualScore(
   task: Task,
   now: Date,
   recentTasks: Task[],
-  remainingCognitiveBudget: number
+  remainingCognitiveBudget: number,
+  preferredTaskIds: Set<string>
 ): number {
   let score = baseScore(task, now);
+  if (preferredTaskIds.has(task.id)) {
+    score += 35;
+  }
   const recentHighLoad = recentTasks
     .slice(-MAX_HIGH_LOAD_STREAK)
     .filter((t) => t.cognitive_load >= HIGH_LOAD_THRESHOLD).length;
@@ -66,10 +83,10 @@ function contextualScore(
   return score;
 }
 
-function scoreAll(tasks: Task[], now: Date): ScoredTask[] {
+function scoreAll(tasks: Task[], now: Date, preferredTaskIds = new Set<string>()): ScoredTask[] {
   return tasks.map((task) => ({
     task,
-    baseScore: baseScore(task, now),
+    baseScore: baseScore(task, now) + (preferredTaskIds.has(task.id) ? 25 : 0),
     isHardConstraint: !!(
       task.deadline &&
       (task.deadline.getTime() - now.getTime()) / HOUR_MS <= HARD_DEADLINE_HOURS
@@ -200,9 +217,20 @@ function buildRoutineBlocks(routines: DailyRoutine[], now: Date, routineOverride
       const [h, m] = transitOverride.startTime.split(':').map(Number);
       transitStart.setHours(h, m, 0, 0);
     }
-    const duration = transitOverride?.durationMinutes && transitOverride.durationMinutes > 0
+    let duration = transitOverride?.durationMinutes && transitOverride.durationMinutes > 0
       ? transitOverride.durationMinutes
       : transit.durationMinutes;
+    if ((!transitOverride?.durationMinutes || transitOverride.durationMinutes <= 0) && transit.arrivalTime) {
+      const [arrivalH, arrivalM] = transit.arrivalTime.split(':').map(Number);
+      if (!Number.isNaN(arrivalH) && !Number.isNaN(arrivalM)) {
+        const arrival = new Date(transitStart);
+        arrival.setHours(arrivalH, arrivalM, 0, 0);
+        if (arrival.getTime() <= transitStart.getTime()) {
+          arrival.setDate(arrival.getDate() + 1);
+        }
+        duration = Math.max(1, Math.round((arrival.getTime() - transitStart.getTime()) / 60_000));
+      }
+    }
     const transitEnd = new Date(transitStart.getTime() + duration * 60_000);
     if (transitEnd <= now) continue;
 
@@ -233,6 +261,63 @@ function buildEventBlocks(events: StaticEvent[], now: Date): ScheduleBlock[] {
       isStaticEvent: true,
       pinned: true
     }));
+}
+
+function hashString(input: string): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash << 5) - hash + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function isHabitCompletedOnDate(habit: Habit, dayKey: string): boolean {
+  if (habit.lastCompletedDate === dayKey) return true;
+  return habit.logs.some((log) => new Date(log.timestamp).toISOString().slice(0, 10) === dayKey);
+}
+
+function buildHabitSoftBlocks(habits: Habit[], now: Date): ScheduleBlock[] {
+  if (habits.length === 0) return [];
+
+  const dayKey = now.toISOString().slice(0, 10);
+  const pendingHabits = habits.filter((habit) => !isHabitCompletedOnDate(habit, dayKey));
+  if (pendingHabits.length === 0) return [];
+
+  const baseDate = new Date(now);
+  baseDate.setSeconds(0, 0);
+
+  return pendingHabits.map((habit, index) => {
+    const [anchorHours, anchorMinutes] = [
+      Math.floor(HABIT_ANCHORS_MINUTES[index % HABIT_ANCHORS_MINUTES.length] / 60),
+      HABIT_ANCHORS_MINUTES[index % HABIT_ANCHORS_MINUTES.length] % 60
+    ];
+    const jitter = (hashString(habit.id) % 11) - 5;
+
+    const start = new Date(baseDate);
+    start.setHours(anchorHours, anchorMinutes + jitter, 0, 0);
+
+    const latestReasonableStart = new Date(baseDate);
+    latestReasonableStart.setHours(22, 30, 0, 0);
+    if (start < now) {
+      start.setTime(now.getTime() + 10 * 60_000);
+    }
+    if (start > latestReasonableStart) {
+      start.setTime(latestReasonableStart.getTime());
+    }
+
+    const end = new Date(start.getTime() + HABIT_REMINDER_MINUTES * 60_000);
+    return {
+      id: createId('habit-block'),
+      type: 'habit',
+      habit_id: habit.id,
+      title: `${habit.emoji || '🌱'} ${habit.name}`,
+      start_time: start,
+      end_time: end,
+      pinned: false,
+      isSoftBlock: true
+    };
+  });
 }
 
 function findNextCoherentStart(candidateStart: Date, durationMs: number, hardBlocks: ScheduleBlock[]): Date {
@@ -270,11 +355,14 @@ export function generateTimeline(
   routines: DailyRoutine[] = [],
   now: Date,
   _settings?: Partial<AppSettings>,
-  routineOverrides: RoutineDayOverride[] = []
+  routineOverrides: RoutineDayOverride[] = [],
+  options: { preferredTaskIds?: string[] } = {},
+  habits: Habit[] = []
 ): ScheduleBlock[] {
   const schedulableTasks = tasks.filter((t) => t.status === 'pool' || t.status === 'scheduled');
   const cognitiveBudget = 600;
   const breakMin = _settings?.breakDurationMinutes ?? 10;
+  const preferredTaskIds = new Set(options.preferredTaskIds ?? []);
 
   function mergeRestBlocks(unmerged: ScheduleBlock[]): ScheduleBlock[] {
     if (unmerged.length < 2) return unmerged;
@@ -294,12 +382,13 @@ export function generateTimeline(
 
   const hardBlocks = [...buildRoutineBlocks(routines, now, routineOverrides), ...buildEventBlocks(events, now)]
     .sort((a, b) => a.start_time.getTime() - b.start_time.getTime());
+  const habitSoftBlocks = buildHabitSoftBlocks(habits, now);
 
   if (schedulableTasks.length === 0) {
-    return mergeRestBlocks(hardBlocks);
+    return mergeRestBlocks([...hardBlocks, ...habitSoftBlocks].sort((a, b) => a.start_time.getTime() - b.start_time.getTime()));
   }
 
-  const scored = scoreAll(schedulableTasks, now);
+  const scored = scoreAll(schedulableTasks, now, preferredTaskIds);
   const hardFirst = scored.filter((s) => s.isHardConstraint).sort((a, b) => b.baseScore - a.baseScore);
   const flexible = scored.filter((s) => !s.isHardConstraint);
 
@@ -320,7 +409,7 @@ export function generateTimeline(
       }
       const scored2 = available.map((t) => ({
         task: t,
-        score: contextualScore(t, now, beam.recentTasks, beam.cognitiveBudgetLeft)
+        score: contextualScore(t, now, beam.recentTasks, beam.cognitiveBudgetLeft, preferredTaskIds)
       }));
       scored2.sort((a, b) => b.score - a.score);
       for (const { task } of scored2.slice(0, BEAM_WIDTH)) {
@@ -328,7 +417,7 @@ export function generateTimeline(
           sequence: [...beam.sequence, task],
           recentTasks: [...beam.recentTasks.slice(-MAX_HIGH_LOAD_STREAK), task],
           cognitiveBudgetLeft: beam.cognitiveBudgetLeft - task.cognitive_load * task.eta_minutes,
-          score: beam.score + contextualScore(task, now, beam.recentTasks, beam.cognitiveBudgetLeft)
+          score: beam.score + contextualScore(task, now, beam.recentTasks, beam.cognitiveBudgetLeft, preferredTaskIds)
         });
       }
     }
@@ -339,7 +428,7 @@ export function generateTimeline(
   const bestFlexible = beams[0]?.sequence ?? [];
   const finalSequence = simulatedAnnealing([...hardFirst.map((s) => s.task), ...bestFlexible], now);
 
-  const blocks: ScheduleBlock[] = [...hardBlocks.map((block) => ({ ...block }))];
+  const blocks: ScheduleBlock[] = [...hardBlocks.map((block) => ({ ...block })), ...habitSoftBlocks.map((block) => ({ ...block }))];
   let cursor = new Date(now);
 
   for (let idx = 0; idx < finalSequence.length; idx++) {

@@ -17,5 +17,7 @@ expo-env.d.ts
 # @end expo-cli
 To_do_ideas.txt
 \# Formulario maestro de visión de `.txt
-To_do_ideas.txt
-To_do_ideas.txt
+
+# Python
+__pycache__/
+*.py[cod]

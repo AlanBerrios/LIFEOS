@@ -1,27 +1,6 @@
 import { useMemo } from 'react';
 import { useLifeStore } from './store/useLifeStore';
 
-export const UI_ACCENT_PRESETS = [
-  { key: 'olive', label: 'Verde Oliva', color: '#8FBF00' },
-  { key: 'teal', label: 'Turquesa', color: '#14B8A6' },
-  { key: 'blue', label: 'Azul', color: '#3B82F6' },
-  { key: 'cyan', label: 'Cian', color: '#06B6D4' },
-  { key: 'emerald', label: 'Esmeralda', color: '#10B981' },
-  { key: 'violet', label: 'Violeta', color: '#8B5CF6' },
-  { key: 'rose', label: 'Rosa', color: '#F43F5E' },
-  { key: 'orange', label: 'Naranja', color: '#F97316' },
-  { key: 'amber', label: 'Ámbar', color: '#F59E0B' },
-  { key: 'slate', label: 'Pizarra', color: '#64748B' },
-  { key: 'indigo', label: 'Índigo', color: '#4F46E5' },
-  { key: 'lime', label: 'Lima', color: '#A3E635' }
-] as const;
-
-export const UI_ACCENT_TEXT_MODES = [
-  { key: 'auto', label: 'Auto', description: 'Contraste automático' },
-  { key: 'light', label: 'Blanco', description: 'Texto claro' },
-  { key: 'dark', label: 'Oscuro', description: 'Texto negro claro' }
-] as const;
-
 export type UiThemeMode = 'dark' | 'light';
 export type UiAccentTextMode = 'auto' | 'light' | 'dark';
 

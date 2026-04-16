@@ -2,13 +2,7 @@ import type { StateCreator } from 'zustand';
 import { createId } from '../../utils/ids';
 import { getTodayStr } from '../../utils/date';
 import type { Habit, LifeStore } from '../lifeStore.types';
-import { scheduleRandomHabitReminder } from '../../services/notifications';
-
-async function refreshHabitReminder(get: () => LifeStore, set: (partial: Partial<LifeStore>) => void): Promise<void> {
-  const state = get();
-  const reminderId = await scheduleRandomHabitReminder(state.habits, state.habitReminderNotificationId);
-  set({ habitReminderNotificationId: reminderId });
-}
+import { refreshHabitReminderEffect } from '../sideEffects/notifications';
 
 export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
   'addHabit' | 'logHabit' | 'unlogHabit' | 'updateHabit' | 'deleteHabit'
@@ -26,7 +20,7 @@ export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
       ]
     }));
 
-    void refreshHabitReminder(get, set);
+    void refreshHabitReminderEffect(get, set);
   },
 
   logHabit: (id: string, value: number) => {
@@ -75,7 +69,7 @@ export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
       get().addConsistencyActivity();
     }
 
-    void refreshHabitReminder(get, set);
+    void refreshHabitReminderEffect(get, set);
   },
 
   unlogHabit: (id: string) => {
@@ -131,7 +125,7 @@ export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
       get().addXP(-15, 'vitality');
     }
 
-    void refreshHabitReminder(get, set);
+    void refreshHabitReminderEffect(get, set);
   },
 
   updateHabit: (id: string, updates: Partial<Habit>) => {
@@ -139,7 +133,7 @@ export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
       habits: state.habits.map((habit) => (habit.id === id ? { ...habit, ...updates } : habit))
     }));
 
-    void refreshHabitReminder(get, set);
+    void refreshHabitReminderEffect(get, set);
   },
 
   deleteHabit: (id: string) => {
@@ -147,6 +141,6 @@ export const createHabitSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
       habits: state.habits.filter((habit) => habit.id !== id)
     }));
 
-    void refreshHabitReminder(get, set);
+    void refreshHabitReminderEffect(get, set);
   }
 });

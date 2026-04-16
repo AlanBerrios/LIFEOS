@@ -45,50 +45,58 @@ export const CustomAlertDialog: React.FC<CustomAlertDialogProps> = ({
       statusBarTranslucent
       onRequestClose={onDismiss}
     >
-      <View style={[styles.overlay, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}>
+      <View style={[styles.overlay, { backgroundColor: 'rgba(0, 0, 0, 0.68)' }]}>
         <View
           style={[
             styles.dialog,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              shadowColor: '#000'
+            },
           ]}
         >
-          {/* Title */}
+          <View style={[styles.accentBar, { backgroundColor: theme.colors.primary }]} />
           <Text
             style={[
               styles.title,
-              { color: theme.colors.text, fontFamily: 'System', fontWeight: '600' },
+              { color: theme.colors.text, fontWeight: '800' },
             ]}
           >
             {title}
           </Text>
 
-          {/* Message */}
           {message && (
             <Text
               style={[
                 styles.message,
-                { color: theme.colors.muted, fontFamily: 'System' },
+                { color: theme.colors.muted },
               ]}
             >
               {message}
             </Text>
           )}
 
-          {/* Buttons */}
-          <View style={styles.buttonsContainer}>
+          <View style={[styles.buttonsContainer, buttons.length > 2 && styles.buttonsColumn]}>
             {buttons.map((button, index) => {
               const isDestructive = button.style === 'destructive';
               const isCancel = button.style === 'cancel' || buttons.length > 1 && index > 0;
-              
+
               return (
                 <Pressable
                   key={index}
                   style={[
                     styles.button,
+                    buttons.length > 2 && styles.buttonColumn,
                     isCancel && styles.buttonCancel,
-                    index < buttons.length - 1 && styles.buttonBorder,
+                    buttons.length <= 2 && index < buttons.length - 1 && styles.buttonBorder,
                     {
                       borderColor: theme.colors.border,
+                      backgroundColor: isDestructive
+                        ? theme.colors.softAlert
+                        : isCancel
+                        ? theme.colors.surfaceAlt
+                        : theme.colors.primary,
                     },
                   ]}
                   onPress={() => handleButtonPress(button)}
@@ -98,10 +106,10 @@ export const CustomAlertDialog: React.FC<CustomAlertDialogProps> = ({
                       styles.buttonText,
                       {
                         color: isDestructive
-                          ? '#FF5F7A'
+                          ? theme.colors.alert
                           : isCancel
                           ? theme.colors.muted
-                            : theme.colors.onPrimary,
+                          : theme.colors.onPrimary,
                       },
                     ]}
                   >
@@ -122,57 +130,75 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 16,
   },
   dialog: {
-    borderRadius: 16,
+    borderRadius: 24,
     borderWidth: 1,
-    paddingHorizontal: 24,
-    paddingVertical: 20,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 14,
     maxWidth: 340,
     width: '85%',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOpacity: 0.3,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.35,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 14 },
       },
       android: {
-        elevation: 12,
+        elevation: 18,
       },
     }),
   },
+  accentBar: {
+    width: 48,
+    height: 5,
+    borderRadius: 999,
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
   title: {
-    fontSize: 18,
+    fontSize: 19,
     marginBottom: 8,
     textAlign: 'center',
   },
   message: {
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 20,
+    marginBottom: 18,
     textAlign: 'center',
   },
   buttonsContainer: {
     flexDirection: 'row',
-    borderTopWidth: 1,
-    marginHorizontal: -24,
-    marginBottom: -20,
-    borderTopColor: 'rgba(0, 0, 0, 0.1)',
+    gap: 10,
+    paddingTop: 4,
+  },
+  buttonsColumn: {
+    flexDirection: 'column',
   },
   button: {
     flex: 1,
     paddingVertical: 12,
+    paddingHorizontal: 12,
     justifyContent: 'center',
     alignItems: 'center',
     minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
   },
   buttonBorder: {
-    borderRightWidth: 1,
+    borderRightWidth: 0,
   },
-  buttonCancel: {},
+  buttonColumn: {
+    width: '100%',
+    flex: undefined,
+  },
+  buttonCancel: {
+    borderWidth: 1,
+  },
   buttonText: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '800',
   },
 });

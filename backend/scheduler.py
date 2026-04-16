@@ -19,6 +19,7 @@ from __future__ import annotations
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import NamedTuple
 from ortools.sat.python import cp_model
 
 from models import TaskIn, ScheduleBlockOut, ScheduleResponse
@@ -36,6 +37,55 @@ HORIZON_HOURS      = 16    # horizonte máximo del día (16h = 960 min)
 
 def _make_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:10]}"
+
+
+def _to_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _minutes_from_base(target: datetime, base: datetime) -> int:
+    return int(round((target - base).total_seconds() / 60))
+
+
+def _fixed_start_minutes(task: TaskIn, now: datetime, horizon: int) -> int | None:
+    if task.fixed_start is None:
+        return None
+
+    minutes = _minutes_from_base(_to_utc(task.fixed_start), _to_utc(now))
+    if minutes < 0:
+        raise ValueError(f"Task {task.id} has fixed_start before start_time.")
+    if minutes > horizon:
+        raise ValueError(f"Task {task.id} has fixed_start outside planning horizon.")
+    return minutes
+
+
+def _fixed_end_minutes(task: TaskIn, now: datetime, upper_bound: int) -> int | None:
+    if task.fixed_end is None:
+        return None
+
+    minutes = _minutes_from_base(_to_utc(task.fixed_end), _to_utc(now))
+    if minutes < 0:
+        raise ValueError(f"Task {task.id} has fixed_end before start_time.")
+    if minutes > upper_bound:
+        raise ValueError(f"Task {task.id} has fixed_end outside planning horizon.")
+    return minutes
+
+
+def _validate_fixed_window(task: TaskIn, start_minutes: int | None, end_minutes: int | None) -> None:
+    if end_minutes is not None and end_minutes < task.eta_minutes:
+        raise ValueError(
+            f"Task {task.id} cannot fit before fixed_end: eta={task.eta_minutes}min, fixed_end={end_minutes}min"
+        )
+
+    if start_minutes is not None and end_minutes is not None:
+        min_end = start_minutes + task.eta_minutes
+        if end_minutes < min_end:
+            raise ValueError(
+                f"Task {task.id} has inconsistent fixed window: fixed_start={start_minutes}min, "
+                f"fixed_end={end_minutes}min, eta={task.eta_minutes}min"
+            )
 
 
 def _deadline_proximity_score(task: TaskIn, now: datetime) -> float:
@@ -76,17 +126,23 @@ def _is_hard_constraint(task: TaskIn, now: datetime) -> bool:
     return (dl - n).total_seconds() / 3600 <= HARD_DEADLINE_HRS
 
 
+class SolvedTask(NamedTuple):
+    task: TaskIn
+    start_minute: int
+    end_minute: int
+
+
 # ─── CP-SAT Solver ────────────────────────────────────────────────────────────
 
 def _solve_with_cpsat(
     tasks: list[TaskIn],
     start_time: datetime,
-) -> tuple[list[TaskIn], str, float]:
+) -> tuple[list[SolvedTask], str, float]:
     """
     Usa OR-Tools CP-SAT para encontrar la secuencia de tareas ÓPTIMA.
 
     Retorna:
-        ordered_tasks: lista ordenada de tareas a ejecutar
+        solved_tasks: lista de tareas asignadas con sus tiempos resueltos
         status:        "OPTIMAL" | "FEASIBLE" | "UNKNOWN"
         solve_ms:      tiempo que tardó el solver en ms
     """
@@ -143,11 +199,15 @@ def _solve_with_cpsat(
             # Y debe terminar antes del deadline
             model.Add(end_vars[i] <= deadline_minutes)
 
-        fixed_start_minutes = _fixed_start_minutes(task, now)
-        fixed_end_minutes = _fixed_end_minutes(task, now)
+        fixed_start_minutes = _fixed_start_minutes(task, now, horizon)
+        fixed_end_minutes = _fixed_end_minutes(task, now, horizon + task.eta_minutes)
+        _validate_fixed_window(task, fixed_start_minutes, fixed_end_minutes)
+
         if fixed_start_minutes is not None:
+            model.Add(assigned[i] == 1)
             model.Add(start_vars[i] == fixed_start_minutes)
         if fixed_end_minutes is not None:
+            model.Add(assigned[i] == 1)
             model.Add(end_vars[i] <= fixed_end_minutes)
 
     # 3. Secuencialidad implícita por no-solapamiento (CP-SAT la maneja)
@@ -177,21 +237,20 @@ def _solve_with_cpsat(
     status = status_map.get(status_code, "UNKNOWN")
 
     if status_code not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        # Fallback: devolver todas las tareas sin ordenar
-        return list(tasks), "FALLBACK_GREEDY", solve_ms
+        return [], "FALLBACK_GREEDY", solve_ms
 
     # ── Extraer solución ───────────────────────────────────────────────────────
     # Ordenar tareas asignadas por su tiempo de inicio resuelto
-    assigned_tasks = []
+    assigned_tasks: list[SolvedTask] = []
     for i, task in enumerate(tasks):
         if solver.Value(assigned[i]) == 1:
             start_val = solver.Value(start_vars[i])
-            assigned_tasks.append((start_val, task))
+            end_val = solver.Value(end_vars[i])
+            assigned_tasks.append(SolvedTask(task=task, start_minute=start_val, end_minute=end_val))
 
-    assigned_tasks.sort(key=lambda x: x[0])
-    ordered = [t for _, t in assigned_tasks]
+    assigned_tasks.sort(key=lambda item: item.start_minute)
 
-    return ordered, status, solve_ms
+    return assigned_tasks, status, solve_ms
 
 
 # ─── Greedy fallback ──────────────────────────────────────────────────────────
@@ -207,7 +266,7 @@ def _greedy_order(tasks: list[TaskIn], now: datetime) -> list[TaskIn]:
 
 # ─── Construcción del timeline ────────────────────────────────────────────────
 
-def _build_timeline(
+def _build_timeline_greedy(
     ordered_tasks: list[TaskIn],
     start_time: datetime,
 ) -> list[ScheduleBlockOut]:
@@ -276,6 +335,45 @@ def _build_timeline(
     return blocks
 
 
+def _build_timeline_from_solution(
+    solved_tasks: list[SolvedTask],
+    start_time: datetime,
+) -> list[ScheduleBlockOut]:
+    """
+    Construye timeline respetando exactamente los tiempos de inicio/fin
+    resueltos por CP-SAT para mantener consistencia con las restricciones.
+    """
+    blocks: list[ScheduleBlockOut] = []
+    previous_end: datetime | None = None
+
+    for solved in sorted(solved_tasks, key=lambda item: item.start_minute):
+        task = solved.task
+        task_start = start_time + timedelta(minutes=solved.start_minute)
+        task_end = start_time + timedelta(minutes=solved.end_minute)
+
+        if previous_end is not None and task_start > previous_end:
+            blocks.append(ScheduleBlockOut(
+                id=_make_id("rest"),
+                type="rest",
+                title="Descanso",
+                start_time=previous_end,
+                end_time=task_start,
+            ))
+
+        blocks.append(ScheduleBlockOut(
+            id=_make_id("task"),
+            type="task",
+            task_id=task.id,
+            title=task.title,
+            start_time=task_start,
+            end_time=task_end,
+            cognitive_drain=float(task.cognitive_load * task.eta_minutes),
+        ))
+        previous_end = task_end
+
+    return blocks
+
+
 # ─── API pública ──────────────────────────────────────────────────────────────
 
 def generate_schedule(
@@ -298,20 +396,25 @@ def generate_schedule(
             tasks_scheduled=0,
         )
 
-    ordered, status, solve_ms = _solve_with_cpsat(pool_tasks, start_time)
+    solved_tasks, status, solve_ms = _solve_with_cpsat(pool_tasks, start_time)
 
     # Si OR-Tools falla, usar greedy
-    if status in ("INFEASIBLE", "UNKNOWN") or not ordered:
-        ordered  = _greedy_order(pool_tasks, start_time)
-        status   = "FALLBACK_GREEDY"
+    if status in ("INFEASIBLE", "UNKNOWN", "FALLBACK_GREEDY") or not solved_tasks:
+        ordered = _greedy_order(pool_tasks, start_time)
+        blocks = _build_timeline_greedy(ordered, start_time)
+        status = "FALLBACK_GREEDY"
         solve_ms = 0.0
-
-    blocks = _build_timeline(ordered, start_time)
+        tasks_scheduled = len(ordered)
+        engine = "greedy-fallback"
+    else:
+        blocks = _build_timeline_from_solution(solved_tasks, start_time)
+        tasks_scheduled = len(solved_tasks)
+        engine = "ortools-cpsat"
 
     return ScheduleResponse(
         blocks=blocks,
         solver_status=status,
         solve_time_ms=round(solve_ms, 2),
-        tasks_scheduled=len(ordered),
-        engine="ortools-cpsat" if status != "FALLBACK_GREEDY" else "greedy-fallback",
+        tasks_scheduled=tasks_scheduled,
+        engine=engine,
     )

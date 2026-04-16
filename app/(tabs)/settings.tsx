@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Platform,
@@ -14,7 +14,7 @@ import {
 import Slider from '@react-native-community/slider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
-import { useAppTheme, UI_ACCENT_PRESETS } from '../../src/theme';
+import { useAppTheme } from '../../src/theme';
 import {
   schedulePendingReminder,
   scheduleImportantTaskAlert,
@@ -32,48 +32,11 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { getBuildMetadata } from '../../src/config/buildInfo';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { UI_ACCENT_TEXT_MODES } from '../../src/theme';
 import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
+import { ColorWheelPicker } from '../../src/components/ColorWheelPicker';
 
 type SettingsStyles = ReturnType<typeof createStyles>;
-
-function clampChannel(value: number): number {
-  return Math.max(0, Math.min(255, Math.round(value)));
-}
-
-function toHex(channel: number): string {
-  return clampChannel(channel).toString(16).padStart(2, '0').toUpperCase();
-}
-
-function rgbToHex(r: number, g: number, b: number): string {
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
-function normalizeHex(input: string): string {
-  const cleaned = input.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
-  if (cleaned.length === 3) {
-    return `#${cleaned.split('').map((c) => `${c}${c}`).join('')}`.toUpperCase();
-  }
-  if (cleaned.length === 6) {
-    return `#${cleaned}`.toUpperCase();
-  }
-  return `#${cleaned}`.toUpperCase();
-}
-
-function isValidHex(hex: string): boolean {
-  return /^#[0-9A-F]{6}$/i.test(hex);
-}
-
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const normalized = normalizeHex(hex);
-  if (!isValidHex(normalized)) return { r: 143, g: 191, b: 0 };
-  return {
-    r: Number.parseInt(normalized.slice(1, 3), 16),
-    g: Number.parseInt(normalized.slice(3, 5), 16),
-    b: Number.parseInt(normalized.slice(5, 7), 16)
-  };
-}
 
 const NOTIFICATION_TEST_BUTTONS: Array<{ key: NotificationTestType; label: string; subtitle: string }> = [
   { key: 'task_start', label: 'Test Tarea Programada', subtitle: 'Aviso de inicio de bloque' },
@@ -88,6 +51,12 @@ const NOTIFICATION_TEST_BUTTONS: Array<{ key: NotificationTestType; label: strin
   { key: 'routine_transit', label: 'Test Rutina Traslado', subtitle: 'Bloque de traslado' },
   { key: 'event', label: 'Test Evento', subtitle: 'Recordatorio de evento estático' },
   { key: 'note', label: 'Test Nota', subtitle: 'Recordatorio de nota' }
+];
+
+const CONTRAST_MODES: Array<{ key: 'auto' | 'light' | 'dark'; label: string; subtitle: string }> = [
+  { key: 'auto', label: 'Automático', subtitle: 'Contraste sugerido por la app' },
+  { key: 'light', label: 'Forzado claro', subtitle: 'Texto blanco sobre acento' },
+  { key: 'dark', label: 'Forzado oscuro', subtitle: 'Texto oscuro sobre acento' }
 ];
 
 // ─── Accordion Component ──────────────────────────────────────────────────
@@ -162,14 +131,7 @@ export default function SettingsScreen(): ReactElement {
   const notes = useLifeStore((s) => s.notes);
 
   const [icsUrl, setIcsUrl] = useState('');
-  const [customHex, setCustomHex] = useState(settings.uiAccentColor);
-  const [customRgb, setCustomRgb] = useState(hexToRgb(settings.uiAccentColor));
   const { alertState, showAlert, hideAlert } = useCustomAlert();
-
-  useEffect(() => {
-    setCustomHex(settings.uiAccentColor.toUpperCase());
-    setCustomRgb(hexToRgb(settings.uiAccentColor));
-  }, [settings.uiAccentColor]);
 
   async function handleBackup() {
     try {
@@ -265,32 +227,6 @@ export default function SettingsScreen(): ReactElement {
     showAlert('🧪 Test enviado', 'Se programó una notificación de prueba para los próximos segundos.');
   }
 
-  function handleHexChange(raw: string) {
-    const normalized = normalizeHex(raw);
-    setCustomHex(normalized);
-    if (isValidHex(normalized)) {
-      setCustomRgb(hexToRgb(normalized));
-    }
-  }
-
-  function handleRgbChange(channel: 'r' | 'g' | 'b', value: number) {
-    const next = {
-      ...customRgb,
-      [channel]: clampChannel(value)
-    };
-    setCustomRgb(next);
-    setCustomHex(rgbToHex(next.r, next.g, next.b));
-  }
-
-  function applyCustomAccent() {
-    if (!isValidHex(customHex)) {
-      showAlert('Color inválido', 'Usa un color HEX válido con 6 dígitos, por ejemplo #22C55E.');
-      return;
-    }
-    updateSettings({ uiAccentColor: customHex.toUpperCase() });
-    showAlert('Color aplicado', `Nuevo acento principal: ${customHex.toUpperCase()}`);
-  }
-
   async function handlePickIcsFile() {
     try {
       const res = await DocumentPicker.getDocumentAsync({
@@ -325,107 +261,23 @@ export default function SettingsScreen(): ReactElement {
       </View>
 
       <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Apariencia" icon="🎨">
-        <SettingRow styles={styles} label="Modo oscuro" subtitle="Activa modo oscuro o claro para toda la interfaz.">
-          <Switch
-            value={settings.uiThemeMode === 'dark'}
-            onValueChange={(v) => updateSettings({ uiThemeMode: v ? 'dark' : 'light' })}
-            trackColor={{ true: lifeTheme.colors.primary, false: lifeTheme.colors.border }}
-            thumbColor="#fff"
-          />
+        <SettingRow styles={styles} label="Color principal" subtitle="Arrastra sobre el círculo para cambiar el acento de toda la interfaz.">
+          <Text style={styles.valueText}>{settings.uiAccentColor.toUpperCase()}</Text>
         </SettingRow>
-
-        <View style={styles.divider} />
-        <Text style={styles.inputLabel}>Paleta principal UI</Text>
-        <Text style={styles.helperText}>Elige un color de acento para botones, indicadores y resaltados.</Text>
-        <View style={styles.colorGrid}>
-          {UI_ACCENT_PRESETS.map((preset) => {
-            const selected = settings.uiAccentColor === preset.color;
-            return (
-              <Pressable
-                key={preset.key}
-                onPress={() => updateSettings({ uiAccentColor: preset.color })}
-                style={[
-                  styles.colorSwatch,
-                  { backgroundColor: preset.color },
-                  selected && styles.colorSwatchSelected
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Seleccionar color ${preset.label}`}
-              >
-                <Text style={styles.colorSwatchText}>{selected ? '✓' : ''}</Text>
-              </Pressable>
-            );
-          })}
+        <View style={styles.wheelCard}>
+          <ColorWheelPicker
+            value={settings.uiAccentColor}
+            size={268}
+            onChange={(hex) => updateSettings({ uiAccentColor: hex })}
+          />
         </View>
+        <Text style={styles.helperText}>El cambio se aplica en tiempo real a botones, indicadores y resaltados.</Text>
 
         <View style={styles.divider} />
-        <Text style={styles.inputLabel}>Color Picker libre</Text>
-        <Text style={styles.helperText}>Elige cualquier color con HEX o controles RGB.</Text>
-
-        <View style={styles.pickerCard}>
-          <View style={styles.pickerPreviewRow}>
-            <View style={[styles.pickerPreview, { backgroundColor: customHex }]} />
-            <TextInput
-              style={styles.hexInput}
-              value={customHex}
-              onChangeText={handleHexChange}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={7}
-              placeholder="#22C55E"
-              placeholderTextColor={theme.colors.muted}
-            />
-          </View>
-
-          <Text style={styles.channelLabel}>Rojo: {customRgb.r}</Text>
-          <Slider
-            style={styles.slider}
-            minimumValue={0}
-            maximumValue={255}
-            step={1}
-            value={customRgb.r}
-            onValueChange={(v) => handleRgbChange('r', v)}
-            minimumTrackTintColor="#EF4444"
-            maximumTrackTintColor={theme.colors.border}
-            thumbTintColor="#EF4444"
-          />
-
-          <Text style={styles.channelLabel}>Verde: {customRgb.g}</Text>
-          <Slider
-            style={styles.slider}
-            minimumValue={0}
-            maximumValue={255}
-            step={1}
-            value={customRgb.g}
-            onValueChange={(v) => handleRgbChange('g', v)}
-            minimumTrackTintColor="#22C55E"
-            maximumTrackTintColor={theme.colors.border}
-            thumbTintColor="#22C55E"
-          />
-
-          <Text style={styles.channelLabel}>Azul: {customRgb.b}</Text>
-          <Slider
-            style={styles.slider}
-            minimumValue={0}
-            maximumValue={255}
-            step={1}
-            value={customRgb.b}
-            onValueChange={(v) => handleRgbChange('b', v)}
-            minimumTrackTintColor="#3B82F6"
-            maximumTrackTintColor={theme.colors.border}
-            thumbTintColor="#3B82F6"
-          />
-
-          <Pressable style={styles.applyBtn} onPress={applyCustomAccent}>
-            <Text style={styles.applyBtnText}>Aplicar Color Personalizado</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.divider} />
-        <Text style={styles.inputLabel}>Color del texto en botones</Text>
-        <Text style={styles.helperText}>Auto usa contraste automático; también puedes forzar blanco u oscuro claro.</Text>
+        <Text style={styles.inputLabel}>Contraste del texto</Text>
+        <Text style={styles.helperText}>Elige si el texto sobre el color principal se ajusta solo o se fuerza manualmente.</Text>
         <View style={styles.contrastRow}>
-          {UI_ACCENT_TEXT_MODES.map((mode) => {
+          {CONTRAST_MODES.map((mode) => {
             const selected = settings.uiAccentTextMode === mode.key;
             return (
               <Pressable
@@ -440,7 +292,7 @@ export default function SettingsScreen(): ReactElement {
                   {mode.label}
                 </Text>
                 <Text style={[styles.contrastOptionSubtext, selected && { color: lifeTheme.colors.onPrimary }]}>
-                  {mode.description}
+                  {mode.subtitle}
                 </Text>
               </Pressable>
             );
@@ -722,63 +574,15 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
   
   valueText: { color: theme.colors.primary, fontSize: 16, fontWeight: '800', marginRight: 8, width: 45, textAlign: 'right' },
   helperText: { color: theme.colors.muted, fontSize: 12, lineHeight: 17, marginTop: 6 },
-  channelLabel: { color: theme.colors.text, fontSize: 12, fontWeight: '700', marginTop: 4 },
-  
-  applyBtn: { backgroundColor: theme.colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-  applyBtnText: { color: theme.colors.onPrimary, fontSize: 14, fontWeight: '800' },
-  backupBtn: { backgroundColor: theme.colors.success, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-  backupBtnText: { color: theme.colors.onPrimary, fontSize: 14, fontWeight: '800' },
-  pressed: { opacity: 0.75 },
-
-  timeInput: { backgroundColor: theme.colors.surfaceAlt, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, color: theme.colors.text, fontSize: 16, fontWeight: '700', width: 65, textAlign: 'center', borderWidth: 1, borderColor: theme.colors.border },
-
-  urlInputBox: { paddingVertical: 8, gap: 12 },
-  inputLabel: { color: theme.colors.text, fontSize: 14, fontWeight: '700', marginBottom: -4 },
-  urlInput: { backgroundColor: theme.colors.background, color: theme.colors.text, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, fontSize: 15 },
-  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
-  colorSwatch: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
+  wheelCard: {
+    marginTop: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)'
-  },
-  colorSwatchSelected: {
-    transform: [{ scale: 1.06 }],
-    borderColor: theme.colors.text,
-    borderWidth: 2
-  },
-  colorSwatchText: { color: '#ffffff', fontWeight: '900', fontSize: 14 },
-  pickerCard: {
-    marginTop: 10,
+    paddingVertical: 10,
+    borderRadius: 20,
     backgroundColor: theme.colors.surfaceAlt,
-    borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: 12,
-    gap: 4
-  },
-  pickerPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-  pickerPreview: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)'
-  },
-  hexInput: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-    color: theme.colors.text,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
-    fontWeight: '700'
+    borderColor: theme.colors.border
   },
   contrastRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
   contrastOption: {
@@ -794,6 +598,17 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
   },
   contrastOptionText: { color: theme.colors.text, fontSize: 14, fontWeight: '800' },
   contrastOptionSubtext: { color: theme.colors.muted, fontSize: 11, fontWeight: '600' },
+  applyBtn: { backgroundColor: theme.colors.primary, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  applyBtnText: { color: theme.colors.onPrimary, fontSize: 14, fontWeight: '800' },
+  backupBtn: { backgroundColor: theme.colors.success, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  backupBtnText: { color: theme.colors.onPrimary, fontSize: 14, fontWeight: '800' },
+  pressed: { opacity: 0.75 },
+
+  timeInput: { backgroundColor: theme.colors.surfaceAlt, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, color: theme.colors.text, fontSize: 16, fontWeight: '700', width: 65, textAlign: 'center', borderWidth: 1, borderColor: theme.colors.border },
+
+  urlInputBox: { paddingVertical: 8, gap: 12 },
+  inputLabel: { color: theme.colors.text, fontSize: 14, fontWeight: '700', marginBottom: -4 },
+  urlInput: { backgroundColor: theme.colors.background, color: theme.colors.text, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, fontSize: 15 },
   testGrid: { gap: 10, marginTop: 12 },
   testCardBtn: {
     backgroundColor: theme.colors.surfaceAlt,

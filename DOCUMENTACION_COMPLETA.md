@@ -4,6 +4,9 @@
 **Última actualización:** 15-04-2026 (UTC)
 **Estado:** FASE B ✅ Completada, FASE C ✅ Completada, Scheduler Runtime ✅ Local-Only
 
+**Fuente canónica vigente:** `docs/FUENTE_DE_VERDAD_LIFEOS.md`  
+Este archivo mantiene detalle extendido e histórico.
+
 ---
 
 ## ÍNDICE
@@ -91,6 +94,7 @@ El corazón de LIFEOS es la **ejecución assistida**, no solo la planificación.
 | UX inconsistente de diálogos | Persisten múltiples `Alert.alert()` en tabs | Experiencia fragmentada, menor calidad percibida | Migración por lotes a `CustomAlertDialog` + sistema único de confirmaciones |
 | Productividad del Task Pool | Form siempre expandido + filtros horizontales | Fricción en uso diario móvil | Form colapsable + filtro vertical (dropdown) + quick actions contextuales |
 | Métricas no accionables | Cards de resumen no son drill-down | Visibilidad sin capacidad de acción | Hacer cards clickeables con detalle por categoría y navegación contextual |
+| Falta de explicabilidad del plan | No existía bitácora visible de por qué cambió el plan | El usuario no podía auditar replanificaciones | Registrar reason codes, contexto diario y bitácora visible en UI |
 | Inteligencia contextual inactiva | `screenTime` está stubeado | Se rompe promesa de anti-distracción | Reactivar signal de contexto con feature flag y telemetría mínima |
 | Documento/roadmap desalineado | Secciones intermedias marcan FASE C como próxima, pero abajo aparece implementada | Confusión de priorización | Recalibrar roadmap operativo con estados: hecho/parcial/pendiente |
 
@@ -107,6 +111,7 @@ El corazón de LIFEOS es la **ejecución assistida**, no solo la planificación.
 | Bloque fantasma al completar antes de fin | Pendiente | Home oculta bloque completado inmediatamente (`visibleTimeline`) | Nuevo estado visual `completed_ghost` con no-interacción + setting para activar/desactivar |
 | Reordenamiento drag-and-drop | Pendiente | Reordenamiento actual con flechas ↑↓ | Implementar drag móvil (`react-native-draggable-flatlist` o gesto nativo) + confirmación al soltar |
 | Métricas clickeables y pospuestas | Pendiente | Resumen muestra valores, sin drill-down | Cards `Completadas/Saltadas/Pospuestas/Planificadas/Trabajo` con modal de detalle y navegación |
+| Observabilidad y explicabilidad | Parcial antes | Había `replan_history` en store pero no bitácora clara ni contexto visible | Exponer bitácora de replanificaciones y resumen de razones del cambio de plan en Stats |
 | UX Task Pool (colapso + filtros) | Pendiente | Form siempre visible y filtros horizontales | Form minimizable + selector de filtro vertical + persistencia de vista |
 | Pop-ups/pickers consistentes | Parcial | Home usa modal custom; otros tabs siguen con `Alert.alert` y pickers nativos | Fase de estandarización UI: reemplazo progresivo y wrapper único de picker |
 | Bugs hábitos (validación final) | Parcial | Guard XP existe en `habitSlice` | Cerrar con pruebas en dispositivo y test de regresión específico (mark/unmark/reopen app) |
@@ -150,6 +155,77 @@ El corazón de LIFEOS es la **ejecución assistida**, no solo la planificación.
 El mayor riesgo actual no es arquitectura base, sino la brecha entre lo implementado en código y lo validado en dispositivo real, más la falta de cierre de integridad del timeline y consistencia UX.
 
 Prioridad recomendada: **cerrar confiabilidad (R0) y luego integridad funcional (R1)** antes de abrir nuevas capas de complejidad (R3).
+
+## 2.6 Registro de mejoras recientes
+
+### Item 9 — Hábitos y rutinas como bloques blandos
+
+- El scheduler local ahora integra hábitos pendientes del día como bloques ligeros (`type: habit`) en modo recordatorio.
+- Estos bloques se marcan como `isSoftBlock`, por lo que no actúan como restricciones duras ni desplazan la secuencia principal de tareas.
+- Se habilitó solape visual en calendario (día/semana) para hábitos, manteniendo carriles y lectura temporal sin romper el plan base.
+- Desde Home y Calendar se puede inspeccionar el bloque de hábito y marcarlo como completado en el mismo flujo.
+
+### Item 16 — Refactor store por slices + side effects
+
+- Se extrajeron reglas de dominio de tareas a `src/store/domain/taskRules.ts` para centralizar normalización, transición de estado y cálculo de XP.
+- Se extrajeron side effects de notificaciones a `src/store/sideEffects/notifications.ts` para reutilizar resincronización y recordatorios desde múltiples slices.
+- `taskSlice`, `habitSlice`, `contentSlice` y `executionSlice` ahora consumen estas capas compartidas, reduciendo duplicación y acoplamiento transversal.
+- Se limpiaron imports no usados y lógica repetida dentro de `executionSlice`, manteniendo el comportamiento funcional.
+
+### Item 17 — Paridad scheduler local/remoto
+
+- `executionSlice` ahora ejecuta una comparación sombra entre timeline local y backend remoto cuando genera/replanifica.
+- Se añadió métrica de divergencia (`divergenceScore`) con señales de cobertura, desfase temporal y orden relativo de tareas.
+- El fallback local queda observable con estado explícito (`LOCAL_FALLBACK_REMOTE_UNAVAILABLE`) y detalle persistido en store.
+- En `Stats` se expone una tarjeta de paridad con score, resumen, datos de motor remoto (si disponible) o error de fallback.
+- Se incorporó matriz de pruebas comunes para paridad en `src/core/schedulerParity.test.ts`.
+
+### Item 21 — Energía/cansancio
+
+- Se añadió UI en Home para reportar energía diaria (niveles 1-5) y cansancio inferido (`low`/`medium`/`high`).
+- El store persiste `daily_energy_reports` y calcula `energy_suggested_task_ids` para priorizar tareas según el estado reportado.
+- Se agregó acción explícita `applyEnergyBasedSuggestions()` que re-genera timeline usando `preferredTaskIds` derivados de energía.
+- La sesión diaria ahora guarda `energy_reported` y `suggested_task_ids` para trazabilidad operativa.
+
+### Item 9.1 — Seguimiento de llegada real en tránsito
+
+- Se añadió `arrivalTime` en transits de rutina para modelar explícitamente hora objetivo de llegada.
+- Al finalizar un bloque de tránsito de rutina, Home dispara un prompt de confirmación (`llegué a tiempo` / `llegué tarde`).
+- Si el usuario reporta llegada tarde, se registra `actualArrivalTime` y `delayMinutes` en `transit_arrival_records`.
+- Con esa evidencia, el sistema ajusta automáticamente la duración del traslado en rutina para mejorar futuras sugerencias de salida.
+
+### Item 15 — Métricas accionables
+
+- Se añadió drill-down real por categoría sobre `DailySession`.
+- Las tarjetas de estadísticas ahora abren contexto por tarea, carga y replanificación.
+- La sesión diaria expone `metric_drilldowns` y `decision_context` para hacer trazable el análisis.
+
+### Item 18 — Observabilidad y explicabilidad
+
+- Se añadió bitácora visible de replanificaciones en la pantalla de estadísticas.
+- El sistema registra y muestra `last_replan_reason`, `replan_history` y contexto de decisión en `DailySession`.
+- El usuario puede auditar por qué cambió el plan, cuándo ocurrió y cuántos bloques se movieron.
+
+### UI transversal
+
+- Los popups visibles migraron a un lenguaje visual consistente con la app.
+- Se priorizaron sheets y modales propios sobre pickers/alerts nativos cuando el flujo es visible al usuario.
+
+### Item 19 — QA y pruebas E2E
+
+- Se definió un flujo de campaña QA/E2E automatizable con reporte reproducible por corrida.
+- Nuevos comandos:
+  - `npm run qa:baseline` (typecheck + unit tests)
+  - `npm run qa:e2e:campaign` (genera reporte en `docs/reports/`)
+- Se añadió plantilla de escenarios E2E con evidencia para:
+  - notificaciones A/B/C,
+  - integridad de timeline,
+  - overflow de planificación,
+  - métricas accionables,
+  - observabilidad y explicabilidad.
+- Referencias:
+  - `scripts/qa_e2e_campaign.ps1`
+  - `docs/QA_E2E_AUTOMATIZABLE.md`
 
 ---
 
@@ -1287,6 +1363,7 @@ export const executionRecordRevive = (stored: any) => ({
 
 | Documento | Propósito | Cuándo Usar |
 |-----------|-----------|------------|
+| `docs/FUENTE_DE_VERDAD_LIFEOS.md` | Estado real canónico + roadmap único + decisiones vigentes | Referencia principal para estado actual |
 | `SCHEDULER_CONTRACT.md` | Schema detallado v1.0.0 | Dudas sobre campos, agregando campos nuevos |
 | `CONTRACT_EVOLUTION.md` | Guía de versionamiento | Evolucionando el contrato (PATCH/MINOR/MAJOR) |
 | `FASE_C_EXECUTION_NUCLEUS.md` | Detalles técnicos FASE C | Implementando FASE C |

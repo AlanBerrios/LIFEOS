@@ -1,6 +1,5 @@
 import * as Location from 'expo-location';
 import { useLifeStore } from '../store/useLifeStore';
-import { Alert } from 'react-native';
 
 // Helper to calculate distance in meters between two coordinates
 function getDistanceFromLatLonInM(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -23,7 +22,7 @@ function deg2rad(deg: number) {
 export async function requestLocationPermissions() {
   const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
   if (fgStatus !== 'granted') {
-    Alert.alert('Permiso denegado', 'Necesitamos tu ubicación para estimar tiempos de viaje.');
+    useLifeStore.getState().showGlobalAlert('Permiso denegado', 'Necesitamos tu ubicación para estimar tiempos de viaje.');
     return false;
   }
   return true;

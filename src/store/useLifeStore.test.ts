@@ -28,7 +28,8 @@ vi.mock('../core/scheduler', () => ({
         cognitive_drain: 150
       }
     ];
-  })
+  }),
+  rankTasksByImportance: vi.fn((tasks: any[]) => [...tasks].sort((a, b) => (b.priority - a.priority) || (b.cognitive_load - a.cognitive_load)))
 }));
 
 vi.mock('../services/notifications', () => ({
@@ -38,6 +39,7 @@ vi.mock('../services/notifications', () => ({
 }));
 
 import { useLifeStore } from './useLifeStore';
+import { callSchedulerApi } from '../services/schedulerApi';
 
 describe('useLifeStore replanification', () => {
   beforeEach(() => {
@@ -55,6 +57,13 @@ describe('useLifeStore replanification', () => {
       lastEngine: 'idle',
       lastSolverStatus: '',
       isGenerating: false,
+      pending_schedule_overflow: undefined,
+      last_scheduler_parity: undefined,
+      daily_energy_reports: [],
+      energy_suggested_task_ids: [],
+      energy_suggestion_bias: 0,
+      transit_arrival_records: [],
+      pending_transit_arrival_prompt: undefined,
       execution_records: [],
       pending_completion_check: undefined,
       is_replanning: false,
@@ -149,8 +158,177 @@ describe('useLifeStore replanification', () => {
     await useLifeStore.getState().reportTaskSkipped(taskId, 'distraction', 'Context switch');
 
     expect(useLifeStore.getState().lastEngine).toBe('local-ts');
-    expect(useLifeStore.getState().lastSolverStatus).toBe('LOCAL_ONLY');
+    expect(useLifeStore.getState().lastSolverStatus).toBe('LOCAL_FALLBACK_REMOTE_UNAVAILABLE');
+    expect(useLifeStore.getState().last_scheduler_parity?.status).toBe('remote_unavailable');
     expect(useLifeStore.getState().timeline.length).toBeGreaterThan(0);
+  });
+
+  it('marks parity as ok when remote scheduler responds with similar plan', async () => {
+    useLifeStore.getState().addTask({
+      title: 'Paridad OK',
+      eta_minutes: 30,
+      priority: 4,
+      cognitive_load: 5,
+      urgency: 'today'
+    });
+    const createdTaskId = useLifeStore.getState().tasks[0].id;
+
+    vi.mocked(callSchedulerApi).mockResolvedValueOnce({
+      blocks: [
+        {
+          id: 'remote-task-1',
+          type: 'task',
+          task_id: createdTaskId,
+          title: 'Test Task',
+          start_time: new Date('2026-04-11T10:00:00.000Z'),
+          end_time: new Date('2026-04-11T10:30:00.000Z')
+        }
+      ],
+      meta: {
+        contract_version: '1.0.0',
+        solver_status: 'OPTIMAL',
+        solve_time_ms: 48,
+        tasks_scheduled: 1,
+        engine: 'ortools-cpsat'
+      }
+    });
+
+    await useLifeStore.getState().generateTimeline(new Date('2026-04-11T09:00:00.000Z'));
+
+    const state = useLifeStore.getState();
+    expect(state.lastSolverStatus).toBe('LOCAL_PARITY_OK');
+    expect(state.last_scheduler_parity?.status).toBe('ok');
+    expect(state.last_scheduler_parity?.remote?.available).toBe(true);
+  });
+
+  it('opens an overflow prompt when the plan does not fit and resolves by postponing the rest', async () => {
+    for (let index = 0; index < 5; index += 1) {
+      useLifeStore.getState().addTask({
+        title: `Overflow ${index + 1}`,
+        eta_minutes: 60,
+        priority: index % 2 === 0 ? 5 : 4,
+        cognitive_load: 8,
+        urgency: 'today'
+      });
+    }
+
+    await useLifeStore.getState().generateTimeline(new Date('2026-04-11T09:00:00.000Z'));
+
+    const prompt = useLifeStore.getState().pending_schedule_overflow;
+    expect(prompt?.visible).toBe(true);
+    expect(prompt?.candidateTasks.length).toBeGreaterThan(0);
+
+    const keepTaskIds = prompt?.recommendedTaskIds ?? [];
+    await useLifeStore.getState().resolveScheduleOverflow(keepTaskIds);
+
+    const state = useLifeStore.getState();
+    expect(state.pending_schedule_overflow).toBeUndefined();
+    expect(state.tasks.some((task) => task.status === 'postponed')).toBe(true);
+  });
+
+  it('reports daily energy and generates prioritized suggestions', async () => {
+    useLifeStore.getState().addTask({
+      title: 'Deep Focus',
+      eta_minutes: 80,
+      priority: 5,
+      cognitive_load: 9,
+      urgency: 'today'
+    });
+    useLifeStore.getState().addTask({
+      title: 'Quick Admin',
+      eta_minutes: 20,
+      priority: 3,
+      cognitive_load: 2,
+      urgency: 'this_week'
+    });
+
+    useLifeStore.getState().reportDailyEnergy(2, 'high', 'poco descanso');
+    const stateAfterReport = useLifeStore.getState();
+
+    expect(stateAfterReport.daily_energy_reports.length).toBe(1);
+    expect(stateAfterReport.energy_suggested_task_ids.length).toBeGreaterThan(0);
+
+    await useLifeStore.getState().applyEnergyBasedSuggestions();
+    expect(useLifeStore.getState().timeline.length).toBeGreaterThan(0);
+  });
+
+  it('recalibrates energy suggestions when completions diverge from the reported level', async () => {
+    useLifeStore.getState().addTask({
+      title: 'Deep Focus',
+      eta_minutes: 80,
+      priority: 5,
+      cognitive_load: 9,
+      urgency: 'today'
+    });
+    useLifeStore.getState().addTask({
+      title: 'Quick Admin',
+      eta_minutes: 20,
+      priority: 2,
+      cognitive_load: 2,
+      urgency: 'this_week'
+    });
+
+    await useLifeStore.getState().generateTimeline(new Date('2026-04-11T09:00:00.000Z'));
+    useLifeStore.getState().reportDailyEnergy(1, 'high', 'muy cansado');
+
+    const biasAfterReport = useLifeStore.getState().energy_suggestion_bias;
+    const taskId = useLifeStore.getState().tasks[0].id;
+
+    await useLifeStore.getState().confirmCompletionOK(taskId);
+
+    const state = useLifeStore.getState();
+    expect(state.daily_energy_reports[0]?.telemetry?.completedTaskCount).toBeGreaterThan(0);
+    expect(state.daily_energy_reports[0]?.telemetry?.calibration).toBeDefined();
+    expect(state.energy_suggestion_bias).not.toBe(biasAfterReport);
+    expect(state.energy_suggested_task_ids.length).toBeGreaterThan(0);
+  });
+
+  it('prompts transit arrival after block ends and learns duration when user arrives late', () => {
+    useLifeStore.setState((state) => ({
+      ...state,
+      timeline: [
+        {
+          id: 'transit-1',
+          type: 'transit',
+          title: '🚗 Casa -> U',
+          start_time: new Date('2026-04-11T08:00:00.000Z'),
+          end_time: new Date('2026-04-11T08:30:00.000Z'),
+          isRoutineBlock: true,
+          routineBlockKey: 'transit:transit-1',
+          pinned: true
+        }
+      ],
+      routines: state.routines.map((routine, index) => index === 6
+        ? {
+            ...routine,
+            transits: [
+              {
+                id: 'transit-1',
+                label: 'Casa -> U',
+                time: '08:00',
+                durationMinutes: 30,
+                arrivalTime: '08:30'
+              }
+            ]
+          }
+        : routine
+      )
+    }));
+
+    useLifeStore.getState().checkTransitArrivalPrompt(new Date('2026-04-11T08:31:00.000Z'));
+    const prompt = useLifeStore.getState().pending_transit_arrival_prompt;
+    expect(prompt?.visible).toBe(true);
+    expect(prompt?.transitRoutineId).toBe('transit-1');
+
+    useLifeStore.getState().respondTransitArrivalPrompt(false, new Date('2026-04-11T08:50:00.000Z'));
+    const state = useLifeStore.getState();
+    expect(state.pending_transit_arrival_prompt).toBeUndefined();
+    expect(state.transit_arrival_records).toHaveLength(1);
+    expect(state.transit_arrival_records[0].response).toBe('late');
+
+    const updatedTransit = state.routines[6].transits.find((transit) => transit.id === 'transit-1');
+    expect(updatedTransit?.durationMinutes).toBe(50);
+    expect(updatedTransit?.arrivalTime).toBe('08:50');
   });
 
   it('applies confirmReplan and keeps rejectReplan stable', async () => {

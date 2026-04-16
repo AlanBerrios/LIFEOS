@@ -92,7 +92,11 @@ export default function StatsScreen(): ReactElement {
   const tasks = useLifeStore((s) => s.tasks);
   const timeline = useLifeStore((s) => s.timeline);
   const sessions = useLifeStore((s) => s.sessions);
+  const dailyEnergyReports = useLifeStore((s) => s.daily_energy_reports);
   const userProfile = useLifeStore((s) => s.userProfile);
+  const replanHistory = useLifeStore((s) => s.replan_history);
+  const lastReplanReason = useLifeStore((s) => s.last_replan_reason);
+  const schedulerParity = useLifeStore((s) => s.last_scheduler_parity);
   const [summaryDetail, setSummaryDetail] = useState<{ title: string; items: string[] } | null>(null);
 
   const today = todayISO();
@@ -176,6 +180,19 @@ export default function StatsScreen(): ReactElement {
     return `${badge.icon} ${badge.title} · ${date}`;
   });
 
+  const actionableMetrics = todaySession?.metric_drilldowns ?? [];
+  const decisionContext = todaySession?.decision_context ?? [];
+  const energyTelemetry = dailyEnergyReports.find((report) => report.date === today)?.telemetry ?? todaySession?.energy_reported?.telemetry ?? null;
+  const todayReplans = replanHistory.filter((entry) => entry.timestamp.toISOString().slice(0, 10) === today);
+  const latestReplan = todayReplans[todayReplans.length - 1] ?? replanHistory[replanHistory.length - 1] ?? null;
+  const replanHistoryLabels = todayReplans.length > 0
+    ? todayReplans.map((entry) => {
+        const time = entry.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const direction = entry.decision === 'accepted' ? 'Aceptada' : 'Rechazada';
+        return `${time} · ${direction} · ${entry.reason} · ${entry.previousBlocks}→${entry.nextBlocks} bloques (${entry.diffMinutes >= 0 ? '+' : ''}${entry.diffMinutes} min)`;
+      })
+    : ['No hubo replanificaciones hoy.'];
+
   const [showMasteryInfo, setShowMasteryInfo] = useState(false);
   const [showXpInfo, setShowXpInfo] = useState(false);
   const [showSkillsInfo, setShowSkillsInfo] = useState(false);
@@ -253,6 +270,237 @@ export default function StatsScreen(): ReactElement {
             ))
           )}
         </View>
+      </Animated.View>
+
+      {/* Métricas accionables */}
+      <Animated.View entering={FadeInDown.delay(170).duration(300)} style={styles.section}>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>Métricas accionables</Text>
+          <Text style={styles.sourceText}>Fuente: DailySession real</Text>
+        </View>
+
+        {actionableMetrics.length === 0 ? (
+          <Text style={styles.badgesEmpty}>
+            Aún no hay una sesión diaria enriquecida para mostrar el drill-down. Genera el plan de hoy o completa alguna acción para activarlo.
+          </Text>
+        ) : (
+          <View style={styles.metricGrid}>
+            {actionableMetrics.map((metric) => {
+              const accent =
+                metric.key === 'completed'
+                  ? lifeTheme.colors.success
+                  : metric.key === 'skipped'
+                  ? lifeTheme.colors.alert
+                  : metric.key === 'postponed'
+                  ? '#f59e0b'
+                  : metric.key === 'drain'
+                  ? lifeTheme.colors.primary
+                  : lifeTheme.colors.muted;
+
+              return (
+                <Pressable
+                  key={metric.key}
+                  style={styles.metricCard}
+                  onPress={() =>
+                    setSummaryDetail({
+                      title: metric.label,
+                      items: [
+                        `${metric.value} ${metric.unit}`,
+                        ...metric.context,
+                        metric.taskTitles.length > 0
+                          ? `Tareas: ${metric.taskTitles.join(' · ')}`
+                          : 'Sin tareas asociadas.'
+                      ]
+                    })
+                  }
+                >
+                  <View style={styles.metricCardHeader}>
+                    <Text style={[styles.metricValue, { color: accent }]}>{metric.value}</Text>
+                    <Text style={[styles.metricUnit, { color: accent }]}>{metric.unit}</Text>
+                  </View>
+                  <Text style={styles.metricLabel}>{metric.label}</Text>
+                  <Text style={styles.metricHint} numberOfLines={2}>
+                    {metric.context[0] ?? 'Toca para ver el detalle.'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
+        {decisionContext.length > 0 && (
+          <View style={styles.decisionWrap}>
+            {decisionContext.map((item) => (
+              <Pressable
+                key={item.label}
+                style={styles.decisionChip}
+                onPress={() =>
+                  setSummaryDetail({
+                    title: item.label,
+                    items: [
+                      `${item.count} evento(s)`,
+                      ...item.context,
+                      item.context.length === 0 ? 'Sin contexto adicional.' : ''
+                    ].filter(Boolean)
+                  })
+                }
+              >
+                <Text style={styles.decisionTitle}>{item.label}</Text>
+                <Text style={styles.decisionCount}>{item.count}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </Animated.View>
+
+      {/* Observabilidad y explicabilidad */}
+      <Animated.View entering={FadeInDown.delay(210).duration(300)} style={styles.section}>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>Observabilidad y explicabilidad</Text>
+          <Text style={styles.sourceText}>Bitácora del plan</Text>
+        </View>
+
+        <View style={styles.metricGrid}>
+          <Pressable
+            style={styles.metricCard}
+            onPress={() =>
+              setSummaryDetail({
+                title: 'Paridad scheduler local/remoto',
+                items: schedulerParity
+                  ? [
+                      schedulerParity.summary,
+                      `Estado: ${schedulerParity.status}`,
+                      `Score divergencia: ${schedulerParity.metrics.divergenceScore}/${schedulerParity.threshold}`,
+                      `Comunes: ${schedulerParity.metrics.commonTaskCount}`,
+                      `Solo local: ${schedulerParity.metrics.onlyLocalCount}`,
+                      `Solo remoto: ${schedulerParity.metrics.onlyRemoteCount}`,
+                      `Delta inicio promedio: ${schedulerParity.metrics.avgStartDeltaMinutes} min`,
+                      `Delta duración promedio: ${schedulerParity.metrics.avgDurationDeltaMinutes} min`,
+                      schedulerParity.remote?.available
+                        ? `Motor remoto: ${schedulerParity.remote.engine ?? 'desconocido'} · solver: ${schedulerParity.remote.solverStatus ?? 'n/a'}`
+                        : `Fallback activo: ${schedulerParity.remote?.error ?? 'backend no disponible'}`,
+                      `Última verificación: ${schedulerParity.checkedAt.toLocaleString('es-ES')}`
+                    ]
+                  : ['Aún no hay verificación de paridad. Genera o replanifica timeline para calcularla.']
+              })
+            }
+          >
+            <View style={styles.metricCardHeader}>
+              <Text style={[styles.metricValue, { color: lifeTheme.colors.primary }]}>
+                {schedulerParity ? schedulerParity.metrics.divergenceScore : '-'}
+              </Text>
+              <Text style={[styles.metricUnit, { color: lifeTheme.colors.primary }]}>score</Text>
+            </View>
+            <Text style={styles.metricLabel}>Paridad local/remoto</Text>
+            <Text style={styles.metricHint} numberOfLines={2}>
+              {schedulerParity
+                ? schedulerParity.status === 'remote_unavailable'
+                  ? 'Fallback local activo por backend no disponible.'
+                  : schedulerParity.summary
+                : 'Sin datos de paridad todavía.'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.metricCard}
+            onPress={() =>
+              setSummaryDetail({
+                title: 'Última replanificación',
+                items: latestReplan
+                  ? [
+                      `${latestReplan.decision === 'accepted' ? 'Aceptada' : 'Rechazada'}`,
+                      `${latestReplan.previousBlocks} → ${latestReplan.nextBlocks} bloques`,
+                      `${latestReplan.diffMinutes >= 0 ? '+' : ''}${latestReplan.diffMinutes} min de diferencia`,
+                      latestReplan.reason,
+                      `Hora: ${latestReplan.timestamp.toLocaleString('es-ES')}`,
+                      lastReplanReason ? `Contexto almacenado: ${lastReplanReason}` : 'Sin contexto almacenado adicional.'
+                    ]
+                  : ['No hay replanificaciones registradas todavía.']
+              })
+            }
+          >
+            <View style={styles.metricCardHeader}>
+              <Text style={[styles.metricValue, { color: lifeTheme.colors.primary }]}>{todayReplans.length}</Text>
+              <Text style={[styles.metricUnit, { color: lifeTheme.colors.primary }]}>hoy</Text>
+            </View>
+            <Text style={styles.metricLabel}>Replanificaciones</Text>
+            <Text style={styles.metricHint} numberOfLines={2}>
+              {latestReplan ? latestReplan.reason : 'Sin cambios de plan hoy.'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.metricCard}
+            onPress={() =>
+              setSummaryDetail({
+                title: 'Telemetría de energía',
+                items: energyTelemetry
+                  ? [
+                      `Calibración: ${energyTelemetry.calibration}`,
+                      `Tareas completadas: ${energyTelemetry.completedTaskCount}`,
+                      `Acierto en sugerencias: ${Math.round(energyTelemetry.suggestedHitRate * 100)}%`,
+                      `Carga observada: ${energyTelemetry.observedAverageLoad.toFixed(1)} / esperada ${energyTelemetry.expectedAverageLoad.toFixed(1)}`,
+                      `Prioridad media: ${energyTelemetry.observedAveragePriority.toFixed(1)}`,
+                      `ETA medio: ${Math.round(energyTelemetry.observedAverageEtaMinutes)} min`,
+                      `Sesgo aplicado: ${energyTelemetry.biasDelta >= 0 ? '+' : ''}${energyTelemetry.biasDelta.toFixed(2)}`,
+                      `Evaluado: ${energyTelemetry.evaluatedAt.toLocaleString('es-ES')}`
+                    ]
+                  : ['Todavía no hay telemetría de energía para este día. Registra energía y completa tareas para calibrar.']
+              })
+            }
+          >
+            <View style={styles.metricCardHeader}>
+              <Text style={[styles.metricValue, { color: lifeTheme.colors.alert }]}>
+                {energyTelemetry ? `${Math.round(energyTelemetry.suggestedHitRate * 100)}%` : '-'}
+              </Text>
+              <Text style={[styles.metricUnit, { color: lifeTheme.colors.alert }]}>match</Text>
+            </View>
+            <Text style={styles.metricLabel}>Telemetría de energía</Text>
+            <Text style={styles.metricHint} numberOfLines={2}>
+              {energyTelemetry
+                ? (energyTelemetry.calibration === 'aligned'
+                    ? 'Ajuste estable.'
+                    : energyTelemetry.calibration === 'under'
+                    ? 'Sugiere subir exigencia.'
+                    : 'Sugiere bajar exigencia.')
+                : 'Sin reporte calibrado todavía.'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.metricCard}
+            onPress={() =>
+              setSummaryDetail({
+                title: 'Bitácora de replanificaciones',
+                items: replanHistoryLabels
+              })
+            }
+          >
+            <View style={styles.metricCardHeader}>
+              <Text style={[styles.metricValue, { color: lifeTheme.colors.success }]}>{replanHistory.length}</Text>
+              <Text style={[styles.metricUnit, { color: lifeTheme.colors.success }]}>total</Text>
+            </View>
+            <Text style={styles.metricLabel}>Historial disponible</Text>
+            <Text style={styles.metricHint} numberOfLines={2}>
+              Toca para ver el log con hora, decisión y variación de bloques.
+            </Text>
+          </Pressable>
+        </View>
+
+        <Pressable
+          style={styles.historyButton}
+          onPress={() =>
+            setSummaryDetail({
+              title: 'Contexto de por qué cambió el plan',
+              items: [
+                lastReplanReason ? `Último motivo: ${lastReplanReason}` : 'Todavía no hubo cambios de plan hoy.',
+                ...replanHistoryLabels.slice(0, 5)
+              ]
+            })
+          }
+        >
+          <Text style={styles.historyButtonText}>Abrir explicación del plan</Text>
+        </Pressable>
       </Animated.View>
 
       {/* Resumen del dÃ­a */}
@@ -849,10 +1097,95 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   badgesWrap: {
     gap: 8
   },
+  sourceText: {
+    color: lifeTheme.colors.muted,
+    fontSize: 11,
+    fontWeight: '700'
+  },
   badgesEmpty: {
     color: lifeTheme.colors.muted,
     fontSize: 13,
     lineHeight: 18
+  },
+  metricGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10
+  },
+  metricCard: {
+    width: '48%',
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: lifeTheme.radius.md,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 12,
+    gap: 6
+  },
+  metricCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline'
+  },
+  metricValue: {
+    fontSize: 22,
+    fontWeight: '900'
+  },
+  metricUnit: {
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase'
+  },
+  metricLabel: {
+    color: lifeTheme.colors.text,
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  metricHint: {
+    color: lifeTheme.colors.muted,
+    fontSize: 11,
+    lineHeight: 16
+  },
+  decisionWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4
+  },
+  decisionChip: {
+    flexGrow: 1,
+    minWidth: '31%',
+    backgroundColor: `${lifeTheme.colors.primary}12`,
+    borderWidth: 1,
+    borderColor: `${lifeTheme.colors.primary}28`,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 4
+  },
+  decisionTitle: {
+    color: lifeTheme.colors.text,
+    fontSize: 12,
+    fontWeight: '800'
+  },
+  decisionCount: {
+    color: lifeTheme.colors.primary,
+    fontSize: 18,
+    fontWeight: '900'
+  },
+  historyButton: {
+    marginTop: 6,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center'
+  },
+  historyButtonText: {
+    color: lifeTheme.colors.text,
+    fontSize: 13,
+    fontWeight: '800'
   },
   badgeChip: {
     flexDirection: 'row',

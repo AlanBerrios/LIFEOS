@@ -1,5 +1,5 @@
 import * as IntentLauncher from 'expo-intent-launcher';
-import { Alert, AppState, AppStateStatus, Platform } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { scheduleDistractionWarning } from './notifications';
 import { useLifeStore } from '../store/useLifeStore';
 import * as BackgroundFetch from 'expo-background-fetch';
@@ -18,8 +18,8 @@ const TRACKED_APPS = [
 
 export async function requestUsagePermission() {
   if (Platform.OS !== 'android') return;
-  
-  Alert.alert(
+
+  useLifeStore.getState().showGlobalAlert(
     'Permiso requerido',
     'Para detectar tu tiempo en IG o TikTok, necesitamos acceso al Uso de Dispositivo.',
     [
@@ -27,7 +27,7 @@ export async function requestUsagePermission() {
       {
         text: 'Abrir Configuración',
         onPress: () => {
-          IntentLauncher.startActivityAsync('android.settings.USAGE_ACCESS_SETTINGS');
+          void IntentLauncher.startActivityAsync('android.settings.USAGE_ACCESS_SETTINGS');
         }
       }
     ]

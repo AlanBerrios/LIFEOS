@@ -1,8 +1,8 @@
 <div align="center">
-  <img src="https://img.shields.io/badge/LIFEOS-v3.1%20Nexus-8b5cf6?style=for-the-badge&logo=react&logoColor=white" alt="LifeOS Nexus" />
+  <img src="https://img.shields.io/badge/LIFEOS-v4.0%20HELL%20YEAH%20UPDATE-22c55e?style=for-the-badge&logo=react&logoColor=white" alt="LifeOS Hell Yeah Update" />
   <br />
-  <img src="assets/branding/icon-v3.png" alt="Logo LIFEOS v3.1" width="240" />
-  <h1 align="center">LifeOS ✨ v3.1 "Nexus"</h1>
+  <img src="assets/branding/icon-v3.png" alt="Logo LIFEOS v4.0" width="240" />
+  <h1 align="center">LifeOS ✨ v4.0 "HELL YEAH UPDATE"</h1>
   <p align="center">
     <strong>Sistema operativo personal para ejecutar tu día con foco, estructura y replanificación inteligente.</strong>
   </p>
@@ -22,7 +22,27 @@ LifeOS no es solo una lista de tareas. Es un **copiloto estricto de ejecución**
 
 Su núcleo combina tareas, rutina, eventos fijos, timeline y notificaciones para que cada día sea ejecutable, no solo "bonito en papel".
 
+## 📌 Fuente de Verdad
+
+La referencia canónica y vigente del estado del proyecto vive en:
+
+- `docs/FUENTE_DE_VERDAD_LIFEOS.md`
+
+Si existe conflicto entre documentos históricos y el estado operativo actual, esta fuente prevalece.
+
 ## 🆕 Últimas actualizaciones
+
+### v4.0 - HELL YEAH UPDATE
+
+- Integración de hábitos como bloques blandos en timeline y calendar, con lectura visual de solapes.
+- Motor de energía y cansancio con sugerencias aplicables para priorizar tareas del día.
+- Seguimiento real de tránsito (llegué a tiempo/tarde) para ajustar duración futura de traslados.
+- Observabilidad avanzada: bitácora de replanificaciones, contexto de decisiones y métricas accionables en Stats.
+- Paridad local/remoto del scheduler en modo sombra con score de divergencia y fallback observable.
+- UX unificada de popups y pickers con componentes propios de la app.
+- Prompt de overflow de planificación para proteger tareas clave cuando no cabe todo el día.
+- Hardening backend: ventanas fijas robustas, CORS por entorno y logging estructurado básico.
+- Campaña QA/E2E automatizable con reporte reproducible.
 
 - Calendario semanal y diario con **carriles dinámicos de solapamiento** (sin límite artificial de 2 bloques).
 - Soporte visual para bloques punteados/eventos superpuestos con mejor lectura temporal.

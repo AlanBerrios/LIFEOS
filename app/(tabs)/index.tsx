@@ -30,6 +30,7 @@ import {
 import { TaskCompletionCheckDialog } from '../../src/components/TaskCompletionCheckDialog';
 import { CustomAlertDialog, AlertButtonConfig } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
+import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
 
 function fmt(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -122,6 +123,12 @@ function buildBlockInfoMessage(params: {
   if (block.type === 'sleep' || block.type === 'transit') {
     base.push(`Naturaleza: ${block.type === 'sleep' ? 'Descanso nocturno' : 'Traslado'}.`);
     base.push(block.isRoutineBlock ? 'Origen: Rutina fija del día.' : 'Origen: Planificación automática.');
+    return base.join('\n');
+  }
+
+  if (block.type === 'habit') {
+    base.push('Naturaleza: Recordatorio de hábito (bloque blando).');
+    base.push('No bloquea ni rompe el plan principal; puede solaparse visualmente con otras actividades.');
     return base.join('\n');
   }
 
@@ -588,22 +595,27 @@ function BlockCard({
   const skipTask = useLifeStore((s) => s.skipTask);
   const postponeTask = useLifeStore((s) => s.postponeTask);
   const deleteBlock = useLifeStore((s) => s.deleteBlock);
+  const logHabit = useLifeStore((s) => s.logHabit);
   const tasks = useLifeStore((s) => s.tasks);
+  const habits = useLifeStore((s) => s.habits);
   const events = useLifeStore((s) => s.events);
-  const task = block.task_id ? tasks.find(t => t.id === block.task_id) : null;
+  const task = block.task_id ? tasks.find((t) => t.id === block.task_id) ?? null : null;
+  const habit = block.habit_id ? habits.find((h) => h.id === block.habit_id) ?? null : null;
   const relatedEvent = block.isStaticEvent ? events.find((event) => event.id === block.id) ?? null : null;
   const isInProgress = task?.status === 'in_progress';
-  const accentColor = task?.color?.trim() || (isGhost ? lifeTheme.colors.success : lifeTheme.colors.primary);
+  const isGhost = Boolean(block.isCompletedGhost);
+  const accentColor = task?.color?.trim() || habit?.color?.trim() || (isGhost ? lifeTheme.colors.success : lifeTheme.colors.primary);
   const taskEmoji = task?.emoji?.trim() || '🔷';
   const durationMin = Math.round((block.end_time.getTime() - block.start_time.getTime()) / 60_000);
   const isRest = block.type === 'rest' || block.type === 'meal' || block.type === 'sleep' || block.type === 'transit';
+  const isHabit = block.type === 'habit';
   const isMeal = block.type === 'meal';
   const isSleep = block.type === 'sleep';
   const isTransit = block.type === 'transit';
-  const isGhost = Boolean(block.isCompletedGhost);
   const isRoutineBlock = Boolean(block.isRoutineBlock);
   const isStaticEvent = Boolean(block.isStaticEvent);
-  const isMovableTask = !isRest && !isStaticEvent && !isRoutineBlock && !isGhost;
+  const isMovableTask = !isRest && !isHabit && !isStaticEvent && !isRoutineBlock && !isGhost;
+  const isHabitDoneToday = Boolean(habit?.lastCompletedDate === getTodayStr());
   const dragOffsetY = useSharedValue(0);
 
   let emoji = '☕';
@@ -611,6 +623,7 @@ function BlockCard({
   else if (isMeal) emoji = '🍜';
   else if (isSleep) emoji = '🌙';
   else if (isTransit) emoji = '🚗';
+  else if (isHabit) emoji = '🌱';
   else if (!isRest) emoji = '🔷';
 
   // Liquid progress calculation
@@ -687,12 +700,18 @@ function BlockCard({
           isRest ? styles.blockTitleRest : styles.blockTitleTask,
           isMeal && { color: '#fb923c' },
           isSleep && { color: '#818cf8', fontWeight: '900' },
+          isHabit && { color: accentColor },
           !isRest && { color: accentColor }
         ]} numberOfLines={2}>
           {task ? taskEmoji : emoji} {block.title}
         </Text>
         <View style={styles.blockMetaRow}>
           <Text style={styles.blockDuration}>{durationMin} min</Text>
+          {isHabit && (
+            <View style={styles.ghostBadge}>
+              <Text style={styles.ghostBadgeText}>{isHabitDoneToday ? 'HÁBITO ✓' : 'HÁBITO'}</Text>
+            </View>
+          )}
           {isGhost && (
             <View style={styles.ghostBadge}>
               <Text style={styles.ghostBadgeText}>FANTASMA</Text>
@@ -755,6 +774,17 @@ function BlockCard({
             <Text style={styles.ctrlIconLocked}>🔒</Text>
           </View>
         )}
+        {isHabit && habit && !isHabitDoneToday && (
+          <Pressable
+            style={[styles.ctrlBtn, styles.ctrlBtnDone]}
+            onPress={() => {
+              logHabit(habit.id, 1);
+              onTaskCompleted('Hábito completado', 15);
+            }}
+          >
+            <Text style={styles.ctrlIconDone}>✓</Text>
+          </Pressable>
+        )}
         {isRest && (
           <Pressable
             style={styles.editBreakBtn}
@@ -806,6 +836,14 @@ export default function DashboardScreen(): ReactElement {
   const confirmCompletionPartial = useLifeStore((s) => s.confirmCompletionPartial);
   const reportTaskSkipped = useLifeStore((s) => s.reportTaskSkipped);
   const reportTaskPostponed = useLifeStore((s) => s.reportTaskPostponed);
+  const dailyEnergyReports = useLifeStore((s) => s.daily_energy_reports);
+  const energySuggestedTaskIds = useLifeStore((s) => s.energy_suggested_task_ids);
+  const reportDailyEnergy = useLifeStore((s) => s.reportDailyEnergy);
+  const applyEnergyBasedSuggestions = useLifeStore((s) => s.applyEnergyBasedSuggestions);
+  const pendingTransitArrivalPrompt = useLifeStore((s) => s.pending_transit_arrival_prompt);
+  const checkTransitArrivalPrompt = useLifeStore((s) => s.checkTransitArrivalPrompt);
+  const respondTransitArrivalPrompt = useLifeStore((s) => s.respondTransitArrivalPrompt);
+  const dismissTransitArrivalPrompt = useLifeStore((s) => s.dismissTransitArrivalPrompt);
 
   const [editBreak, setEditBreak] = useState<{ id: string; minutes: number } | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
@@ -817,12 +855,23 @@ export default function DashboardScreen(): ReactElement {
   const [feedback, setFeedback] = useState<{ title: string; subtitle: string } | null>(null);
   const [completionTaskId, setCompletionTaskId] = useState<string | null>(null);
   const [isSubmittingCompletion, setIsSubmittingCompletion] = useState(false);
+  const [transitArrivalPickerVisible, setTransitArrivalPickerVisible] = useState(false);
+  const [transitActualArrivalTime, setTransitActualArrivalTime] = useState(new Date());
 
   useEffect(() => {
     // Actualizar cada 5 segundos para animación de progreso fluida en tiempo real
     const itv = setInterval(() => setNow(new Date()), 5000);
     return () => clearInterval(itv);
   }, []);
+
+  useEffect(() => {
+    checkTransitArrivalPrompt(now);
+  }, [checkTransitArrivalPrompt, now, timeline]);
+
+  useEffect(() => {
+    if (!pendingTransitArrivalPrompt) return;
+    setTransitActualArrivalTime(new Date(pendingTransitArrivalPrompt.plannedEnd));
+  }, [pendingTransitArrivalPrompt]);
 
   useEffect(() => {
     if (!activeTimer) return;
@@ -846,6 +895,13 @@ export default function DashboardScreen(): ReactElement {
   const completedCount = tasks.filter((t) => t.status === 'completed').length;
   const taskBlocks = timeline.filter((b) => b.type === 'task').length;
   const completionTask = completionTaskId ? tasks.find((t) => t.id === completionTaskId) ?? null : null;
+  const todayEnergyReport = dailyEnergyReports.find((item) => item.date === getTodayStr());
+  const suggestedTasks = useMemo(
+    () => energySuggestedTaskIds
+      .map((taskId) => tasks.find((task) => task.id === taskId))
+      .filter((task): task is NonNullable<typeof task> => Boolean(task)),
+    [energySuggestedTaskIds, tasks]
+  );
 
   // Auto-filter completed tasks from timeline, but keep ghost blocks until their planned end
   const visibleTimeline = useMemo(() => {
@@ -956,6 +1012,60 @@ export default function DashboardScreen(): ReactElement {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(180).duration(320)} style={styles.actionsCard}>
+          <View style={styles.energyCard}>
+            <View style={styles.energyHeaderRow}>
+              <Text style={styles.energyTitle}>⚡ Energía y cansancio</Text>
+              {todayEnergyReport ? (
+                <Text style={styles.energyMeta}>Nivel {todayEnergyReport.level} · {todayEnergyReport.fatigue}</Text>
+              ) : (
+                <Text style={styles.energyMeta}>Sin reporte de hoy</Text>
+              )}
+            </View>
+
+            <View style={styles.energyLevelsRow}>
+              {[1, 2, 3, 4, 5].map((level) => {
+                const selected = todayEnergyReport?.level === level;
+                return (
+                  <Pressable
+                    key={level}
+                    style={[styles.energyLevelChip, selected && styles.energyLevelChipActive]}
+                    onPress={() => {
+                      const fatigue = level <= 2 ? 'high' : level === 3 ? 'medium' : 'low';
+                      reportDailyEnergy(level as 1 | 2 | 3 | 4 | 5, fatigue);
+                      showFeedback('🧠 Energía registrada', `Nivel ${level} (${fatigue}) aplicado a sugerencias`);
+                    }}
+                  >
+                    <Text style={[styles.energyLevelText, selected && styles.energyLevelTextActive]}>{level}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {suggestedTasks.length > 0 ? (
+              <View style={styles.energySuggestedWrap}>
+                <Text style={styles.energySuggestedLabel}>Sugeridas ahora:</Text>
+                <Text style={styles.energySuggestedText} numberOfLines={2}>
+                  {suggestedTasks.map((task) => task.title).join(' · ')}
+                </Text>
+              </View>
+            ) : null}
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.energyApplyBtn,
+                pressed && styles.pressed,
+                suggestedTasks.length === 0 && styles.disabled
+              ]}
+              disabled={suggestedTasks.length === 0 || isGenerating}
+              onPress={() => {
+                void applyEnergyBasedSuggestions();
+                showFeedback('🔁 Plan ajustado', 'Se priorizaron tareas según tu energía reportada');
+              }}
+            >
+              <Text style={styles.energyApplyText}>Aplicar energía al plan</Text>
+            </Pressable>
+          </View>
+
           <Pressable
             style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed, isGenerating && styles.disabled]}
             onPress={() => void generateTimeline(new Date())}
@@ -1118,6 +1228,69 @@ export default function DashboardScreen(): ReactElement {
         </Animated.View>
       ) : null}
 
+      <Modal
+        visible={Boolean(pendingTransitArrivalPrompt?.visible)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          dismissTransitArrivalPrompt();
+        }}
+      >
+        <View style={styles.transitPromptOverlay}>
+          <View style={styles.transitPromptCard}>
+            <Text style={styles.transitPromptTitle}>🚗 Llegada de tránsito</Text>
+            <Text style={styles.transitPromptText}>
+              ¿Llegaste a tiempo en "{pendingTransitArrivalPrompt?.transitLabel}"?
+            </Text>
+            <Text style={styles.transitPromptMeta}>
+              Llegada objetivo: {pendingTransitArrivalPrompt ? fmt(pendingTransitArrivalPrompt.plannedEnd) : '--:--'}
+            </Text>
+
+            <View style={styles.transitPromptActions}>
+              <Pressable
+                style={styles.transitOnTimeBtn}
+                onPress={() => {
+                  respondTransitArrivalPrompt(true, pendingTransitArrivalPrompt?.plannedEnd);
+                  showFeedback('✅ Llegada registrada', 'Se marcó como llegada a tiempo');
+                }}
+              >
+                <Text style={styles.transitOnTimeText}>Llegué a tiempo</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.transitLateBtn}
+                onPress={() => setTransitArrivalPickerVisible(true)}
+              >
+                <Text style={styles.transitLateText}>Llegué tarde</Text>
+              </Pressable>
+            </View>
+
+            <Pressable
+              style={styles.transitSkipBtn}
+              onPress={() => dismissTransitArrivalPrompt()}
+            >
+              <Text style={styles.transitSkipText}>Ahora no</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <AppDateTimePickerSheet
+        visible={transitArrivalPickerVisible}
+        mode="time"
+        value={transitActualArrivalTime}
+        title="Hora real de llegada"
+        subtitle="Guardaremos este dato para ajustar mejor la duración del traslado."
+        confirmLabel="Guardar llegada"
+        onConfirm={(selected) => {
+          setTransitActualArrivalTime(selected);
+          respondTransitArrivalPrompt(false, selected);
+          setTransitArrivalPickerVisible(false);
+          showFeedback('🕒 Llegada real guardada', 'Ajustaremos próximas sugerencias de salida');
+        }}
+        onClose={() => setTransitArrivalPickerVisible(false)}
+      />
+
       <TaskCompletionCheckDialog
         visible={Boolean(completionTask)}
         task={completionTask}
@@ -1208,6 +1381,52 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     backgroundColor: lifeTheme.colors.surface, borderRadius: 16,
     borderWidth: 1, borderColor: lifeTheme.colors.border, padding: 14, gap: 10
   },
+  energyCard: {
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 10,
+    gap: 8
+  },
+  energyHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8
+  },
+  energyTitle: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '800' },
+  energyMeta: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '700' },
+  energyLevelsRow: { flexDirection: 'row', gap: 8 },
+  energyLevelChip: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: lifeTheme.colors.surface,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border
+  },
+  energyLevelChipActive: {
+    borderColor: lifeTheme.colors.primary,
+    backgroundColor: `${lifeTheme.colors.primary}20`
+  },
+  energyLevelText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '900' },
+  energyLevelTextActive: { color: lifeTheme.colors.primary },
+  energySuggestedWrap: { gap: 2 },
+  energySuggestedLabel: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '700' },
+  energySuggestedText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
+  energyApplyBtn: {
+    marginTop: 2,
+    backgroundColor: `${lifeTheme.colors.primary}20`,
+    borderWidth: 1,
+    borderColor: `${lifeTheme.colors.primary}45`,
+    borderRadius: 10,
+    alignItems: 'center',
+    paddingVertical: 9
+  },
+  energyApplyText: { color: lifeTheme.colors.primary, fontSize: 12, fontWeight: '800' },
   primaryBtn: {
     backgroundColor: lifeTheme.colors.primary, borderRadius: 12,
     paddingVertical: 14, alignItems: 'center'
@@ -1395,6 +1614,74 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     width: 18, height: 18, textAlign: 'center', lineHeight: 18,
     color: lifeTheme.colors.onPrimary, fontSize: 10, fontWeight: '900', overflow: 'hidden'
   },
+  parityWarningCard: {
+    marginTop: 8,
+    backgroundColor: `${lifeTheme.colors.alert}14`,
+    borderWidth: 1,
+    borderColor: `${lifeTheme.colors.alert}55`,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 8
+  },
+  parityWarningHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8
+  },
+  parityWarningTitle: {
+    color: lifeTheme.colors.alert,
+    fontSize: 14,
+    fontWeight: '900'
+  },
+  parityWarningScore: {
+    color: lifeTheme.colors.alert,
+    fontSize: 12,
+    fontWeight: '900'
+  },
+  parityWarningText: {
+    color: lifeTheme.colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18
+  },
+  parityWarningSubtext: {
+    color: lifeTheme.colors.muted,
+    fontSize: 12,
+    lineHeight: 17
+  },
+  parityWarningActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 2
+  },
+  parityWarningPrimary: {
+    flex: 1,
+    backgroundColor: lifeTheme.colors.alert,
+    borderRadius: 12,
+    alignItems: 'center',
+    paddingVertical: 10
+  },
+  parityWarningPrimaryText: {
+    color: lifeTheme.colors.onPrimary,
+    fontSize: 12,
+    fontWeight: '800'
+  },
+  parityWarningSecondary: {
+    flex: 1,
+    backgroundColor: lifeTheme.colors.surface,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    borderRadius: 12,
+    alignItems: 'center',
+    paddingVertical: 10
+  },
+  parityWarningSecondaryText: {
+    color: lifeTheme.colors.text,
+    fontSize: 12,
+    fontWeight: '800'
+  },
   feedbackToast: {
     position: 'absolute',
     left: 16,
@@ -1414,6 +1701,55 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     elevation: 6
   },
   feedbackTitle: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '800' },
-  feedbackSubtitle: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '600' }
+  feedbackSubtitle: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '600' },
+  transitPromptOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20
+  },
+  transitPromptCard: {
+    width: '100%',
+    backgroundColor: lifeTheme.colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 16,
+    gap: 10
+  },
+  transitPromptTitle: { color: lifeTheme.colors.text, fontSize: 17, fontWeight: '900' },
+  transitPromptText: { color: lifeTheme.colors.text, fontSize: 14, lineHeight: 20 },
+  transitPromptMeta: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
+  transitPromptActions: { flexDirection: 'row', gap: 10 },
+  transitOnTimeBtn: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: `${lifeTheme.colors.success}20`,
+    borderWidth: 1,
+    borderColor: `${lifeTheme.colors.success}60`,
+    alignItems: 'center',
+    paddingVertical: 10
+  },
+  transitOnTimeText: { color: lifeTheme.colors.success, fontWeight: '800', fontSize: 12 },
+  transitLateBtn: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: `${lifeTheme.colors.alert}14`,
+    borderWidth: 1,
+    borderColor: `${lifeTheme.colors.alert}55`,
+    alignItems: 'center',
+    paddingVertical: 10
+  },
+  transitLateText: { color: lifeTheme.colors.alert, fontWeight: '800', fontSize: 12 },
+  transitSkipBtn: {
+    borderRadius: 10,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    alignItems: 'center',
+    paddingVertical: 10
+  },
+  transitSkipText: { color: lifeTheme.colors.muted, fontWeight: '700', fontSize: 12 }
   });
 }

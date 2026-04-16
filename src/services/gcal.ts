@@ -2,7 +2,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { makeRedirectUri } from 'expo-auth-session';
-import { Alert } from 'react-native';
+import { useLifeStore } from '../store/useLifeStore';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -20,7 +20,7 @@ export function useGoogleCalendarAuth() {
 
   const handleLogin = async () => {
     if (GOOGLE_CLIENT_ID === 'TU_CLIENT_ID_AQUI.apps.googleusercontent.com') {
-      Alert.alert(
+      useLifeStore.getState().showGlobalAlert(
         'Falta Configuración',
         'Necesitas configurar tu Google Client ID en src/services/gcal.ts antes de iniciar sesión. Lee el Walkthrough para más detalles.'
       );
@@ -44,10 +44,10 @@ export function useGoogleCalendarAuth() {
 export async function syncTimelineToCalendar(timeline: any[], dateString: string) {
   const token = await AsyncStorage.getItem('@gcal_token');
   if (!token) {
-    Alert.alert('Error', 'No has iniciado sesión en Google Calendar.');
+    useLifeStore.getState().showGlobalAlert('Error', 'No has iniciado sesión en Google Calendar.');
     return;
   }
   
   // Real implementation will map timeline blocks into Google Calendar Event API POST requests
-  Alert.alert('Éxito', 'La infraestructura de exportación a Google Calendar está lista. (Simulado)');
+  useLifeStore.getState().showGlobalAlert('Éxito', 'La infraestructura de exportación a Google Calendar está lista. (Simulado)');
 }

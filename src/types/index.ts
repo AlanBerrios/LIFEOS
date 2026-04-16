@@ -9,6 +9,31 @@ export type TaskStatus = 'pool' | 'scheduled' | 'completed' | 'in_progress' | 's
  */
 export type TaskUrgency = 'today' | 'this_week' | 'this_month' | 'someday';
 
+export type EnergyLevel = 1 | 2 | 3 | 4 | 5;
+
+export interface EnergyTelemetry {
+  evaluatedAt: Date;
+  completedTaskCount: number;
+  completedTaskIds: string[];
+  suggestedHitCount: number;
+  suggestedHitRate: number;
+  observedAverageLoad: number;
+  observedAveragePriority: number;
+  observedAverageEtaMinutes: number;
+  expectedAverageLoad: number;
+  calibration: 'under' | 'aligned' | 'over';
+  biasDelta: number;
+}
+
+export interface DailyEnergyReport {
+  date: string; // YYYY-MM-DD
+  level: EnergyLevel;
+  fatigue: 'low' | 'medium' | 'high';
+  note?: string;
+  created_at: Date;
+  telemetry?: EnergyTelemetry;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -31,8 +56,9 @@ export interface Task {
 
 export interface ScheduleBlock {
   id: string; // Puede ser de una tarea o generado (ej. "rest-1")
-  type: 'task' | 'rest' | 'meal' | 'sleep' | 'transit';
+  type: 'task' | 'rest' | 'meal' | 'sleep' | 'transit' | 'habit';
   task_id?: string;
+  habit_id?: string;
   title: string;
   start_time: Date;
   end_time: Date;
@@ -48,6 +74,8 @@ export interface ScheduleBlock {
   isCompletedGhost?: boolean;
   /** Clave estable para overrides diarios (ej: meal:<id>, transit:<id>, sleep) */
   routineBlockKey?: string;
+  /** Bloque blando: recordatorio visual que no impone restricción dura al plan */
+  isSoftBlock?: boolean;
 }
 
 export type RecurrenceFrequency = 'none' | 'daily' | 'weekly' | 'monthly';
@@ -60,7 +88,6 @@ export interface StaticEvent {
   color?: string;
   startTime: Date;
   endTime: Date;
-  color?: string;
   location?: string;
   isRecurring?: boolean;
   /** Minutos de antelación para el recordatorio */
@@ -86,6 +113,8 @@ export interface TransitRoutine {
   label: string;
   time: string; // HH:mm
   durationMinutes: number;
+  /** Hora objetivo de llegada (HH:mm). Si existe, prevalece para derivar duración. */
+  arrivalTime?: string;
 }
 
 export interface DailyRoutine {
@@ -175,6 +204,34 @@ export interface DailySession {
     pattern: string;
     confidence: number;  // 0-1
   }>;
+
+  /** Métricas accionables con drill-down por categoría */
+  metric_drilldowns?: Array<{
+    key: 'completed' | 'skipped' | 'postponed' | 'scheduled' | 'drain' | 'replan';
+    label: string;
+    value: number;
+    unit: string;
+    context: string[];
+    taskTitles: string[];
+  }>;
+
+  /** Razones y decisiones que explican por qué cambió el plan */
+  decision_context?: Array<{
+    label: string;
+    count: number;
+    context: string[];
+  }>;
+
+  /** Reporte de energía/cansancio del día para ajustar sugerencias del plan */
+  energy_reported?: {
+    level: EnergyLevel;
+    fatigue: 'low' | 'medium' | 'high';
+    note?: string;
+    telemetry?: EnergyTelemetry;
+  };
+
+  /** IDs sugeridos por motor de energía para priorizar en el plan */
+  suggested_task_ids?: string[];
 }
 
 export interface UserProfile {

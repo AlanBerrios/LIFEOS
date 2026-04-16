@@ -1,6 +1,10 @@
 AUDITORIA ESTRATEGICA Y TECNICA - LIFEOS
 Fecha: 11-04-2026
 
+NOTA VIGENTE (16-04-2026):
+- Fuente canonica de estado actual: docs/FUENTE_DE_VERDAD_LIFEOS.md
+- Este documento se mantiene como contexto estrategico e historico.
+
 ============================================================
 1) RESUMEN EJECUTIVO
 ============================================================

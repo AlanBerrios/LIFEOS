@@ -18,6 +18,8 @@ import { useAppTheme } from '../src/theme';
 import AppLoadingSplash from '../src/components/AppLoadingSplash';
 import { DailyStartPrompt } from '../src/components/DailyStartPrompt';
 import { RestDayPrompt } from '../src/components/RestDayPrompt';
+import { ScheduleOverflowPrompt } from '../src/components/ScheduleOverflowPrompt';
+import { CustomAlertDialog } from '../src/components/CustomAlertDialog';
 import { useDailyStart } from '../src/hooks/useDailyStart';
 
 try {
@@ -35,6 +37,11 @@ export default function RootLayout(): ReactElement {
   const router = useRouter();
   const { shouldShowPrompt, dismissPrompt } = useDailyStart();
   const markRestDay = useLifeStore((s) => s.markRestDay);
+  const overflowPrompt = useLifeStore((s) => s.pending_schedule_overflow);
+  const resolveScheduleOverflow = useLifeStore((s) => s.resolveScheduleOverflow);
+  const dismissScheduleOverflow = useLifeStore((s) => s.dismissScheduleOverflow);
+  const globalAlert = useLifeStore((s) => s.global_alert);
+  const dismissGlobalAlert = useLifeStore((s) => s.dismissGlobalAlert);
 
   useEffect(() => {
     let mounted = true;
@@ -182,7 +189,7 @@ export default function RootLayout(): ReactElement {
     dismissPrompt();
     setShowDailyPrompt(false);
     // Navegar a la pestaña "Hoy" para empezar el día
-    router.push('/(tabs)/index');
+    router.push('/(tabs)/index' as any);
   };
 
   const handleCaptureQuick = () => {
@@ -203,7 +210,7 @@ export default function RootLayout(): ReactElement {
     markRestDay();
     setShowRestDayPrompt(false);
     // Navegar a la pestaña "Hoy" con un plan vacío (no se generan tareas)
-    router.push('/(tabs)/index');
+    router.push('/(tabs)/index' as any);
   };
 
   if (isBooting) {
@@ -226,6 +233,30 @@ export default function RootLayout(): ReactElement {
           visible={showRestDayPrompt}
           onConfirm={handleConfirmRestDay}
           onCancel={() => setShowRestDayPrompt(false)}
+        />
+        <ScheduleOverflowPrompt
+          visible={overflowPrompt?.visible ?? false}
+          candidateTasks={overflowPrompt?.candidateTasks ?? []}
+          recommendedTaskIds={overflowPrompt?.recommendedTaskIds ?? []}
+          maxSelections={overflowPrompt?.maxSelections ?? 0}
+          reason={overflowPrompt?.reason ?? ''}
+          onConfirm={(taskIds) => {
+            void resolveScheduleOverflow(taskIds);
+          }}
+          onDismiss={() => {
+            if (overflowPrompt) {
+              void resolveScheduleOverflow(overflowPrompt.recommendedTaskIds);
+              return;
+            }
+            dismissScheduleOverflow();
+          }}
+        />
+        <CustomAlertDialog
+          visible={globalAlert?.visible ?? false}
+          title={globalAlert?.title ?? ''}
+          message={globalAlert?.message}
+          buttons={globalAlert?.buttons}
+          onDismiss={dismissGlobalAlert}
         />
       </SafeAreaProvider>
     </GestureHandlerRootView>

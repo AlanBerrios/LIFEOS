@@ -1,4 +1,5 @@
-import type { AppSettings, Alarm, DailyRoutine, DailySession, Habit, LifeTimer, QuickNote, RoutineDayOverride, ScheduleBlock, StaticEvent, Task, TaskStatus, TravelLog, UserProfile, ExecutionRecord, SkipReason, PostponeReason, PendingCompletionCheck, ReplanDecision } from '../types';
+import type { AppSettings, Alarm, DailyEnergyReport, DailyRoutine, DailySession, Habit, LifeTimer, QuickNote, RoutineDayOverride, ScheduleBlock, StaticEvent, Task, TaskStatus, TravelLog, UserProfile, ExecutionRecord, SkipReason, PostponeReason, PendingCompletionCheck, ReplanDecision, EnergyLevel } from '../types';
+import type { AlertButtonConfig } from '../components/CustomAlertDialog';
 
 export type { Habit } from '../types';
 
@@ -45,6 +46,87 @@ export interface MoveBlockResult {
   suggestions?: MoveSuggestion[];
 }
 
+export interface ScheduleGenerationOptions {
+  preferredTaskIds?: string[];
+  suppressOverflowPrompt?: boolean;
+}
+
+export interface ScheduleOverflowCandidate {
+  id: string;
+  title: string;
+  priority: Task['priority'];
+  urgency: Task['urgency'];
+  eta_minutes: number;
+  cognitive_load: number;
+  deadline?: Date | null;
+}
+
+export interface ScheduleOverflowPromptState {
+  visible: boolean;
+  reason: string;
+  createdAt: Date;
+  candidateTasks: ScheduleOverflowCandidate[];
+  recommendedTaskIds: string[];
+  maxSelections: number;
+}
+
+export interface GlobalAlertState {
+  visible: boolean;
+  title: string;
+  message?: string;
+  buttons: AlertButtonConfig[];
+}
+
+export interface SchedulerParityState {
+  status: 'ok' | 'drift' | 'remote_unavailable';
+  checkedAt: Date;
+  threshold: number;
+  summary: string;
+  metrics: {
+    localTaskCount: number;
+    remoteTaskCount: number;
+    commonTaskCount: number;
+    onlyLocalCount: number;
+    onlyRemoteCount: number;
+    avgStartDeltaMinutes: number;
+    avgDurationDeltaMinutes: number;
+    orderMismatchCount: number;
+    divergenceScore: number;
+    withinThreshold: boolean;
+  };
+  remote?: {
+    available: boolean;
+    engine?: string;
+    solverStatus?: string;
+    solveTimeMs?: number;
+    error?: string;
+  };
+}
+
+export interface TransitArrivalRecord {
+  id: string;
+  date: string; // YYYY-MM-DD
+  routineBlockKey: string;
+  transitRoutineId: string;
+  transitLabel: string;
+  plannedStart: Date;
+  plannedEnd: Date;
+  actualArrivalTime: Date;
+  delayMinutes: number;
+  response: 'on_time' | 'late' | 'dismissed';
+}
+
+export interface PendingTransitArrivalPromptState {
+  visible: boolean;
+  date: string; // YYYY-MM-DD
+  blockId: string;
+  routineBlockKey: string;
+  transitRoutineId: string;
+  transitLabel: string;
+  plannedStart: Date;
+  plannedEnd: Date;
+}
+
 export interface LifeStoreState {
   tasks: Task[];
   timeline: ScheduleBlock[];
@@ -67,6 +149,14 @@ export interface LifeStoreState {
   isGenerating: boolean;
   last_replan_reason?: string;
   replan_history: ReplanDecision[];
+  pending_schedule_overflow?: ScheduleOverflowPromptState;
+  global_alert?: GlobalAlertState;
+  last_scheduler_parity?: SchedulerParityState;
+  daily_energy_reports: DailyEnergyReport[];
+  energy_suggested_task_ids: string[];
+  energy_suggestion_bias: number;
+  transit_arrival_records: TransitArrivalRecord[];
+  pending_transit_arrival_prompt?: PendingTransitArrivalPromptState;
 
   // FASE C: Execution Nucleus
   execution_records: ExecutionRecord[];
@@ -96,7 +186,7 @@ export interface LifeStoreActions {
   updateHabit: (id: string, updates: Partial<Habit>) => void;
   deleteHabit: (id: string) => void;
 
-  generateTimeline: (startTime?: Date) => Promise<void>;
+  generateTimeline: (startTime?: Date, options?: ScheduleGenerationOptions) => Promise<void>;
   setTimeline: (blocks: ScheduleBlock[]) => void;
   moveBlock: (blockId: string, direction: 'up' | 'down') => MoveBlockResult;
   moveBlockToIndex: (blockId: string, targetIndex: number) => MoveBlockResult;
@@ -141,6 +231,15 @@ export interface LifeStoreActions {
   reportTaskSkipped: (task_id: string, reason: SkipReason, details: string) => Promise<void>;
   reportTaskPostponed: (task_id: string, reason: PostponeReason, details: string, postponed_until: Date) => Promise<void>;
   triggerReplanification: () => Promise<void>;
+  resolveScheduleOverflow: (keepTaskIds: string[]) => Promise<void>;
+  dismissScheduleOverflow: () => void;
+  showGlobalAlert: (title: string, message?: string, buttons?: AlertButtonConfig[]) => void;
+  dismissGlobalAlert: () => void;
+  reportDailyEnergy: (level: EnergyLevel, fatigue: 'low' | 'medium' | 'high', note?: string) => void;
+  applyEnergyBasedSuggestions: () => Promise<void>;
+  checkTransitArrivalPrompt: (now?: Date) => void;
+  respondTransitArrivalPrompt: (arrivedOnTime: boolean, actualArrivalTime?: Date) => void;
+  dismissTransitArrivalPrompt: () => void;
   addReplanDecision: (
     decision: 'accepted' | 'rejected',
     reason: string,

@@ -1,0 +1,78 @@
+Análisis backend y calidad general de LIFEOS (sin modificar archivos existentes)
+
+Resumen
+- Se revisó el backend accesible y la configuración npm disponible.
+- No fue posible acceder con las herramientas a src, tests TS, vitest config ni docs/reports, así que esa parte queda como limitación explícita.
+- Hallazgo crítico: el scheduler Python referencia funciones inexistentes para manejar fixed_start/fixed_end, lo que compromete la ejecución real del motor.
+
+Backend revisado
+- API FastAPI con endpoints:
+  - GET /health
+  - POST /schedule
+  - POST /replan
+- Modelos Pydantic con versionado de contrato.
+- Scheduler basado en OR-Tools CP-SAT con fallback greedy.
+- requirements mínimos:
+  - fastapi
+  - uvicorn[standard]
+  - ortools
+  - pydantic
+
+Hallazgos críticos
+1) Bug fatal en scheduler
+- El scheduler usa dos funciones no definidas para ventanas fijas.
+- Impacto:
+  - posibles errores 500 al invocar /schedule o /replan
+  - el backend no puede considerarse robusto en su estado actual
+
+2) Divergencia entre solución del solver y timeline emitido
+- El solver calcula una solución con variables de inicio/fin.
+- Luego el timeline se reconstruye de manera secuencial.
+- Riesgo:
+  - la respuesta final puede no respetar exactamente la solución temporal del modelo
+  - especialmente sensible si existen tareas con fixed_start/fixed_end
+
+3) Replanificación aún superficial
+- El request contempla failed_task_id y failed_task_reason.
+- La implementación actual filtra completadas y reinyecta el resto como pool.
+- No hay cambio real de estrategia según la razón del fallo.
+
+Contratos y coherencia TS/Python
+- El backend define contratos claros y versionados.
+- No fue posible verificar paridad real con TypeScript por falta de acceso a esas rutas.
+- Riesgos visibles:
+  - validaciones cruzadas insuficientes
+  - posible fragilidad de naming entre camelCase y snake_case
+  - dependencia fuerte de que frontend normalice status correctamente
+
+Buenas prácticas observadas
+- Separación razonable entre API, modelos y lógica de scheduling
+- response_model en FastAPI
+- fallback previsto
+- restricciones básicas en Pydantic
+
+Debilidades de calidad
+- sin logging estructurado
+- manejo de errores demasiado genérico
+- CORS abierto para cualquier origen
+- requirements sin versiones fijadas
+- ausencia visible de cobertura backend automatizada
+- falta de validaciones cruzadas entre campos de tiempo
+
+Qué falta para robustez
+Prioridad alta
+- corregir manejo de ventanas fijas
+- añadir tests backend de endpoints y scheduler
+- validar paridad backend/local con fixtures compartidos
+- hacer que la respuesta respete la solución temporal real del solver
+
+Prioridad media
+- fijar versiones en requirements
+- endurecer validaciones Pydantic
+- mejorar manejo de errores y observabilidad
+- definir estrategia consistente de timezones
+
+Limitaciones
+- No se modificó ningún archivo existente.
+- No fue posible acceder a tests TS, vitest config ni docs/reports con las herramientas disponibles en esta sesión.
+- Este archivo se crea solo para dejar constancia del análisis sin alterar código existente.

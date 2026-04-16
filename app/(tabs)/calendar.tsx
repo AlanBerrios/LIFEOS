@@ -2,7 +2,6 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,7 +10,6 @@ import {
   useWindowDimensions,
   View
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -20,6 +18,7 @@ import { useAppTheme } from '../../src/theme';
 import { getEventsForDate } from '../../src/utils/events';
 import type { Task, StaticEvent, ScheduleBlock, RecurrenceFrequency } from '../../src/types';
 import { CustomAlertDialog, type AlertButtonConfig } from '../../src/components/CustomAlertDialog';
+import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 
 type ShowAlertFn = (title: string, message?: string, buttons?: AlertButtonConfig[]) => void;
@@ -90,7 +89,7 @@ function getEventEmoji(event: StaticEvent | undefined): string {
 }
 
 function buildBlockInfoMessage(params: {
-  kind: 'task' | 'event' | 'rest' | 'meal' | 'sleep' | 'transit';
+  kind: 'task' | 'event' | 'rest' | 'meal' | 'sleep' | 'transit' | 'habit';
   title: string;
   start?: Date;
   end?: Date;
@@ -148,6 +147,11 @@ function buildBlockInfoMessage(params: {
     lines.push('Bloque de traslado de rutina. Calcula el tiempo necesario para moverte sin cortar otros bloques.');
   }
 
+  if (params.kind === 'habit') {
+    lines.push('Recordatorio de hábito en modo bloque blando.');
+    lines.push('Puede solaparse visualmente y no fuerza replanificación dura.');
+  }
+
   return lines.join('\n');
 }
 
@@ -157,7 +161,7 @@ type TimelineCard = {
   start: Date;
   end: Date;
   color: string;
-  kind: 'Tarea' | 'Evento' | 'Descanso' | 'Comida' | 'Sueño' | 'Tránsito';
+  kind: 'Tarea' | 'Evento' | 'Descanso' | 'Comida' | 'Sueño' | 'Tránsito' | 'Hábito';
   dotted?: boolean;
   onPress: () => void;
 };
@@ -219,20 +223,15 @@ function SafeDatePicker({
   const [showTime, setShowTime] = useState(false);
   const [pendingDate, setPendingDate] = useState<Date | null>(null);
 
-  function handleDateChange(_evt: unknown, selected?: Date) {
+  function handleDateConfirm(selected: Date) {
     setShowDate(false);
-    if (selected == null) return;
-    if (Platform.OS === 'android') {
-      setPendingDate(selected);
-      setShowTime(true);
-    } else {
-      onConfirm(selected);
-    }
+    setPendingDate(selected);
+    setShowTime(true);
   }
 
-  function handleTimeChange(_evt: unknown, selected?: Date) {
+  function handleTimeConfirm(selected: Date) {
     setShowTime(false);
-    if (selected == null || pendingDate == null) { setPendingDate(null); return; }
+    if (pendingDate == null) { setPendingDate(null); return; }
     const combined = new Date(pendingDate);
     combined.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
     setPendingDate(null);
@@ -255,24 +254,29 @@ function SafeDatePicker({
         )}
       </Pressable>
 
-      {showDate && (
-        <DateTimePicker
-          value={value ?? new Date()}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          onChange={handleDateChange}
-          themeVariant="dark"
-        />
-      )}
-      {showTime && (
-        <DateTimePicker
-          value={pendingDate ?? new Date()}
-          mode="time"
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          onChange={handleTimeChange}
-          themeVariant="dark"
-        />
-      )}
+      <AppDateTimePickerSheet
+        visible={showDate}
+        mode="date"
+        value={value ?? new Date()}
+        title={label}
+        subtitle="Elige la fecha con el estilo de la app."
+        confirmLabel="Siguiente"
+        onConfirm={handleDateConfirm}
+        onClose={() => setShowDate(false)}
+      />
+      <AppDateTimePickerSheet
+        visible={showTime}
+        mode="time"
+        value={pendingDate ?? new Date()}
+        title={label}
+        subtitle="Ahora elige la hora exacta."
+        confirmLabel="Guardar"
+        onConfirm={handleTimeConfirm}
+        onClose={() => {
+          setShowTime(false);
+          setPendingDate(null);
+        }}
+      />
     </View>
   );
 }
@@ -431,9 +435,10 @@ const MemoMonthView = memo(MonthView);
 
 // ─── Week View ────────────────────────────────────────────────────────────────
 
-function WeekView({ currentDate, tasks, events, timeline, onSelectDay, onOpenEventInfo, onOpenBlockInfo }: {
+function WeekView({ currentDate, tasks, habits, events, timeline, onSelectDay, onOpenEventInfo, onOpenBlockInfo }: {
   currentDate: Date;
   tasks: Task[];
+  habits: ReturnType<typeof useLifeStore.getState>['habits'];
   events: StaticEvent[];
   timeline: ScheduleBlock[];
   onSelectDay: (d: Date) => void;
@@ -494,8 +499,22 @@ function WeekView({ currentDate, tasks, events, timeline, onSelectDay, onOpenEve
                     title: b.title,
                     start: b.start_time,
                     end: b.end_time,
-                    color: b.task_id ? getTaskAccent(tasks.find((t) => t.id === b.task_id), lifeTheme) : lifeTheme.colors.muted,
-                    kind: b.type === 'rest' ? ('Descanso' as const) : b.type === 'meal' ? ('Comida' as const) : b.type === 'sleep' ? ('Sueño' as const) : b.type === 'transit' ? ('Tránsito' as const) : ('Tarea' as const),
+                    color: b.type === 'habit'
+                      ? habits.find((habit) => habit.id === b.habit_id)?.color?.trim() || lifeTheme.colors.alert
+                      : b.task_id
+                        ? getTaskAccent(tasks.find((t) => t.id === b.task_id), lifeTheme)
+                        : lifeTheme.colors.muted,
+                    kind: b.type === 'rest'
+                      ? ('Descanso' as const)
+                      : b.type === 'meal'
+                        ? ('Comida' as const)
+                        : b.type === 'sleep'
+                          ? ('Sueño' as const)
+                          : b.type === 'transit'
+                            ? ('Tránsito' as const)
+                            : b.type === 'habit'
+                              ? ('Hábito' as const)
+                              : ('Tarea' as const),
                     dotted: b.type !== 'task',
                     onPress: () => onOpenBlockInfo(b.id)
                   }))
@@ -562,8 +581,8 @@ const MemoWeekView = memo(WeekView);
 
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
-function DayView({ date, tasks, events, timeline, onOpenEventInfo, onOpenBlockInfo }: {
-  date: Date; tasks: Task[]; events: StaticEvent[]; timeline: ScheduleBlock[]; onOpenEventInfo: (id: string) => void; onOpenBlockInfo: (id: string) => void;
+function DayView({ date, tasks, habits, events, timeline, onOpenEventInfo, onOpenBlockInfo }: {
+  date: Date; tasks: Task[]; habits: ReturnType<typeof useLifeStore.getState>['habits']; events: StaticEvent[]; timeline: ScheduleBlock[]; onOpenEventInfo: (id: string) => void; onOpenBlockInfo: (id: string) => void;
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
@@ -590,8 +609,22 @@ function DayView({ date, tasks, events, timeline, onOpenEventInfo, onOpenBlockIn
       title: b.title,
       start: b.start_time,
       end: b.end_time,
-      color: b.task_id ? getTaskAccent(tasks.find((t) => t.id === b.task_id), lifeTheme) : lifeTheme.colors.muted,
-      kind: b.type === 'rest' ? ('Descanso' as const) : b.type === 'meal' ? ('Comida' as const) : b.type === 'sleep' ? ('Sueño' as const) : b.type === 'transit' ? ('Tránsito' as const) : ('Tarea' as const),
+      color: b.type === 'habit'
+        ? habits.find((habit) => habit.id === b.habit_id)?.color?.trim() || lifeTheme.colors.alert
+        : b.task_id
+          ? getTaskAccent(tasks.find((t) => t.id === b.task_id), lifeTheme)
+          : lifeTheme.colors.muted,
+      kind: b.type === 'rest'
+        ? ('Descanso' as const)
+        : b.type === 'meal'
+          ? ('Comida' as const)
+          : b.type === 'sleep'
+            ? ('Sueño' as const)
+            : b.type === 'transit'
+              ? ('Tránsito' as const)
+              : b.type === 'habit'
+                ? ('Hábito' as const)
+                : ('Tarea' as const),
       dotted: b.type !== 'task',
       onPress: () => onOpenBlockInfo(b.id)
     }))
@@ -611,6 +644,10 @@ function DayView({ date, tasks, events, timeline, onOpenEventInfo, onOpenBlockIn
         <View style={styles.dayLegendItem}>
           <View style={[styles.dayLegendDot, { backgroundColor: lifeTheme.colors.muted }]} />
           <Text style={styles.dayLegendText}>Descanso</Text>
+        </View>
+        <View style={styles.dayLegendItem}>
+          <View style={[styles.dayLegendDot, { backgroundColor: lifeTheme.colors.alert }]} />
+          <Text style={styles.dayLegendText}>Hábito</Text>
         </View>
       </View>
 
@@ -928,6 +965,8 @@ export default function CalendarScreen(): ReactElement {
   const tasks = useLifeStore((s) => s.tasks);
   const events = useLifeStore((s) => s.events);
   const timeline = useLifeStore((s) => s.timeline);
+  const habits = useLifeStore((s) => s.habits);
+  const logHabit = useLifeStore((s) => s.logHabit);
   const deleteTask = useLifeStore((s) => s.deleteTask);
   const deleteEvent = useLifeStore((s) => s.deleteEvent);
   const deleteBlock = useLifeStore((s) => s.deleteBlock);
@@ -1007,10 +1046,41 @@ export default function CalendarScreen(): ReactElement {
     if (!block) return;
 
     const task = block.task_id ? tasks.find((item) => item.id === block.task_id) ?? null : null;
+    const habit = block.habit_id ? habits.find((item) => item.id === block.habit_id) ?? null : null;
     const event = block.isStaticEvent ? events.find((item) => item.id === block.id) ?? null : null;
-    const emoji = task ? getTaskEmoji(task) : event ? getEventEmoji(event) : block.type === 'sleep' ? '🌙' : block.type === 'transit' ? '🚗' : block.type === 'meal' ? '🍽' : block.type === 'rest' ? '☕' : '⚡';
-    const color = task ? getTaskAccent(task, lifeTheme) : event ? getEventAccent(event, lifeTheme) : lifeTheme.colors.muted;
-    const kind = block.type === 'meal' ? 'meal' : block.type === 'sleep' ? 'sleep' : block.type === 'transit' ? 'transit' : block.type === 'task' ? 'task' : 'rest';
+    const emoji = task
+      ? getTaskEmoji(task)
+      : habit
+        ? habit.emoji || '🌱'
+        : event
+          ? getEventEmoji(event)
+          : block.type === 'sleep'
+            ? '🌙'
+            : block.type === 'transit'
+              ? '🚗'
+              : block.type === 'meal'
+                ? '🍽'
+                : block.type === 'rest'
+                  ? '☕'
+                  : '⚡';
+    const color = task
+      ? getTaskAccent(task, lifeTheme)
+      : habit
+        ? habit.color?.trim() || lifeTheme.colors.alert
+        : event
+          ? getEventAccent(event, lifeTheme)
+          : lifeTheme.colors.muted;
+    const kind = block.type === 'meal'
+      ? 'meal'
+      : block.type === 'sleep'
+        ? 'sleep'
+        : block.type === 'transit'
+          ? 'transit'
+          : block.type === 'task'
+            ? 'task'
+            : block.type === 'habit'
+              ? 'habit'
+              : 'rest';
 
     showAlert(
       `${emoji} ${block.title}`,
@@ -1031,6 +1101,12 @@ export default function CalendarScreen(): ReactElement {
             { text: 'Eliminar', style: 'destructive', onPress: () => deleteTask(task.id) },
             { text: 'Hecho', style: 'cancel' }
           ]
+        : habit
+          ? [
+              { text: 'Ir a hábitos', onPress: () => router.push('/(tabs)/habits' as any) },
+              { text: 'Marcar hecho hoy', onPress: () => logHabit(habit.id, 1) },
+              { text: 'Hecho', style: 'cancel' }
+            ]
         : block.isStaticEvent && event
           ? [
               { text: 'Editar', onPress: () => { setEditingId(event.id); setModalVisible(true); } },
@@ -1110,6 +1186,7 @@ export default function CalendarScreen(): ReactElement {
           <MemoWeekView
             currentDate={currentDate}
             tasks={activeTasks}
+            habits={habits}
             events={events}
             timeline={timeline}
             onSelectDay={setSelectedDay}
@@ -1121,6 +1198,7 @@ export default function CalendarScreen(): ReactElement {
           <MemoDayView
             date={currentDate}
             tasks={activeTasks}
+            habits={habits}
             events={events}
             timeline={timeline}
             onOpenEventInfo={openEventInfo}

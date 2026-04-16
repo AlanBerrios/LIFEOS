@@ -3,7 +3,6 @@ import { useEffect } from 'react';
 import type { ReactElement } from 'react';
 import {
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,7 +11,6 @@ import {
   View
 } from 'react-native';
 import Slider from '@react-native-community/slider';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import Animated, { FadeInDown, FadeOutUp, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SwipeableTaskCard } from '../../src/components/SwipeableTaskCard';
@@ -22,6 +20,7 @@ import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
+import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
 import type { PostponeReason, ScheduleBlock, SkipReason, Task, TaskUrgency } from '../../src/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -121,21 +120,15 @@ function SafeDatePicker({
   const [showTime, setShowTime] = useState(false);
   const [pendingDate, setPendingDate] = useState<Date | null>(null);
 
-  function handleDateChange(_evt: unknown, selected?: Date) {
+  function handleDateConfirm(selected: Date) {
     setShowDate(false);
-    if (selected == null) return; // user cancelled
-    if (Platform.OS === 'android') {
-      // Store partial date and show time picker
-      setPendingDate(selected);
-      setShowTime(true);
-    } else {
-      onConfirm(selected);
-    }
+    setPendingDate(selected);
+    setShowTime(true);
   }
 
-  function handleTimeChange(_evt: unknown, selected?: Date) {
+  function handleTimeConfirm(selected: Date) {
     setShowTime(false);
-    if (selected == null || pendingDate == null) { setPendingDate(null); return; }
+    if (pendingDate == null) { setPendingDate(null); return; }
     const combined = new Date(pendingDate);
     combined.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
     setPendingDate(null);
@@ -158,24 +151,29 @@ function SafeDatePicker({
         )}
       </Pressable>
 
-      {showDate && (
-        <DateTimePicker
-          value={value ?? new Date()}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          onChange={handleDateChange}
-          themeVariant="dark"
-        />
-      )}
-      {showTime && (
-        <DateTimePicker
-          value={pendingDate ?? new Date()}
-          mode="time"
-          display={Platform.OS === 'ios' ? 'inline' : 'default'}
-          onChange={handleTimeChange}
-          themeVariant="dark"
-        />
-      )}
+      <AppDateTimePickerSheet
+        visible={showDate}
+        mode="date"
+        value={value ?? new Date()}
+        title={label}
+        subtitle="Elige la fecha con el estilo de la app."
+        confirmLabel="Siguiente"
+        onConfirm={handleDateConfirm}
+        onClose={() => setShowDate(false)}
+      />
+      <AppDateTimePickerSheet
+        visible={showTime}
+        mode="time"
+        value={pendingDate ?? new Date()}
+        title={label}
+        subtitle="Ahora elige la hora exacta."
+        confirmLabel="Guardar"
+        onConfirm={handleTimeConfirm}
+        onClose={() => {
+          setShowTime(false);
+          setPendingDate(null);
+        }}
+      />
     </View>
   );
 }

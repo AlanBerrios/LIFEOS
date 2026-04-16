@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,7 +9,6 @@ import {
   TextInput,
   View
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
@@ -19,6 +17,7 @@ import { requestNotificationPermission, rescheduleAll } from '../../src/services
 import type { MealRoutine, TransitRoutine } from '../../src/types';
 import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
+import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
 
 const DAYS_SHORT = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
@@ -42,15 +41,6 @@ function SafeTimePicker({
   const dateValue = new Date();
   dateValue.setHours(h, m, 0, 0);
 
-  function onChange(_evt: any, selected?: Date) {
-    if (Platform.OS === 'android') setShow(false);
-    if (selected) {
-      const hh = String(selected.getHours()).padStart(2, '0');
-      const mm = String(selected.getMinutes()).padStart(2, '0');
-      onConfirm(`${hh}:${mm}`);
-    }
-  }
-
   return (
     <View style={styles.timePickerContainer}>
       <Text style={styles.label}>{label}</Text>
@@ -58,16 +48,21 @@ function SafeTimePicker({
         <Text style={styles.timeValueText}>{value}</Text>
       </Pressable>
 
-      {show && (
-        <DateTimePicker
-          value={dateValue}
-          mode="time"
-          is24Hour={true}
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={onChange}
-          themeVariant="dark"
-        />
-      )}
+      <AppDateTimePickerSheet
+        visible={show}
+        mode="time"
+        value={dateValue}
+        title={label}
+        subtitle="Elige la hora con el estilo de la app."
+        confirmLabel="Guardar hora"
+        onConfirm={(selected) => {
+          const hh = String(selected.getHours()).padStart(2, '0');
+          const mm = String(selected.getMinutes()).padStart(2, '0');
+          onConfirm(`${hh}:${mm}`);
+          setShow(false);
+        }}
+        onClose={() => setShow(false)}
+      />
     </View>
   );
 }
@@ -97,6 +92,30 @@ export default function RoutinesScreen(): ReactElement {
 
   const currentRoutine = routines.find(r => r.dayOfWeek === selectedDay);
 
+  function minutesFromHHMM(value: string): number {
+    const [h, m] = value.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return 0;
+    return h * 60 + m;
+  }
+
+  function hhmmFromMinutes(totalMinutes: number): string {
+    const normalized = ((totalMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+    const h = Math.floor(normalized / 60);
+    const m = normalized % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  function deriveArrivalTime(time: string, durationMinutes: number): string {
+    return hhmmFromMinutes(minutesFromHHMM(time) + Math.max(1, durationMinutes));
+  }
+
+  function deriveDuration(time: string, arrivalTime: string): number {
+    const start = minutesFromHHMM(time);
+    let end = minutesFromHHMM(arrivalTime);
+    if (end <= start) end += 24 * 60;
+    return Math.max(1, end - start);
+  }
+
   if (!currentRoutine) return <View style={styles.screen} />;
 
   function handleSaveSleep(field: 'sleepStart' | 'sleepEnd', value: string) {
@@ -118,7 +137,8 @@ export default function RoutinesScreen(): ReactElement {
       id: createId('transit'),
       label: 'Traslado',
       time: '07:30',
-      durationMinutes: 30
+      durationMinutes: 30,
+      arrivalTime: '08:00'
     };
     updateRoutine(selectedDay, { transits: [...(currentRoutine?.transits || []), newTransit] });
   }
@@ -143,7 +163,37 @@ export default function RoutinesScreen(): ReactElement {
 
   function handleUpdateTransit(transitId: string, field: keyof TransitRoutine, value: any) {
     updateRoutine(selectedDay, {
-      transits: currentRoutine!.transits.map((transit) => transit.id === transitId ? { ...transit, [field]: value } : transit)
+      transits: currentRoutine!.transits.map((transit) => {
+        if (transit.id !== transitId) return transit;
+        if (field === 'time') {
+          const nextTime = String(value);
+          const nextDuration = Math.max(1, transit.durationMinutes || 1);
+          return {
+            ...transit,
+            time: nextTime,
+            durationMinutes: nextDuration,
+            arrivalTime: deriveArrivalTime(nextTime, nextDuration)
+          };
+        }
+        if (field === 'durationMinutes') {
+          const nextDuration = Math.max(1, Number(value) || 1);
+          return {
+            ...transit,
+            durationMinutes: nextDuration,
+            arrivalTime: deriveArrivalTime(transit.time, nextDuration)
+          };
+        }
+        if (field === 'arrivalTime') {
+          const nextArrivalTime = String(value);
+          return {
+            ...transit,
+            arrivalTime: nextArrivalTime,
+            durationMinutes: deriveDuration(transit.time, nextArrivalTime)
+          };
+        }
+
+        return { ...transit, [field]: value };
+      })
     });
   }
 
@@ -403,9 +453,15 @@ export default function RoutinesScreen(): ReactElement {
 
                <View style={styles.mealDetails}>
                  <SafeTimePicker
-                   label="Hora"
+                   label="Salida"
                    value={transit.time}
                    onConfirm={(t) => handleUpdateTransit(transit.id, 'time', t)}
+                 />
+                 <View style={styles.divider} />
+                 <SafeTimePicker
+                   label="Llegada"
+                   value={transit.arrivalTime || deriveArrivalTime(transit.time, transit.durationMinutes)}
+                   onConfirm={(t) => handleUpdateTransit(transit.id, 'arrivalTime', t)}
                  />
                  <View style={styles.divider} />
                  <View style={styles.row}>

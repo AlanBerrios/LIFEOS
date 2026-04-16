@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "LifeOS",
+    "name": "LifeOS HELL YEAH UPDATE",
     "slug": "lifeos",
     "scheme": "lifeos",
-    "version": "3.1.0",
+    "version": "4.0.0",
     "icon": "./assets/branding/icon-v3.png",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -27,7 +27,7 @@
     },
     "android": {
       "package": "com.alan.lifeos",
-      "versionCode": 3,
+      "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/branding/adaptive-icon-v3.png",
         "backgroundColor": "#000000"

@@ -1,13 +1,68 @@
 import type { StateCreator } from 'zustand';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createJSONStorage, persist } from 'zustand/middleware';
-import { create } from 'zustand';
 import { generateTimeline as buildTimelineLocal } from '../../core/scheduler';
 import { createId } from '../../utils/ids';
 import { MINUTE_MS } from '../../utils/time';
-import { cancelAllNotifications, rescheduleAll, scheduleTaskNotifications } from '../../services/notifications';
+import { cancelAllNotifications } from '../../services/notifications';
 import type { LifeStore, MoveBlockResult, MoveSuggestion } from '../lifeStore.types';
-import type { DailySession, LifeTimer, ScheduleBlock, Task, ExecutionRecord, SkipReason, PostponeReason, PendingCompletionCheck } from '../../types';
+import type { DailySession, LifeTimer, ScheduleBlock, Task, ExecutionRecord, SkipReason, PostponeReason, PendingCompletionCheck, DailyEnergyReport, EnergyTelemetry } from '../../types';
+import { rankTasksByImportance } from '../../core/scheduler';
+import { computeTaskFocusXp, setTaskStatus } from '../domain/taskRules';
+import { triggerNotificationResync } from '../sideEffects/notifications';
+import { callSchedulerApi, SchedulerApiError } from '../../services/schedulerApi';
+import { compareSchedulerParity, createRemoteUnavailableParity } from '../../core/schedulerParity';
+
+type EnergyCalibration = 'under' | 'aligned' | 'over';
+
+const ENERGY_LEVEL_EXPECTED_LOAD: Record<1 | 2 | 3 | 4 | 5, number> = {
+  1: 2.5,
+  2: 3.5,
+  3: 5,
+  4: 6.5,
+  5: 8
+};
+
+const ENERGY_BIAS_MIN = -2;
+const ENERGY_BIAS_MAX = 2;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function createOverflowPromptState(
+  tasks: Task[],
+  scheduledBlocks: ScheduleBlock[],
+  startTime: Date
+): LifeStore['pending_schedule_overflow'] {
+  const selectedTaskIds = new Set(
+    scheduledBlocks
+      .filter((block) => block.type === 'task' && block.task_id)
+      .map((block) => block.task_id as string)
+  );
+  const overflowTasks = tasks.filter((task) => !selectedTaskIds.has(task.id));
+  if (overflowTasks.length === 0) return undefined;
+
+  const rankedOverflow = rankTasksByImportance(overflowTasks, startTime);
+  const recommendedTaskIds = rankedOverflow
+    .slice(0, Math.min(3, rankedOverflow.length))
+    .map((task) => task.id);
+
+  return {
+    visible: true,
+    reason: 'Si no cabe todo, elige las tareas que quieres proteger hoy. El resto se pospone automáticamente.',
+    createdAt: new Date(),
+    candidateTasks: rankedOverflow.map((task) => ({
+      id: task.id,
+      title: task.title,
+      priority: task.priority,
+      urgency: task.urgency,
+      eta_minutes: task.eta_minutes,
+      cognitive_load: task.cognitive_load,
+      deadline: task.deadline ?? null
+    })),
+    recommendedTaskIds,
+    maxSelections: Math.min(3, rankedOverflow.length)
+  };
+}
 
 let mealTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -20,6 +75,202 @@ function clearMealTimeout(): void {
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function dateISO(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function findDueTransitArrivalPrompt(state: LifeStore, now: Date): LifeStore['pending_transit_arrival_prompt'] | undefined {
+  const today = dateISO(now);
+  const alreadyRecorded = new Set(
+    (state.transit_arrival_records ?? []).map((record) => `${record.date}|${record.routineBlockKey}`)
+  );
+
+  const dueTransit = [...state.timeline]
+    .filter((block) => {
+      if (block.type !== 'transit') return false;
+      if (!block.isRoutineBlock || !block.routineBlockKey?.startsWith('transit:')) return false;
+      if (dateISO(block.start_time) !== today) return false;
+      if (block.end_time.getTime() > now.getTime()) return false;
+      return !alreadyRecorded.has(`${today}|${block.routineBlockKey}`);
+    })
+    .sort((a, b) => a.end_time.getTime() - b.end_time.getTime())[0];
+
+  if (!dueTransit || !dueTransit.routineBlockKey) return undefined;
+
+  return {
+    visible: true,
+    date: today,
+    blockId: dueTransit.id,
+    routineBlockKey: dueTransit.routineBlockKey,
+    transitRoutineId: dueTransit.id,
+    transitLabel: dueTransit.title.replace(/^🚗\s*/u, '').trim() || dueTransit.title,
+    plannedStart: dueTransit.start_time,
+    plannedEnd: dueTransit.end_time
+  };
+}
+
+function getTodayCompletedExecutionRecords(state: LifeStore): ExecutionRecord[] {
+  return (state.execution_records ?? []).filter(
+    (record) => isTodayDate(record.created_at) && (record.result_code === 'completed' || record.result_code === 'partial')
+  );
+}
+
+function computeEnergyTelemetry(state: LifeStore, report: DailyEnergyReport): EnergyTelemetry {
+  const completedRecords = getTodayCompletedExecutionRecords(state);
+  const completedTaskIds = completedRecords.map((record) => record.task_id);
+  const completedTasks = completedRecords
+    .map((record) => state.tasks.find((task) => task.id === record.task_id))
+    .filter((task): task is Task => Boolean(task));
+
+  const suggestedIds = new Set(state.energy_suggested_task_ids ?? []);
+  const suggestedHitCount = completedTasks.filter((task) => suggestedIds.has(task.id)).length;
+  const completedTaskCount = completedTasks.length;
+  const suggestedHitRate = completedTaskCount > 0 ? suggestedHitCount / completedTaskCount : 0;
+  const observedAverageLoad = completedTasks.length > 0
+    ? completedTasks.reduce((sum, task) => sum + task.cognitive_load, 0) / completedTasks.length
+    : 0;
+  const observedAveragePriority = completedTasks.length > 0
+    ? completedTasks.reduce((sum, task) => sum + task.priority, 0) / completedTasks.length
+    : 0;
+  const observedAverageEtaMinutes = completedTasks.length > 0
+    ? completedTasks.reduce((sum, task) => sum + task.eta_minutes, 0) / completedTasks.length
+    : 0;
+  const expectedAverageLoad = ENERGY_LEVEL_EXPECTED_LOAD[report.level];
+  const loadGap = observedAverageLoad - expectedAverageLoad;
+  const calibration: EnergyCalibration = loadGap > 1.25 ? 'under' : loadGap < -1.25 ? 'over' : 'aligned';
+  const biasDelta = clamp((loadGap / 4) + ((suggestedHitRate - 0.5) * 0.8), -0.75, 0.75);
+
+  return {
+    evaluatedAt: new Date(),
+    completedTaskCount,
+    completedTaskIds,
+    suggestedHitCount,
+    suggestedHitRate,
+    observedAverageLoad,
+    observedAveragePriority,
+    observedAverageEtaMinutes,
+    expectedAverageLoad,
+    calibration,
+    biasDelta
+  };
+}
+
+function applyEnergyTelemetry(state: LifeStore): Partial<LifeStore> {
+  const today = todayISO();
+  const reportIndex = state.daily_energy_reports.findIndex((report) => report.date === today);
+  if (reportIndex < 0) return {};
+
+  const report = state.daily_energy_reports[reportIndex];
+  const telemetry = computeEnergyTelemetry(state, report);
+  const nextBias = clamp((state.energy_suggestion_bias ?? 0) + telemetry.biasDelta, ENERGY_BIAS_MIN, ENERGY_BIAS_MAX);
+  const nextSuggestedIds = getEnergySuggestedTaskIds(state.tasks, report, nextBias);
+  const nextReports = [...state.daily_energy_reports];
+  nextReports[reportIndex] = { ...report, telemetry };
+
+  return {
+    daily_energy_reports: nextReports,
+    energy_suggestion_bias: nextBias,
+    energy_suggested_task_ids: nextSuggestedIds,
+    sessions: state.sessions.map((session) => (
+      session.date === today
+        ? {
+            ...session,
+            energy_reported: {
+              ...(session.energy_reported ?? {
+                level: report.level,
+                fatigue: report.fatigue,
+                note: report.note
+              }),
+              telemetry
+            }
+          }
+        : session
+    ))
+  };
+}
+
+function syncTodaySessionEnergyReport(sessions: DailySession[], report: DailyEnergyReport): DailySession[] {
+  const today = report.date;
+  return sessions.map((session) => (
+    session.date === today
+      ? {
+          ...session,
+          energy_reported: {
+            ...(session.energy_reported ?? {
+              level: report.level,
+              fatigue: report.fatigue,
+              note: report.note
+            }),
+            telemetry: report.telemetry
+          }
+        }
+      : session
+  ));
+}
+
+function getEnergySuggestedTaskIds(
+  tasks: Task[],
+  report: { level: 1 | 2 | 3 | 4 | 5; fatigue: 'low' | 'medium' | 'high' } | undefined,
+  bias = 0
+): string[] {
+  if (!report) return [];
+
+  const pool = tasks.filter((task) => task.status === 'pool' || task.status === 'scheduled' || task.status === 'in_progress');
+  if (pool.length === 0) return [];
+
+  const ranked = [...pool].sort((a, b) => {
+    if (a.urgency !== b.urgency) {
+      const urgencyWeight = { today: 4, this_week: 3, this_month: 2, someday: 1 } as const;
+      return urgencyWeight[b.urgency] - urgencyWeight[a.urgency];
+    }
+    return b.priority - a.priority;
+  });
+
+  const effectiveLevel = clamp(report.level + bias, 1, 5);
+  const lowEnergyMode = effectiveLevel <= 2.5 || report.fatigue === 'high';
+  const highEnergyMode = effectiveLevel >= 3.75 && report.fatigue === 'low';
+
+  if (lowEnergyMode) {
+    const cautiousBias = clamp(bias, -1.5, 1.5);
+    return ranked
+      .sort((a, b) => {
+        const scoreA = a.cognitive_load * (2 - cautiousBias * 0.35) + Math.floor(a.eta_minutes / 20) - a.priority * 0.15;
+        const scoreB = b.cognitive_load * (2 - cautiousBias * 0.35) + Math.floor(b.eta_minutes / 20) - b.priority * 0.15;
+        return scoreA - scoreB;
+      })
+      .slice(0, 5)
+      .map((task) => task.id);
+  }
+
+  if (highEnergyMode) {
+    const ambitiousBias = clamp(bias, -1.5, 1.5);
+    return ranked
+      .sort((a, b) => {
+        const scoreA = a.priority * (5 + ambitiousBias * 0.7) + a.cognitive_load * (2 + ambitiousBias * 0.4);
+        const scoreB = b.priority * (5 + ambitiousBias * 0.7) + b.cognitive_load * (2 + ambitiousBias * 0.4);
+        return scoreB - scoreA;
+      })
+      .slice(0, 5)
+      .map((task) => task.id);
+  }
+
+  const balancedBias = clamp(bias, -1.5, 1.5);
+  return ranked
+    .sort((a, b) => {
+      const center = 5 + balancedBias;
+      const scoreA = a.priority * 4 + (10 - Math.abs(a.cognitive_load - center));
+      const scoreB = b.priority * 4 + (10 - Math.abs(b.cognitive_load - center));
+      return scoreB - scoreA;
+    })
+    .slice(0, 5)
+    .map((task) => task.id);
+}
+
+function getTodayEnergyReport(reports: DailyEnergyReport[]): DailyEnergyReport | undefined {
+  const today = todayISO();
+  return reports.find((report) => report.date === today);
 }
 
 function buildExecutionPlanWindow(state: LifeStore, taskId: string, now = new Date()): { plannedStart: Date; plannedEnd: Date } {
@@ -46,13 +297,159 @@ function nextExecutionAttempt(state: LifeStore, taskId: string): number {
   return lastAttempt + 1;
 }
 
-function buildSession(tasks: Task[], timeline: ScheduleBlock[], totalExpGained = 0): DailySession {
+function isTodayDate(date: Date): boolean {
+  return date.toISOString().slice(0, 10) === todayISO();
+}
+
+function countReasons(items: string[]): string[] {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const reason = item.trim();
+    if (!reason) continue;
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, count]) => `${reason} (${count})`);
+}
+
+function buildSession(state: LifeStore, tasks: Task[], timeline: ScheduleBlock[], totalExpGained = 0): DailySession {
   const taskBlocks = timeline.filter((block) => block.type === 'task');
   const totalWorkMinutes = taskBlocks.reduce(
     (sum, block) => sum + (block.end_time.getTime() - block.start_time.getTime()) / 60_000,
     0
   );
   const totalCognitiveDrain = taskBlocks.reduce((sum, block) => sum + (block.cognitive_drain ?? 0), 0);
+  const todayRecords = (state.execution_records ?? []).filter((record) => isTodayDate(record.created_at));
+  const todayReplans = (state.replan_history ?? []).filter((decision) => isTodayDate(decision.timestamp));
+  const todayEnergy = getTodayEnergyReport(state.daily_energy_reports ?? []);
+
+  const completedTasks = tasks.filter((task) => task.status === 'completed');
+  const skippedTasks = tasks.filter((task) => task.status === 'skipped');
+  const postponedTasks = tasks.filter((task) => task.status === 'postponed');
+  const scheduledTasks = tasks.filter((task) => task.status === 'scheduled' || task.status === 'in_progress');
+
+  const latestRecordByTask = new Map<string, ExecutionRecord>();
+  for (const record of todayRecords) {
+    if (record.task_id) latestRecordByTask.set(record.task_id, record);
+  }
+
+  const executionTimeline = taskBlocks.map((block) => {
+    const record = block.task_id ? latestRecordByTask.get(block.task_id) : undefined;
+    let status: 'pending' | 'completed' | 'skipped' | 'postponed' = 'pending';
+    if (record?.status === 'completed' || record?.status === 'skipped' || record?.status === 'postponed') {
+      status = record.status;
+    }
+
+    return {
+      block_id: block.id,
+      block_title: block.title,
+      planned_start: block.start_time,
+      planned_end: block.end_time,
+      actual_start: record?.actual_start ?? null,
+      actual_end: record?.actual_end ?? null,
+      status,
+      skip_reason: record?.skip_reason,
+      postpone_reason: record?.postpone_reason,
+      notes: record?.skip_reason_details ?? record?.postpone_reason_details ?? record?.notes_after
+    };
+  });
+
+  const skippedRecords = todayRecords.filter((record) => record.skip_reason);
+  const postponedRecords = todayRecords.filter((record) => record.postpone_reason);
+  const completedRecords = todayRecords.filter((record) => record.result_code === 'completed' || record.result_code === 'partial');
+  const topDrainBlocks = [...taskBlocks]
+    .sort((a, b) => (b.cognitive_drain ?? 0) - (a.cognitive_drain ?? 0))
+    .slice(0, 3)
+    .map((block) => `${block.title} · ${Math.round((block.cognitive_drain ?? 0))} u.`);
+
+  const metricDrilldowns = [
+    {
+      key: 'completed' as const,
+      label: 'Completadas',
+      value: completedTasks.length,
+      unit: 'tareas',
+      context: [
+        `${completedTasks.length} tareas completadas hoy.`,
+        completedRecords.length > 0 ? `Registros de ejecución cerrados: ${completedRecords.length}.` : 'Aún no hay registros de ejecución cerrados hoy.'
+      ],
+      taskTitles: completedTasks.map((task) => task.title)
+    },
+    {
+      key: 'skipped' as const,
+      label: 'Saltadas',
+      value: skippedTasks.length,
+      unit: 'tareas',
+      context: [
+        ...countReasons(skippedRecords.map((record) => record.skip_reason_details || record.skip_reason || '')).slice(0, 3),
+        skippedRecords.length === 0 ? 'No hay motivos de salto registrados hoy.' : 'Los motivos provienen del flujo de ejecución real.'
+      ].filter(Boolean),
+      taskTitles: skippedTasks.map((task) => task.title)
+    },
+    {
+      key: 'postponed' as const,
+      label: 'Pospuestas',
+      value: postponedTasks.length,
+      unit: 'tareas',
+      context: [
+        ...countReasons(postponedRecords.map((record) => record.postpone_reason_details || record.postpone_reason || '')).slice(0, 3),
+        postponedRecords.length === 0 ? 'No hay posposiciones registradas hoy.' : 'El contexto sale del intento real de ejecución.'
+      ].filter(Boolean),
+      taskTitles: postponedTasks.map((task) => task.title)
+    },
+    {
+      key: 'scheduled' as const,
+      label: 'Programadas',
+      value: scheduledTasks.length,
+      unit: 'tareas',
+      context: [
+        `${scheduledTasks.length} tareas quedaron en el plan activo.`,
+        `Bloques de tarea en timeline: ${taskBlocks.length}.`
+      ],
+      taskTitles: scheduledTasks.map((task) => task.title)
+    },
+    {
+      key: 'drain' as const,
+      label: 'Carga cognitiva',
+      value: Math.round(totalCognitiveDrain),
+      unit: 'u.',
+      context: topDrainBlocks.length > 0
+        ? [`Bloques más pesados: ${topDrainBlocks.join(' · ')}`]
+        : ['No hay carga cognitiva suficiente para mostrar desglose.'],
+      taskTitles: taskBlocks.filter((block) => block.task_id).map((block) => block.title)
+    },
+    {
+      key: 'replan' as const,
+      label: 'Replanificaciones',
+      value: todayReplans.length,
+      unit: 'veces',
+      context: todayReplans.length > 0
+        ? todayReplans.slice(-3).map((decision) => `${decision.decision === 'accepted' ? 'Aceptada' : 'Rechazada'} · ${decision.reason}`)
+        : ['No hubo replanificaciones hoy.'],
+      taskTitles: []
+    }
+  ];
+
+  const decisionContext = [
+    {
+      label: 'Motivos de salto',
+      count: skippedRecords.length,
+      context: countReasons(skippedRecords.map((record) => record.skip_reason_details || record.skip_reason || ''))
+    },
+    {
+      label: 'Motivos de posposición',
+      count: postponedRecords.length,
+      context: countReasons(postponedRecords.map((record) => record.postpone_reason_details || record.postpone_reason || ''))
+    },
+    {
+      label: 'Cambios de plan',
+      count: todayReplans.length,
+      context: todayReplans.length > 0
+        ? todayReplans.slice(-3).map((decision) => `${decision.decision === 'accepted' ? 'Aceptada' : 'Rechazada'} · ${decision.reason}`)
+        : ['Sin cambios de plan hoy.']
+    }
+  ];
 
   return {
     id: createId('session'),
@@ -63,7 +460,17 @@ function buildSession(tasks: Task[], timeline: ScheduleBlock[], totalExpGained =
     tasksPostponed: tasks.filter((task) => task.status === 'postponed').length,
     totalWorkMinutes: Math.round(totalWorkMinutes),
     totalCognitiveDrain: Math.round(totalCognitiveDrain),
-    expGainedToday: totalExpGained
+    expGainedToday: totalExpGained,
+    execution_timeline: executionTimeline,
+    deviations_count: skippedRecords.length + postponedRecords.length,
+    replan_count: todayReplans.length,
+    user_feedback_points: skippedRecords.length + postponedRecords.length,
+    metric_drilldowns: metricDrilldowns,
+    decision_context: decisionContext,
+    energy_reported: todayEnergy
+      ? { level: todayEnergy.level, fatigue: todayEnergy.fatigue, note: todayEnergy.note, telemetry: todayEnergy.telemetry }
+      : undefined,
+    suggested_task_ids: state.energy_suggested_task_ids ?? []
   };
 }
 
@@ -187,17 +594,66 @@ function scheduleMealTimeout(getState: GetFn, setState: SetFn): void {
   }, remainingMs);
 }
 
+async function evaluateSchedulerParity(
+  localBlocks: ScheduleBlock[],
+  tasks: Task[],
+  startTime: Date
+): Promise<{ parity: LifeStore['last_scheduler_parity']; solverStatus: string }> {
+  try {
+    const remote = await callSchedulerApi(tasks, startTime);
+    const parity = compareSchedulerParity(localBlocks, remote.blocks);
+    const enrichedParity: LifeStore['last_scheduler_parity'] = {
+      ...parity,
+      remote: {
+        available: true,
+        engine: remote.meta.engine,
+        solverStatus: remote.meta.solver_status,
+        solveTimeMs: remote.meta.solve_time_ms
+      }
+    };
+
+    return {
+      parity: enrichedParity,
+      solverStatus: parity.status === 'ok'
+        ? 'LOCAL_PARITY_OK'
+        : `LOCAL_PARITY_DRIFT_${parity.metrics.divergenceScore}`
+    };
+  } catch (error) {
+    const fallbackReason = error instanceof SchedulerApiError
+      ? error.message
+      : error instanceof Error
+      ? error.message
+      : 'unknown remote error';
+
+    return {
+      parity: createRemoteUnavailableParity(fallbackReason),
+      solverStatus: 'LOCAL_FALLBACK_REMOTE_UNAVAILABLE'
+    };
+  }
+}
+
 export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
   'generateTimeline' | 'setTimeline' | 'moveBlock' | 'updateBreakDuration' | 'deleteBlock' |
   'moveBlockToIndex' |
   'startMealTimer' | 'stopTimer' | 'restoreMealTimer' |
   'startTaskExecution' | 'pauseTaskExecution' | 'resumeTaskExecution' | 
   'confirmCompletionOK' | 'confirmCompletionPartial' | 'reportTaskSkipped' | 'reportTaskPostponed' |
-  'addReplanDecision' | 'triggerReplanification' | 'confirmReplan' | 'rejectReplan'
+  'addReplanDecision' | 'triggerReplanification' | 'resolveScheduleOverflow' | 'dismissScheduleOverflow' | 'confirmReplan' | 'rejectReplan' |
+  'reportDailyEnergy' | 'applyEnergyBasedSuggestions' |
+  'checkTransitArrivalPrompt' | 'respondTransitArrivalPrompt' | 'dismissTransitArrivalPrompt'
 >> = (set, get) => ({
-  generateTimeline: async (startTime = new Date()) => {
+  generateTimeline: async (
+    startTime = new Date(),
+    options: { preferredTaskIds?: string[]; suppressOverflowPrompt?: boolean } = {}
+  ) => {
     const { tasks, settings } = get();
     const isRestDay = get().isRestDay();
+    const fallbackEnergyPreferred = options.preferredTaskIds && options.preferredTaskIds.length > 0
+      ? []
+      : get().energy_suggested_task_ids;
+    const preferredTaskIds = options.preferredTaskIds && options.preferredTaskIds.length > 0
+      ? options.preferredTaskIds
+      : fallbackEnergyPreferred;
     
     set({ isGenerating: true });
 
@@ -209,12 +665,14 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
         get().routines,
         startTime,
         settings,
-        get().routineOverrides
+        get().routineOverrides,
+        { preferredTaskIds },
+        get().habits
       );
       
       set((state) => {
         const today = todayISO();
-        const session = buildSession(state.tasks, restDayBlocks);
+        const session = buildSession(state, state.tasks, restDayBlocks);
         const otherSessions = state.sessions.filter((sessionItem) => sessionItem.date !== today);
 
         return {
@@ -222,6 +680,8 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
           sessions: [...otherSessions, session],
           lastEngine: 'local-ts',
           lastSolverStatus: 'REST_DAY',
+          last_scheduler_parity: undefined,
+          pending_transit_arrival_prompt: undefined,
           isGenerating: false
         };
       });
@@ -238,10 +698,12 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       get().routines,
       startTime,
       settings,
-      get().routineOverrides
+      get().routineOverrides,
+      { preferredTaskIds },
+      get().habits
     );
     const engine: LifeStore['lastEngine'] = 'local-ts';
-    const solverStatus = 'LOCAL_ONLY';
+    const parityResult = await evaluateSchedulerParity(newBlocks, schedulableTasks, startTime);
 
     const scheduledTaskIds = new Set(newBlocks.filter((block) => block.type === 'task' && block.task_id).map((block) => block.task_id as string));
     const today = todayISO();
@@ -265,7 +727,7 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
         ...activeGhostBlocks
       ].sort((a, b) => a.start_time.getTime() - b.start_time.getTime());
 
-      const session = buildSession(updatedTasks, timelineWithGhosts);
+      const session = buildSession(state, updatedTasks, timelineWithGhosts);
       const otherSessions = state.sessions.filter((sessionItem) => sessionItem.date !== today);
 
       return {
@@ -274,13 +736,17 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
         completedGhostBlocks: activeGhostBlocks,
         sessions: [...otherSessions, session],
         lastEngine: engine,
-        lastSolverStatus: solverStatus,
+        lastSolverStatus: parityResult.solverStatus,
+        last_scheduler_parity: parityResult.parity,
+        pending_transit_arrival_prompt: undefined,
+        pending_schedule_overflow: options.suppressOverflowPrompt
+          ? undefined
+          : createOverflowPromptState(schedulableTasks, newBlocks, startTime),
         isGenerating: false
       };
     });
 
-    void rescheduleAll(newBlocks, tasks, settings, get().routines, get().events, get().notes, get().alarms)
-      .then((syncedAlarms) => set({ alarms: syncedAlarms }));
+    triggerNotificationResync(get, set, 'resincronizar notificaciones tras generar timeline');
   },
 
   setTimeline: (blocks: ScheduleBlock[]) => set({ timeline: blocks }),
@@ -408,9 +874,7 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       return { timeline: blocks, tasks: updatedTasks };
     });
 
-    const { timeline, tasks, settings, routines, events, notes } = get();
-    void rescheduleAll(timeline, tasks, settings, routines, events, notes, get().alarms)
-      .then((syncedAlarms) => set({ alarms: syncedAlarms }));
+    triggerNotificationResync(get, set, 'resincronizar notificaciones tras eliminar bloque');
   },
 
   startMealTimer: async (durationMinutes?: number) => {
@@ -488,7 +952,7 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
 
       const now = new Date();
       const { plannedStart, plannedEnd } = buildExecutionPlanWindow(state, task_id, now);
-      const gainedXp = (task.priority * 10) + (task.cognitive_load * 2);
+      const gainedXp = computeTaskFocusXp(task);
       const targetBlock = state.timeline.find((block) => block.task_id === task_id);
       const keepGhost = Boolean(
         state.settings.keepCompletedGhostBlock &&
@@ -514,9 +978,7 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
         created_at: now,
       };
 
-      const updatedTasks = state.tasks.map((t) =>
-        t.id === task_id ? { ...t, status: 'completed' as const } : t
-      );
+      const updatedTasks = setTaskStatus(state.tasks, task_id, 'completed');
 
       const nextSkills = {
         ...state.userProfile.skills,
@@ -545,6 +1007,7 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       };
     });
     get().addConsistencyActivity();
+    set((state) => applyEnergyTelemetry(state));
   },
 
   reportTaskSkipped: async (task_id: string, reason: SkipReason, details: string) => {
@@ -571,9 +1034,7 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       };
 
       // Marcar tarea como skipped
-      const updatedTasks = state.tasks.map((t) =>
-        t.id === task_id ? { ...t, status: 'skipped' as const } : t
-      );
+      const updatedTasks = setTaskStatus(state.tasks, task_id, 'skipped');
 
       return {
         tasks: updatedTasks,
@@ -592,18 +1053,178 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
     set({ is_replanning: true, replan_error: undefined });
 
     const pendingTasks = tasks.filter((task) => task.status !== 'completed');
-    const blocks = buildTimelineLocal(pendingTasks, get().events, get().routines, new Date(), settings);
+    const replanStart = new Date();
+    const blocks = buildTimelineLocal(
+      pendingTasks,
+      get().events,
+      get().routines,
+      replanStart,
+      settings,
+      get().routineOverrides,
+      {},
+      get().habits
+    );
+
+    const parityResult = await evaluateSchedulerParity(blocks, pendingTasks, replanStart);
 
     set({
       timeline: blocks,
       is_replanning: false,
       replan_error: undefined,
       lastEngine: 'local-ts',
-      lastSolverStatus: 'LOCAL_ONLY'
+      lastSolverStatus: parityResult.solverStatus,
+      last_scheduler_parity: parityResult.parity,
+      pending_transit_arrival_prompt: undefined
     });
 
-    void rescheduleAll(blocks, tasks, settings, get().routines, get().events, get().notes, get().alarms)
-      .then((syncedAlarms) => set({ alarms: syncedAlarms }));
+    triggerNotificationResync(get, set, 'resincronizar notificaciones tras replanificación');
+  },
+
+  resolveScheduleOverflow: async (keepTaskIds: string[]) => {
+    const state = get();
+    const overflowPrompt = state.pending_schedule_overflow;
+    if (!overflowPrompt) return;
+
+    const keepSet = new Set(keepTaskIds);
+    const overflowIds = overflowPrompt.candidateTasks.map((task) => task.id);
+    const postponeIds = overflowIds.filter((id) => !keepSet.has(id));
+
+    set((current) => ({
+      tasks: current.tasks.map((task) => (
+        postponeIds.includes(task.id) && task.status !== 'completed'
+          ? { ...task, status: 'postponed' as const }
+          : task
+      )),
+      pending_schedule_overflow: undefined,
+      last_replan_reason: overflowPrompt.reason
+    }));
+
+    await get().generateTimeline(new Date(), { preferredTaskIds: keepTaskIds, suppressOverflowPrompt: true });
+  },
+
+  dismissScheduleOverflow: () => {
+    set({ pending_schedule_overflow: undefined });
+  },
+
+  reportDailyEnergy: (level, fatigue, note) => {
+    set((state) => {
+      const date = todayISO();
+      const report: DailyEnergyReport = {
+        date,
+        level,
+        fatigue,
+        note: note?.trim() || undefined,
+        created_at: new Date()
+      };
+      const otherReports = state.daily_energy_reports.filter((item) => item.date !== date);
+      const draftState: LifeStore = {
+        ...state,
+        daily_energy_reports: [...otherReports, report]
+      };
+      const telemetry = computeEnergyTelemetry(draftState, report);
+      const nextBias = clamp((state.energy_suggestion_bias ?? 0) + telemetry.biasDelta, ENERGY_BIAS_MIN, ENERGY_BIAS_MAX);
+      const suggestedTaskIds = getEnergySuggestedTaskIds(state.tasks, report, nextBias);
+
+      return {
+        daily_energy_reports: [...otherReports, { ...report, telemetry }],
+        energy_suggestion_bias: nextBias,
+        energy_suggested_task_ids: suggestedTaskIds,
+        sessions: syncTodaySessionEnergyReport(state.sessions, { ...report, telemetry })
+      };
+    });
+  },
+
+  applyEnergyBasedSuggestions: async () => {
+    const preferredTaskIds = get().energy_suggested_task_ids;
+    await get().generateTimeline(new Date(), { preferredTaskIds });
+  },
+
+  checkTransitArrivalPrompt: (now = new Date()) => {
+    set((state) => {
+      if (state.pending_transit_arrival_prompt?.visible) return state;
+      const nextPrompt = findDueTransitArrivalPrompt(state, now);
+      if (!nextPrompt) return state;
+      return { pending_transit_arrival_prompt: nextPrompt };
+    });
+  },
+
+  respondTransitArrivalPrompt: (arrivedOnTime, actualArrivalTime) => {
+    set((state) => {
+      const prompt = state.pending_transit_arrival_prompt;
+      if (!prompt) return state;
+
+      const actualArrival = arrivedOnTime ? prompt.plannedEnd : (actualArrivalTime ?? new Date());
+      const delayMinutes = Math.max(0, Math.round((actualArrival.getTime() - prompt.plannedEnd.getTime()) / MINUTE_MS));
+      const observedDuration = Math.max(5, Math.round((actualArrival.getTime() - prompt.plannedStart.getTime()) / MINUTE_MS));
+
+      const record = {
+        id: createId('transit-arrival'),
+        date: prompt.date,
+        routineBlockKey: prompt.routineBlockKey,
+        transitRoutineId: prompt.transitRoutineId,
+        transitLabel: prompt.transitLabel,
+        plannedStart: prompt.plannedStart,
+        plannedEnd: prompt.plannedEnd,
+        actualArrivalTime: actualArrival,
+        delayMinutes,
+        response: arrivedOnTime ? ('on_time' as const) : ('late' as const)
+      };
+
+      const updatedRoutines = !arrivedOnTime
+        ? state.routines.map((routine) => ({
+            ...routine,
+            transits: routine.transits.map((transit) => (
+              transit.id === prompt.transitRoutineId
+                ? {
+                    ...transit,
+                    ...(() => {
+                      const [hour, minute] = transit.time.split(':').map(Number);
+                      const baseMinutes = (Number.isNaN(hour) ? 0 : hour * 60) + (Number.isNaN(minute) ? 0 : minute);
+                      const arrivalMinutes = (baseMinutes + observedDuration) % (24 * 60);
+                      const arrivalHour = Math.floor(arrivalMinutes / 60);
+                      const arrivalMin = arrivalMinutes % 60;
+                      return {
+                        arrivalTime: `${String(arrivalHour).padStart(2, '0')}:${String(arrivalMin).padStart(2, '0')}`
+                      };
+                    })(),
+                    durationMinutes: observedDuration
+                  }
+                : transit
+            ))
+          }))
+        : state.routines;
+
+      const nextRecords = [...state.transit_arrival_records, record].slice(-180);
+      return {
+        transit_arrival_records: nextRecords,
+        pending_transit_arrival_prompt: undefined,
+        routines: updatedRoutines
+      };
+    });
+  },
+
+  dismissTransitArrivalPrompt: () => {
+    set((state) => {
+      const prompt = state.pending_transit_arrival_prompt;
+      if (!prompt) return state;
+      const record = {
+        id: createId('transit-arrival'),
+        date: prompt.date,
+        routineBlockKey: prompt.routineBlockKey,
+        transitRoutineId: prompt.transitRoutineId,
+        transitLabel: prompt.transitLabel,
+        plannedStart: prompt.plannedStart,
+        plannedEnd: prompt.plannedEnd,
+        actualArrivalTime: prompt.plannedEnd,
+        delayMinutes: 0,
+        response: 'dismissed' as const
+      };
+
+      return {
+        transit_arrival_records: [...state.transit_arrival_records, record].slice(-180),
+        pending_transit_arrival_prompt: undefined
+      };
+    });
   },
 
   pauseTaskExecution: (task_id: string) => {
@@ -647,6 +1268,7 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
         execution_records: [...(state.execution_records || []), record],
       };
     });
+    set((state) => applyEnergyTelemetry(state));
   },
 
   reportTaskPostponed: async (task_id: string, reason: PostponeReason, details: string, postponed_until: Date) => {
@@ -674,9 +1296,7 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       };
 
       // Marcar tarea como postponed
-      const updatedTasks = state.tasks.map((t) =>
-        t.id === task_id ? { ...t, status: 'postponed' as const } : t
-      );
+      const updatedTasks = setTaskStatus(state.tasks, task_id, 'postponed');
 
       return {
         tasks: updatedTasks,

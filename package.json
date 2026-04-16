@@ -1,6 +1,6 @@
 {
   "name": "lifeos",
-  "version": "3.1.0",
+  "version": "4.0.0",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -13,7 +13,9 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "qa:baseline": "npm run typecheck && npm run test",
+    "qa:e2e:campaign": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa_e2e_campaign.ps1"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
