@@ -1,7 +1,8 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,10 +16,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
+import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
 import { getEventsForDate } from '../../src/utils/events';
 import type { Task, StaticEvent, ScheduleBlock, RecurrenceFrequency } from '../../src/types';
 import { CustomAlertDialog, type AlertButtonConfig } from '../../src/components/CustomAlertDialog';
-import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
+import { AppColorPickerSheet } from '../../src/components/AppColorPickerSheet';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 
 type ShowAlertFn = (title: string, message?: string, buttons?: AlertButtonConfig[]) => void;
@@ -64,6 +66,12 @@ const WEEKDAYS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
+const EMOJI_OPTIONS = [
+  '📌', '✨', '🔥', '✅', '🧠', '💼', '📚', '🏃',
+  '🛒', '🧹', '🍳', '🧘', '🎯', '📝', '💡', '🚀',
+  '📞', '📦', '💻', '🎵', '🏠', '🧪', '📊', '🛠️'
+];
+
 function urgencyColor(task: Task | undefined, lifeTheme: ReturnType<typeof useAppTheme>): string {
   if (!task) return lifeTheme.colors.muted;
   if (task.urgency === 'today') return lifeTheme.colors.alert;
@@ -88,6 +96,23 @@ function getEventEmoji(event: StaticEvent | undefined): string {
   return event?.emoji?.trim() || '📌';
 }
 
+function formatDurationMinutes(totalMinutes: number | null): string {
+  if (totalMinutes == null) return '0 min';
+  const minutes = Math.max(1, Math.round(totalMinutes));
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+
+  if (hours === 0) {
+    return `${minutes} min`;
+  }
+
+  if (remainder === 0) {
+    return `${hours} h`;
+  }
+
+  return `${hours} h ${remainder} min`;
+}
+
 function buildBlockInfoMessage(params: {
   kind: 'task' | 'event' | 'rest' | 'meal' | 'sleep' | 'transit' | 'habit';
   title: string;
@@ -108,7 +133,7 @@ function buildBlockInfoMessage(params: {
   lines.push(`Tipo: ${params.kind}`);
   if (params.start && params.end) {
     lines.push(`Horario: ${params.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${params.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
-    lines.push(`Duración: ${duration} min`);
+    lines.push(`Duración: ${formatDurationMinutes(duration)}`);
   }
   if (params.color) lines.push(`Color: ${params.color}`);
   if (params.emoji) lines.push(`Emoji: ${params.emoji}`);
@@ -116,7 +141,7 @@ function buildBlockInfoMessage(params: {
   if (params.kind === 'task' && params.task) {
     lines.push(`Prioridad: ${params.task.priority}/5`);
     lines.push(`Carga cognitiva: ${params.task.cognitive_load}/10`);
-    lines.push(`Duración estimada: ${params.task.eta_minutes} min`);
+    lines.push(`Duración estimada: ${formatDurationMinutes(params.task.eta_minutes)}`);
     if (params.task.description?.trim()) lines.push(`Descripción: ${params.task.description.trim()}`);
   }
 
@@ -204,7 +229,7 @@ function assignOverlapLanes(cards: TimelineCard[]): Array<TimelineCard & { lane:
   return laidOut.map((card) => ({ ...card, laneCount }));
 }
 
-// ─── Android-safe DatePicker ──────────────────────────────────────────────────
+// ─── Date/Time Picker (popup nativo) ─────────────────────────────────────────
 
 function SafeDatePicker({
   label,
@@ -224,17 +249,19 @@ function SafeDatePicker({
   const [pendingDate, setPendingDate] = useState<Date | null>(null);
 
   function handleDateConfirm(selected: Date) {
+    const nextDate = value ? new Date(value) : new Date();
+    nextDate.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+    setPendingDate(nextDate);
     setShowDate(false);
-    setPendingDate(selected);
-    setShowTime(true);
+    setTimeout(() => setShowTime(true), 0);
   }
 
   function handleTimeConfirm(selected: Date) {
-    setShowTime(false);
-    if (pendingDate == null) { setPendingDate(null); return; }
-    const combined = new Date(pendingDate);
+    const baseDate = pendingDate ?? value ?? new Date();
+    const combined = new Date(baseDate);
     combined.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
     setPendingDate(null);
+    setShowTime(false);
     onConfirm(combined);
   }
 
@@ -259,17 +286,21 @@ function SafeDatePicker({
         mode="date"
         value={value ?? new Date()}
         title={label}
-        subtitle="Elige la fecha con el estilo de la app."
+        subtitle="Selecciona la fecha"
         confirmLabel="Siguiente"
         onConfirm={handleDateConfirm}
-        onClose={() => setShowDate(false)}
+        onClose={() => {
+          setShowDate(false);
+          setPendingDate(null);
+        }}
       />
+
       <AppDateTimePickerSheet
         visible={showTime}
         mode="time"
-        value={pendingDate ?? new Date()}
+        value={pendingDate ?? value ?? new Date()}
         title={label}
-        subtitle="Ahora elige la hora exacta."
+        subtitle="Selecciona la hora"
         confirmLabel="Guardar"
         onConfirm={handleTimeConfirm}
         onClose={() => {
@@ -280,69 +311,6 @@ function SafeDatePicker({
     </View>
   );
 }
-
-// ─── Day Tasks Panel ──────────────────────────────────────────────────────────
-
-function DayTasksPanel({ 
-  date, tasks, events, onOpenEventInfo, onOpenTaskInfo 
-}: { 
-  date: Date; tasks: Task[]; events: StaticEvent[]; onOpenEventInfo: (id: string) => void; onOpenTaskInfo: (id: string) => void; 
-}): ReactElement {
-  const lifeTheme = useAppTheme();
-  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
-  const dayTasks = tasks.filter((t) => {
-    if (t.fixed_start && sameDay(t.fixed_start, date)) return true;
-    if (t.deadline && sameDay(t.deadline, date)) return true;
-    if (t.urgency === 'today' && sameDay(date, new Date())) return true;
-    return false;
-  });
-
-  const dayEvents = getEventsForDate(events, date);
-
-  return (
-    <View style={styles.dayPanel}>
-      <Text style={styles.dayPanelTitle}>
-        {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
-      </Text>
-      <ScrollView>
-      {dayTasks.length === 0 && dayEvents.length === 0 ? (
-        <Text style={styles.dayPanelEmpty}>Sin eventos ni tareas para este día</Text>
-      ) : (
-        <View style={{ gap: 8 }}>
-        {dayEvents.map((evt) => (
-          <Pressable key={evt.id} style={styles.dayTask} onPress={() => onOpenEventInfo(evt.id)}>
-            <Text style={{fontSize: 16}}>{getEventEmoji(evt)}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.dayTaskTitle, { color: getEventAccent(evt, lifeTheme) }]}>{evt.title}</Text>
-              <Text style={styles.dayTaskMeta}>
-                Evento Fijo · {evt.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {evt.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                {evt.reminderMinutes ? ` · Alerta: ${evt.reminderMinutes}m antes` : ''}
-              </Text>
-            </View>
-          </Pressable>
-        ))}
-        {dayTasks.map((task) => (
-          <Pressable key={task.id} style={styles.dayTask} onPress={() => onOpenTaskInfo(task.id)}>
-            <View style={[styles.urgencyDot, { backgroundColor: urgencyColor(task, lifeTheme) }]} />
-            <Text style={{fontSize: 16, marginRight: 8}}>{getTaskEmoji(task)}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.dayTaskTitle, { color: getTaskAccent(task, lifeTheme) }]}>{task.title}</Text>
-              <Text style={styles.dayTaskMeta}>
-                {task.eta_minutes} min · P{task.priority}
-                {task.fixed_start ? ` · ${task.fixed_start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
-              </Text>
-            </View>
-            <View style={[styles.statusDot, task.status === 'completed' ? styles.statusDone : styles.statusPending]} />
-          </Pressable>
-        ))}
-        </View>
-      )}
-      </ScrollView>
-    </View>
-  );
-}
-
-const MemoDayTasksPanel = memo(DayTasksPanel);
 
 // ─── Month View ───────────────────────────────────────────────────────────────
 
@@ -433,14 +401,88 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
 
 const MemoMonthView = memo(MonthView);
 
+// ─── Day Tasks Panel (Month only) ───────────────────────────────────────────
+
+function DayTasksPanel({
+  date,
+  tasks,
+  events,
+  onOpenEventInfo,
+  onOpenTaskInfo
+}: {
+  date: Date;
+  tasks: Task[];
+  events: StaticEvent[];
+  onOpenEventInfo: (id: string) => void;
+  onOpenTaskInfo: (id: string) => void;
+}): ReactElement {
+  const lifeTheme = useAppTheme();
+  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+
+  const dayTasks = tasks.filter((t) => {
+    if (t.fixed_start && sameDay(t.fixed_start, date)) return true;
+    if (t.deadline && sameDay(t.deadline, date)) return true;
+    if (t.urgency === 'today' && sameDay(date, new Date())) return true;
+    return false;
+  });
+
+  const dayEvents = getEventsForDate(events, date);
+
+  return (
+    <View style={styles.dayPanel}>
+      <Text style={styles.dayPanelTitle}>
+        {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+      </Text>
+      <ScrollView>
+        {dayTasks.length === 0 && dayEvents.length === 0 ? (
+          <Text style={styles.dayPanelEmpty}>Sin eventos ni tareas para este día</Text>
+        ) : (
+          <View style={{ gap: 8 }}>
+            {dayEvents.map((evt) => (
+              <Pressable key={evt.id} style={styles.dayTask} onPress={() => onOpenEventInfo(evt.id)}>
+                <Text style={{ fontSize: 16 }}>{getEventEmoji(evt)}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.dayTaskTitle, { color: getEventAccent(evt, lifeTheme) }]}>{evt.title}</Text>
+                  <Text style={styles.dayTaskMeta}>
+                    Evento fijo · {evt.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {evt.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {evt.reminderMinutes ? ` · Alerta: ${evt.reminderMinutes}m antes` : ''}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+            {dayTasks.map((task) => (
+              <Pressable key={task.id} style={styles.dayTask} onPress={() => onOpenTaskInfo(task.id)}>
+                <View style={[styles.urgencyDot, { backgroundColor: urgencyColor(task, lifeTheme) }]} />
+                <Text style={{ fontSize: 16, marginRight: 8 }}>{getTaskEmoji(task)}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.dayTaskTitle, { color: getTaskAccent(task, lifeTheme) }]}>{task.title}</Text>
+                  <Text style={styles.dayTaskMeta}>
+                    {task.eta_minutes} min · P{task.priority}
+                    {task.fixed_start ? ` · ${task.fixed_start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                  </Text>
+                </View>
+                <View style={[styles.statusDot, task.status === 'completed' ? styles.statusDone : styles.statusPending]} />
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const MemoDayTasksPanel = memo(DayTasksPanel);
+
 // ─── Week View ────────────────────────────────────────────────────────────────
 
-function WeekView({ currentDate, tasks, habits, events, timeline, onSelectDay, onOpenEventInfo, onOpenBlockInfo }: {
+function WeekView({ currentDate, tasks, habits, events, timeline, weekZoom, onWeekZoom, onSelectDay, onOpenEventInfo, onOpenBlockInfo }: {
   currentDate: Date;
   tasks: Task[];
   habits: ReturnType<typeof useLifeStore.getState>['habits'];
   events: StaticEvent[];
   timeline: ScheduleBlock[];
+  weekZoom: number;
+  onWeekZoom: (next: number) => void;
   onSelectDay: (d: Date) => void;
   onOpenEventInfo: (id: string) => void;
   onOpenBlockInfo: (blockId: string) => void;
@@ -453,35 +495,89 @@ function WeekView({ currentDate, tasks, habits, events, timeline, onSelectDay, o
   const hours = Array.from({ length: 18 }, (_, i) => i + 6); // 06:00 -> 23:00
   const hourHeight = 34;
   const baseHour = 6;
-  const dayColWidth = Math.max(112, Math.min(148, Math.round((width - 72) / 3)));
+  const dayColWidthBase = Math.max(112, Math.min(148, Math.round((width - 72) / 3)));
+  const dayColWidth = dayColWidthBase;
+  const zoomStartRef = useRef(weekZoom);
+  const weekZoomRef = useRef(weekZoom);
+  const pinchDistanceStartRef = useRef<number | null>(null);
+  const zoomOriginRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    weekZoomRef.current = weekZoom;
+  }, [weekZoom]);
+
+  const applyPinchZoom = useCallback((scale: number) => {
+    const next = Math.max(0.6, Math.min(3.2, zoomStartRef.current * scale));
+    onWeekZoom(next);
+  }, [onWeekZoom]);
+
+  const panResponder = useMemo(
+    () => PanResponder.create({
+      onStartShouldSetPanResponder: (evt) => evt.nativeEvent.touches.length >= 2,
+      onStartShouldSetPanResponderCapture: (evt) => evt.nativeEvent.touches.length >= 2,
+      onMoveShouldSetPanResponder: (evt) => evt.nativeEvent.touches.length >= 2,
+      onMoveShouldSetPanResponderCapture: (evt) => evt.nativeEvent.touches.length >= 2,
+      onPanResponderGrant: (evt) => {
+        if (evt.nativeEvent.touches.length < 2) return;
+        const [t1, t2] = evt.nativeEvent.touches;
+        const dx = t2.pageX - t1.pageX;
+        const dy = t2.pageY - t1.pageY;
+        const midX = (t1.pageX + t2.pageX) / 2;
+        const midY = (t1.pageY + t2.pageY) / 2;
+        pinchDistanceStartRef.current = Math.hypot(dx, dy);
+        zoomOriginRef.current = { x: midX, y: midY };
+        zoomStartRef.current = weekZoomRef.current;
+      },
+      onPanResponderMove: (evt) => {
+        if (evt.nativeEvent.touches.length < 2 || !pinchDistanceStartRef.current) return;
+        const [t1, t2] = evt.nativeEvent.touches;
+        const dx = t2.pageX - t1.pageX;
+        const dy = t2.pageY - t1.pageY;
+        const currentDistance = Math.hypot(dx, dy);
+        const scale = currentDistance / pinchDistanceStartRef.current;
+        applyPinchZoom(scale);
+      },
+      onPanResponderTerminationRequest: () => true,
+      onPanResponderRelease: () => {
+        pinchDistanceStartRef.current = null;
+      },
+      onPanResponderTerminate: () => {
+        pinchDistanceStartRef.current = null;
+      }
+    }),
+    [applyPinchZoom]
+  );
 
   return (
-    <View style={styles.weekContainer}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View>
-          <View style={styles.weekHdrRowWide}>
-            <View style={styles.hourColSpacerWide} />
-            {days.map((d, i) => (
-              <Pressable key={i} style={[styles.weekHdrCellWide, { width: dayColWidth }]} onPress={() => onSelectDay(d)}>
-                <Text style={styles.weekHdrDay}>{WEEKDAYS[i]}</Text>
-                <Text style={styles.weekHdrNum}>{d.getDate()}</Text>
-              </Pressable>
-            ))}
-          </View>
+    <View style={styles.weekContainer} {...panResponder.panHandlers}>
+        <View style={styles.weekZoomBadge}>
+          <Text style={styles.weekZoomBadgeText}>Zoom {Math.round(weekZoom * 100)}%</Text>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={{ transform: [{ scale: weekZoom }] }}>
+            <View style={styles.weekHdrRowWide}>
+              <View style={styles.hourColSpacerWide} />
+              {days.map((d, i) => (
+                <Pressable key={i} style={[styles.weekHdrCellWide, { width: dayColWidth }]} onPress={() => onSelectDay(d)}>
+                  <Text style={styles.weekHdrDay}>{WEEKDAYS[i]}</Text>
+                  <Text style={styles.weekHdrNum}>{d.getDate()}</Text>
+                </Pressable>
+              ))}
+            </View>
 
-          <ScrollView style={styles.weekGridScroll} showsVerticalScrollIndicator={false}>
-            <View style={styles.weekGridBodyWide}>
-              <View style={styles.hourColWide}>
-                {hours.map((h) => (
-                  <View key={h} style={[styles.hourLabelCellWide, { height: hourHeight }]}>
-                    <Text style={styles.hourLabelText}>{String(h).padStart(2, '0')}:00</Text>
-                  </View>
-                ))}
-              </View>
+            <ScrollView style={styles.weekGridScroll} showsVerticalScrollIndicator={false}>
+              <View style={[styles.weekGridBodyWide, { transform: [{ scale: weekZoom }] }]}>
+                <View style={styles.hourColWide}>
+                  {hours.map((h) => (
+                    <View key={h} style={[styles.hourLabelCellWide, { height: hourHeight }]}>
+                      <Text style={styles.hourLabelText}>{String(h).padStart(2, '0')}:00</Text>
+                    </View>
+                  ))}
+                </View>
 
-              {days.map((day, dayIdx) => {
+                {days.map((day, dayIdx) => {
                 const dayEvents = getEventsForDate(events, day);
-                const dayTimelineTasks = timeline.filter((b) => sameDay(b.start_time, day));
+                const dayTimelineTasks = timeline.filter((b) => sameDay(b.start_time, day) && !b.isStaticEvent);
 
                 const blocks = assignOverlapLanes([
                   ...dayEvents.map((e) => ({
@@ -520,15 +616,17 @@ function WeekView({ currentDate, tasks, habits, events, timeline, onSelectDay, o
                   }))
                 ]);
 
-                return (
-                  <View key={dayIdx} style={[styles.dayColWide, { width: dayColWidth }]}>
-                    {hours.map((h) => (
-                      <View key={h} style={[styles.slotCellWide, { height: hourHeight }]} />
-                    ))}
+                  return (
+                    <View key={dayIdx} style={[styles.dayColWide, { width: dayColWidth }]}>
+                      {hours.map((h) => (
+                        <View key={h} style={[styles.slotCellWide, { height: hourHeight }]} />
+                      ))}
 
                     {blocks.map((block) => {
                       const startMin = block.start.getHours() * 60 + block.start.getMinutes();
                       const endMin = block.end.getHours() * 60 + block.end.getMinutes();
+                      const durationMinutes = Math.max(1, endMin - startMin);
+                      const titleWithDuration = `${block.title} · ${formatDurationMinutes(durationMinutes)}`;
                       const top = ((startMin - baseHour * 60) / 60) * hourHeight;
                       const rawHeight = ((Math.max(endMin, startMin + 15) - startMin) / 60) * hourHeight;
                       const height = Math.max(32, rawHeight);
@@ -561,18 +659,18 @@ function WeekView({ currentDate, tasks, habits, events, timeline, onSelectDay, o
                           onPress={block.onPress}
                         >
                           {showMeta && <Text style={styles.weekBlockMetaPill}>{fmt(block.start)} - {fmt(block.end)}</Text>}
-                          <Text style={[styles.weekBlockTitle, !showMeta && styles.weekBlockTitleCompact]} numberOfLines={titleLines}>{block.title}</Text>
+                          <Text style={[styles.weekBlockTitle, !showMeta && styles.weekBlockTitleCompact]} numberOfLines={titleLines}>{titleWithDuration}</Text>
                         </Pressable>
                       );
                     })}
-                  </View>
-                );
-              })}
-            </View>
-          </ScrollView>
-        </View>
-      </ScrollView>
-    </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </View>
+        </ScrollView>
+      </View>
   );
 }
 
@@ -591,7 +689,7 @@ function DayView({ date, tasks, habits, events, timeline, onOpenEventInfo, onOpe
   const baseHour = 6;
 
   const dayEvents = getEventsForDate(events, date);
-  const dayTimelineTasks = timeline.filter((b) => sameDay(b.start_time, date));
+  const dayTimelineTasks = timeline.filter((b) => sameDay(b.start_time, date) && !b.isStaticEvent);
 
   const blocks = assignOverlapLanes([
     ...dayEvents.map((e) => ({
@@ -668,6 +766,8 @@ function DayView({ date, tasks, habits, events, timeline, onOpenEventInfo, onOpe
           {blocks.map((block) => {
             const startMin = block.start.getHours() * 60 + block.start.getMinutes();
             const endMin = block.end.getHours() * 60 + block.end.getMinutes();
+            const durationMinutes = Math.max(1, endMin - startMin);
+            const titleWithDuration = `${block.title} · ${formatDurationMinutes(durationMinutes)}`;
             const top = ((startMin - baseHour * 60) / 60) * hourHeight;
             const rawHeight = ((Math.max(endMin, startMin + 15) - startMin) / 60) * hourHeight;
             const height = Math.max(34, rawHeight);
@@ -700,7 +800,7 @@ function DayView({ date, tasks, habits, events, timeline, onOpenEventInfo, onOpe
                 onPress={block.onPress}
               >
                 {showMeta && <Text style={styles.dayBlockMetaPill}>{fmt(block.start)} - {fmt(block.end)}</Text>}
-                <Text style={[styles.dayBlockTitle, !showMeta && styles.dayBlockTitleCompact]} numberOfLines={titleLines}>{block.title}</Text>
+                <Text style={[styles.dayBlockTitle, !showMeta && styles.dayBlockTitleCompact]} numberOfLines={titleLines}>{titleWithDuration}</Text>
               </Pressable>
             );
           })}
@@ -737,10 +837,17 @@ function EventModal({
   const [color, setColor] = useState('');
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [endTime, setEndTime] = useState<Date | null>(null);
-  const [remindMin, setRemindMin] = useState(10);
+  const [reminderAt, setReminderAt] = useState<Date | null>(null);
+  const [showReminderDatePicker, setShowReminderDatePicker] = useState(false);
+  const [showReminderTimePicker, setShowReminderTimePicker] = useState(false);
+  const [pendingReminderDate, setPendingReminderDate] = useState<Date | null>(null);
   const [frequency, setFrequency] = useState<RecurrenceFrequency>('none');
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
   const [endDate, setEndDate] = useState<Date | null>(null);
+  const [isEmojiPickerVisible, setIsEmojiPickerVisible] = useState(false);
+  const [isCustomEmojiInputVisible, setIsCustomEmojiInputVisible] = useState(false);
+  const [customEmojiDraft, setCustomEmojiDraft] = useState('');
+  const [isColorPickerVisible, setIsColorPickerVisible] = useState(false);
 
   useEffect(() => {
     if (visible && editId) {
@@ -752,7 +859,11 @@ function EventModal({
         setColor(e.color ?? '');
         setStartTime(e.startTime);
         setEndTime(e.endTime);
-        setRemindMin(e.reminderMinutes || 0);
+        setReminderAt(
+          e.reminderMinutes && e.reminderMinutes > 0
+            ? new Date(e.startTime.getTime() - e.reminderMinutes * 60_000)
+            : null
+        );
         setFrequency(e.recurrence?.frequency || 'none');
         setDaysOfWeek(e.recurrence?.daysOfWeek || []);
         setEndDate(e.recurrence?.endDate ? new Date(e.recurrence.endDate) : null);
@@ -764,12 +875,41 @@ function EventModal({
       setColor('');
       setStartTime(null);
       setEndTime(null);
-      setRemindMin(10);
+      setReminderAt(null);
+      setShowReminderDatePicker(false);
+      setShowReminderTimePicker(false);
+      setPendingReminderDate(null);
       setFrequency('none');
       setDaysOfWeek([]);
       setEndDate(null);
     }
   }, [visible, editId, events]);
+
+  function openReminderPicker() {
+    if (!startTime) {
+      showAlert('Primero elige hora de inicio', 'Necesitamos la hora de inicio para calcular cuántos minutos antes avisar.');
+      return;
+    }
+    setShowReminderDatePicker(true);
+  }
+
+  function handleReminderDateConfirm(selected: Date) {
+    setShowReminderDatePicker(false);
+    const base = reminderAt ?? startTime ?? new Date();
+    const merged = new Date(base);
+    merged.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+    setPendingReminderDate(merged);
+    setShowReminderTimePicker(true);
+  }
+
+  function handleReminderTimeConfirm(selected: Date) {
+    const base = pendingReminderDate ?? reminderAt ?? startTime ?? new Date();
+    const merged = new Date(base);
+    merged.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+    setReminderAt(merged);
+    setPendingReminderDate(null);
+    setShowReminderTimePicker(false);
+  }
 
   function handleSave() {
     if (!title.trim() || !startTime || !endTime) {
@@ -781,6 +921,15 @@ function EventModal({
       return;
     }
 
+    const nextRemindMin = reminderAt
+      ? Math.round((startTime.getTime() - reminderAt.getTime()) / 60_000)
+      : 0;
+
+    if (reminderAt && nextRemindMin <= 0) {
+      showAlert('Recordatorio inválido', 'El recordatorio debe ser antes de la hora de inicio.');
+      return;
+    }
+
     const payload: any = {
       title: title.trim(),
       description: description.trim() || undefined,
@@ -788,7 +937,7 @@ function EventModal({
       color: color.trim() || undefined,
       startTime,
       endTime,
-      reminderMinutes: remindMin,
+      reminderMinutes: nextRemindMin,
       recurrence: frequency !== 'none' ? { frequency, daysOfWeek, endDate: endDate || undefined } : undefined
     };
 
@@ -837,25 +986,23 @@ function EventModal({
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}>
               <Text style={styles.modalLabel}>Emoji</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={emoji}
-                onChangeText={(v) => setEmoji(v.slice(0, 2))}
-                placeholder="📌"
-                placeholderTextColor={lifeTheme.colors.muted}
-                maxLength={2}
-              />
+              <Pressable style={styles.selectorInput} onPress={() => setIsEmojiPickerVisible(true)}>
+                <Text style={styles.selectorEmojiValue}>{emoji || '📌'}</Text>
+                <Text style={styles.selectorHint}>Seleccionar</Text>
+              </Pressable>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.modalLabel}>Color</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={color}
-                onChangeText={setColor}
-                placeholder="#8FBF00"
-                placeholderTextColor={lifeTheme.colors.muted}
-                autoCapitalize="characters"
-              />
+              <Pressable
+                style={styles.selectorInput}
+                onPress={() => setIsColorPickerVisible(true)}
+              >
+                <View style={styles.colorPreviewRow}>
+                  <View style={[styles.colorSwatch, { backgroundColor: color || lifeTheme.colors.primary }]} />
+                  <Text style={styles.selectorColorText}>{color || 'Automático'}</Text>
+                </View>
+                <Text style={styles.selectorHint}>Elegir</Text>
+              </Pressable>
             </View>
           </View>
 
@@ -924,13 +1071,32 @@ function EventModal({
           )}
 
           <View style={{ gap: 6 }}>
-            <Text style={styles.modalLabel}>Recordatorio (minutos antes)</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={String(remindMin)}
-              onChangeText={v => setRemindMin(Number(v) || 0)}
-              keyboardType="number-pad"
-            />
+            <Text style={styles.modalLabel}>Recordatorio</Text>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              <Pressable style={[styles.dateBtn, { flex: 1 }]} onPress={openReminderPicker}>
+                <Text style={[styles.dateBtnText, reminderAt ? styles.dateBtnTextActive : null]}>
+                  {reminderAt
+                    ? `⏰ ${reminderAt.toLocaleDateString('es-ES')} ${reminderAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                    : '+ Añadir hora de recordatorio'}
+                </Text>
+                {reminderAt && (
+                  <Pressable
+                    hitSlop={12}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      setReminderAt(null);
+                    }}
+                  >
+                    <Text style={styles.dateClear}>✕</Text>
+                  </Pressable>
+                )}
+              </Pressable>
+            </View>
+            {startTime && reminderAt ? (
+              <Text style={styles.modalSub}>
+                Avisará {Math.max(1, Math.round((startTime.getTime() - reminderAt.getTime()) / 60_000))} min antes del inicio.
+              </Text>
+            ) : null}
           </View>
 
           <View style={styles.modalBtns}>
@@ -949,6 +1115,117 @@ function EventModal({
           )}
         </Pressable>
       </Pressable>
+
+      <Modal
+        visible={isEmojiPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setIsEmojiPickerVisible(false);
+          setIsCustomEmojiInputVisible(false);
+          setCustomEmojiDraft('');
+        }}
+      >
+        <Pressable
+          style={styles.pickerOverlay}
+          onPress={() => {
+            setIsEmojiPickerVisible(false);
+            setIsCustomEmojiInputVisible(false);
+            setCustomEmojiDraft('');
+          }}
+        >
+          <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.pickerTitle}>Selecciona un emoji</Text>
+            <Pressable
+              style={styles.customEmojiToggleBtn}
+              onPress={() => setIsCustomEmojiInputVisible((value) => !value)}
+            >
+              <Text style={styles.customEmojiToggleIcon}>🙂➕</Text>
+              <Text style={styles.customEmojiToggleText}>Agregar con teclado</Text>
+            </Pressable>
+
+            {isCustomEmojiInputVisible && (
+              <View style={styles.customEmojiInputWrap}>
+                <TextInput
+                  style={styles.customEmojiInput}
+                  value={customEmojiDraft}
+                  onChangeText={setCustomEmojiDraft}
+                  placeholder="Escribe o pega un emoji"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                  autoFocus
+                  returnKeyType="done"
+                />
+                <Pressable
+                  style={styles.customEmojiApplyBtn}
+                  onPress={() => {
+                    const nextEmoji = customEmojiDraft.trim();
+                    if (!nextEmoji) return;
+                    setEmoji(nextEmoji);
+                    setIsEmojiPickerVisible(false);
+                    setIsCustomEmojiInputVisible(false);
+                    setCustomEmojiDraft('');
+                  }}
+                >
+                  <Text style={styles.customEmojiApplyText}>Usar</Text>
+                </Pressable>
+              </View>
+            )}
+
+            <View style={styles.emojiGrid}>
+              {EMOJI_OPTIONS.map((option) => (
+                <Pressable
+                  key={option}
+                  style={[styles.emojiChip, emoji === option && styles.emojiChipActive]}
+                  onPress={() => {
+                    setEmoji(option);
+                    setIsEmojiPickerVisible(false);
+                    setIsCustomEmojiInputVisible(false);
+                    setCustomEmojiDraft('');
+                  }}
+                >
+                  <Text style={styles.emojiChipText}>{option}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <AppColorPickerSheet
+        visible={isColorPickerVisible}
+        value={color || lifeTheme.colors.primary}
+        onClose={() => setIsColorPickerVisible(false)}
+        onClear={() => setColor('')}
+        onApply={(hex) => setColor(hex)}
+      />
+
+      <AppDateTimePickerSheet
+        visible={showReminderDatePicker}
+        mode="date"
+        value={reminderAt ?? startTime ?? new Date()}
+        title="Recordatorio"
+        subtitle="Selecciona la fecha del recordatorio"
+        confirmLabel="Siguiente"
+        onConfirm={handleReminderDateConfirm}
+        onClose={() => {
+          setShowReminderDatePicker(false);
+          setPendingReminderDate(null);
+        }}
+      />
+
+      <AppDateTimePickerSheet
+        visible={showReminderTimePicker}
+        mode="time"
+        value={pendingReminderDate ?? reminderAt ?? startTime ?? new Date()}
+        title="Recordatorio"
+        subtitle="Selecciona la hora del recordatorio"
+        confirmLabel="Guardar"
+        onConfirm={handleReminderTimeConfirm}
+        onClose={() => {
+          setShowReminderTimePicker(false);
+          setPendingReminderDate(null);
+        }}
+      />
     </Modal>
   );
 }
@@ -964,7 +1241,7 @@ export default function CalendarScreen(): ReactElement {
   const router = useRouter();
   const tasks = useLifeStore((s) => s.tasks);
   const events = useLifeStore((s) => s.events);
-  const timeline = useLifeStore((s) => s.timeline);
+  const timelineRaw = useLifeStore((s) => s.timeline);
   const habits = useLifeStore((s) => s.habits);
   const logHabit = useLifeStore((s) => s.logHabit);
   const deleteTask = useLifeStore((s) => s.deleteTask);
@@ -974,9 +1251,15 @@ export default function CalendarScreen(): ReactElement {
   const [view, setView] = useState<CalendarView>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(new Date());
+  const [weekZoom, setWeekZoom] = useState(1);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const { alertState, showAlert, hideAlert } = useCustomAlert();
+
+  const timeline = useMemo(
+    () => timelineRaw.filter((block) => block.type !== 'habit'),
+    [timelineRaw]
+  );
 
   const activeTasks = useMemo(() => tasks.filter((t) => t.status !== 'completed'), [tasks]);
 
@@ -1140,6 +1423,10 @@ export default function CalendarScreen(): ReactElement {
   }
 
   const titleText = useMemo(() => headerTitle(), [view, currentDate]);
+  const handleWeekZoom = useCallback((next: number) => {
+    const normalized = Math.max(0.6, Math.min(3.2, Number(next.toFixed(2))));
+    setWeekZoom(normalized);
+  }, []);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 4 }]}>
@@ -1189,6 +1476,8 @@ export default function CalendarScreen(): ReactElement {
             habits={habits}
             events={events}
             timeline={timeline}
+            weekZoom={weekZoom}
+            onWeekZoom={handleWeekZoom}
             onSelectDay={setSelectedDay}
             onOpenEventInfo={openEventInfo}
             onOpenBlockInfo={openBlockInfo}
@@ -1207,8 +1496,7 @@ export default function CalendarScreen(): ReactElement {
         )}
       </View>
 
-      {/* Selected day info */}
-      {view !== 'day' && (
+      {view === 'month' && (
         <View style={styles.dayPanelWrap}>
           <MemoDayTasksPanel
             date={selectedDay}
@@ -1308,6 +1596,18 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   calDot: { width: 5, height: 5, borderRadius: 3 },
   // Week Vertical
   weekContainer: { flex: 1 },
+  weekZoomBadge: {
+    alignSelf: 'flex-end',
+    marginRight: 12,
+    marginBottom: 6,
+    backgroundColor: `${lifeTheme.colors.surfaceAlt}D9`,
+    borderColor: lifeTheme.colors.border,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4
+  },
+  weekZoomBadgeText: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '800' },
   weekHdrRowWide: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: lifeTheme.colors.border, paddingBottom: 8 },
   hourColSpacerWide: { width: 52 },
   weekHdrCellWide: { alignItems: 'center' },
@@ -1436,11 +1736,121 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   modalSub: { color: lifeTheme.colors.muted, fontSize: 12, marginTop: -8 },
   modalLabel: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   modalInput: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12, borderWidth: 1, borderColor: lifeTheme.colors.border, color: lifeTheme.colors.text, fontSize: 15, padding: 12 },
+  selectorInput: {
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderColor: lifeTheme.colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  selectorHint: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '700' },
+  selectorEmojiValue: { color: lifeTheme.colors.text, fontSize: 22 },
+  colorPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  colorSwatch: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border
+  },
+  selectorColorText: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
   modalBtns: { flexDirection: 'row', gap: 10, marginTop: 10 },
   cancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: lifeTheme.colors.border },
   cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
   saveBtn: { flex: 2, paddingVertical: 14, alignItems: 'center', borderRadius: 12, backgroundColor: lifeTheme.colors.primary },
   saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    paddingHorizontal: 20
+  },
+  pickerCard: {
+    backgroundColor: lifeTheme.colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 14,
+    gap: 12
+  },
+  pickerTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800' },
+  customEmojiToggleBtn: {
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  customEmojiToggleIcon: { fontSize: 16 },
+  customEmojiToggleText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
+  customEmojiInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  customEmojiInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    borderRadius: 12,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: lifeTheme.colors.text,
+    fontSize: 14,
+    fontWeight: '600'
+  },
+  customEmojiApplyBtn: {
+    borderRadius: 12,
+    backgroundColor: lifeTheme.colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  customEmojiApplyText: { color: lifeTheme.colors.onPrimary, fontSize: 12, fontWeight: '800' },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  emojiChip: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  emojiChipActive: {
+    borderColor: lifeTheme.colors.primary,
+    backgroundColor: lifeTheme.colors.softPrimary
+  },
+  emojiChipText: { fontSize: 22 },
+  colorPickerCard: {
+    backgroundColor: lifeTheme.colors.surface,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 14,
+    gap: 12,
+    marginTop: 'auto'
+  },
+  colorWheelWrap: {
+    height: 280,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 8
+  },
+  colorPickerActions: { flexDirection: 'row', gap: 10 },
   
   dateBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: lifeTheme.colors.surfaceAlt, borderColor: lifeTheme.colors.border, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
   dateBtnText: { color: lifeTheme.colors.muted, fontSize: 13, flex: 1 },

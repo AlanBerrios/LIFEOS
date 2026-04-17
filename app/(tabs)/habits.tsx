@@ -96,13 +96,8 @@ export default function HabitsScreen(): ReactElement {
     setModalVisible(true);
   }
 
-  function handleLog(id: string) {
-    const habit = habits.find((h) => h.id === id);
-    if (habit?.lastCompletedDate === getTodayStr()) {
-      unlogHabit(id);
-      return;
-    }
-    logHabit(id, 1);
+  function formatProgressValue(value: number): string {
+    return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.00$/, '');
   }
 
   return (
@@ -135,7 +130,7 @@ export default function HabitsScreen(): ReactElement {
         </View>
       </View>
 
-      <Text style={styles.helperText}>Tip: toca "Marcar hoy" para registrar; vuelve a tocar para desmarcar.</Text>
+      <Text style={styles.helperText}>Tip: usa + y - para ajustar progreso; la racha solo sube al completar 100%.</Text>
 
       {habits.length > 0 && (() => {
         const maxStreak = Math.max(...habits.map((h) => h.streak), 7);
@@ -200,7 +195,7 @@ export default function HabitsScreen(): ReactElement {
 
                 <View style={styles.habitProgressRow}>
                   <Text style={styles.habitProgressText}>
-                    Hoy: {Math.min(todayTotal, goalValue)}/{goalValue} {habit.goalUnit}
+                    Hoy: {formatProgressValue(Math.min(todayTotal, goalValue))}/{formatProgressValue(goalValue)} {habit.goalUnit}
                   </Text>
                   <Text style={styles.habitProgressPct}>{Math.round(progress * 100)}%</Text>
                 </View>
@@ -216,16 +211,49 @@ export default function HabitsScreen(): ReactElement {
                 <View style={styles.habitActions}>
                   <Pressable
                     style={({ pressed }) => [
-                      styles.logBtn,
-                      pressed && { opacity: 0.7 },
-                      isCompletedToday && styles.logBtnDone
+                      styles.stepBtn,
+                      pressed && { opacity: 0.7 }
                     ]}
-                    onPress={() => handleLog(habit.id)}
+                    onPress={() => logHabit(habit.id, -1)}
                     accessibilityRole="button"
-                    accessibilityLabel={isCompletedToday ? `Desmarcar habito ${habit.name}` : `Marcar habito ${habit.name} como completado`}
+                    accessibilityLabel={`Disminuir progreso del habito ${habit.name}`}
                   >
-                    <Text style={styles.logBtnText}>
-                      {isCompletedToday ? 'Desmarcar' : 'Marcar hoy'}
+                    <Text style={styles.stepBtnText}>−</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.stepBtn,
+                      pressed && { opacity: 0.7 }
+                    ]}
+                    onPress={() => logHabit(habit.id, 1)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Aumentar progreso del habito ${habit.name}`}
+                  >
+                    <Text style={styles.stepBtnText}>+</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.completeBtn,
+                      pressed && { opacity: 0.7 },
+                      isCompletedToday && styles.completeBtnDone
+                    ]}
+                    onPress={() => {
+                      if (isCompletedToday) {
+                        unlogHabit(habit.id);
+                        return;
+                      }
+                      const remaining = Math.max(0, goalValue - todayTotal);
+                      if (remaining > 0) {
+                        logHabit(habit.id, remaining);
+                      }
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={isCompletedToday ? `Deshacer completado del habito ${habit.name}` : `Completar habito ${habit.name} al 100 por ciento`}
+                  >
+                    <Text style={styles.completeBtnText}>
+                      {isCompletedToday ? 'Completado ✓' : 'Completar 100%'}
                     </Text>
                   </Pressable>
 
@@ -433,9 +461,27 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     habitProgressTrack: { height: 6, borderRadius: 999, backgroundColor: lifeTheme.colors.surfaceAlt, overflow: 'hidden' },
     habitProgressFill: { height: '100%', borderRadius: 999 },
     habitActions: { flexDirection: 'row', gap: 8 },
-    logBtn: { flex: 1, backgroundColor: lifeTheme.colors.primary, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
-    logBtnDone: { backgroundColor: lifeTheme.colors.success },
-    logBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 13 },
+    stepBtn: {
+      width: 42,
+      backgroundColor: lifeTheme.colors.surfaceAlt,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: lifeTheme.colors.border,
+      alignItems: 'center'
+    },
+    stepBtnText: { color: lifeTheme.colors.text, fontWeight: '900', fontSize: 16 },
+    completeBtn: {
+      flex: 1,
+      backgroundColor: lifeTheme.colors.primary,
+      paddingVertical: 10,
+      borderRadius: 10,
+      alignItems: 'center'
+    },
+    completeBtnDone: {
+      backgroundColor: lifeTheme.colors.success
+    },
+    completeBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 12 },
     editBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
     delBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
     delBtnText: { fontSize: 14 },

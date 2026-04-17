@@ -257,9 +257,21 @@ export type BadgeId =
   | 'streak_7'
   | 'streak_14'
   | 'streak_30'
+  | 'streak_60'
   | 'active_10'
   | 'active_30'
-  | 'active_60';
+  | 'active_60'
+  | 'active_100'
+  | 'perfect_day'
+  | 'night_owl'
+  | 'early_bird'
+  | 'multitasker'
+  | 'consistent_master'
+  | 'zero_drain'
+  | 'comeback_kid'
+  | 'focus_master'
+  | 'all_nighter'
+  | 'speedrunner';
 
 export interface BadgeUnlock {
   id: BadgeId;

@@ -31,9 +31,30 @@ import { TaskCompletionCheckDialog } from '../../src/components/TaskCompletionCh
 import { CustomAlertDialog, AlertButtonConfig } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
+import { AppColorPickerSheet } from '../../src/components/AppColorPickerSheet';
+
+const EMOJI_OPTIONS = [
+  '✨', '🔥', '✅', '🧠', '💼', '📚', '🏃', '💪',
+  '🛒', '🧹', '🍳', '🧘', '🎯', '📝', '💡', '🚀',
+  '📞', '📦', '💻', '🎵', '🏠', '🧪', '📊', '🛠️'
+];
 
 function fmt(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function getFatigueLabel(fatigue: 'low' | 'medium' | 'high'): string {
+  if (fatigue === 'high') return 'Muy cansado';
+  if (fatigue === 'medium') return 'Cansado';
+  return 'Con energía';
+}
+
+function getEnergyLevelLabel(level: 1 | 2 | 3 | 4 | 5): string {
+  if (level === 1) return 'Muy cansado';
+  if (level === 2) return 'Cansado';
+  if (level === 3) return 'Normal';
+  if (level === 4) return 'Con energía';
+  return 'A tope';
 }
 
 function blockDurationMin(block: ScheduleBlock): number {
@@ -153,6 +174,10 @@ function QuickTaskModal({
   const [emoji, setEmoji] = useState('✨');
   const [color, setColor] = useState('');
   const [eta, setEta] = useState(30);
+  const [isEmojiPickerVisible, setIsEmojiPickerVisible] = useState(false);
+  const [isCustomEmojiInputVisible, setIsCustomEmojiInputVisible] = useState(false);
+  const [customEmojiDraft, setCustomEmojiDraft] = useState('');
+  const [isColorPickerVisible, setIsColorPickerVisible] = useState(false);
 
   function handleSave() {
     if (!title.trim()) {
@@ -213,25 +238,23 @@ function QuickTaskModal({
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalLabel}>Emoji</Text>
-                <TextInput
-                  style={[styles.modalInput, { fontSize: 16, textAlign: 'left' }]}
-                  value={emoji}
-                  onChangeText={(v) => setEmoji(v.slice(0, 2))}
-                  placeholder="✨"
-                  placeholderTextColor={lifeTheme.colors.muted}
-                  maxLength={2}
-                />
+                <Pressable style={styles.selectorInput} onPress={() => setIsEmojiPickerVisible(true)}>
+                  <Text style={styles.selectorEmojiValue}>{emoji || '✨'}</Text>
+                  <Text style={styles.selectorHint}>Seleccionar</Text>
+                </Pressable>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalLabel}>Color</Text>
-                <TextInput
-                  style={[styles.modalInput, { fontSize: 15, textAlign: 'left' }]}
-                  value={color}
-                  onChangeText={setColor}
-                  placeholder="#8FBF00"
-                  placeholderTextColor={lifeTheme.colors.muted}
-                  autoCapitalize="characters"
-                />
+                <Pressable
+                  style={styles.selectorInput}
+                  onPress={() => setIsColorPickerVisible(true)}
+                >
+                  <View style={styles.colorPreviewRow}>
+                    <View style={[styles.colorSwatch, { backgroundColor: color || lifeTheme.colors.primary }]} />
+                    <Text style={styles.selectorColorText}>{color || 'Automático'}</Text>
+                  </View>
+                  <Text style={styles.selectorHint}>Elegir</Text>
+                </Pressable>
               </View>
             </View>
 
@@ -258,6 +281,90 @@ function QuickTaskModal({
           </View>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={isEmojiPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setIsEmojiPickerVisible(false);
+          setIsCustomEmojiInputVisible(false);
+          setCustomEmojiDraft('');
+        }}
+      >
+        <Pressable
+          style={styles.pickerOverlay}
+          onPress={() => {
+            setIsEmojiPickerVisible(false);
+            setIsCustomEmojiInputVisible(false);
+            setCustomEmojiDraft('');
+          }}
+        >
+          <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.pickerTitle}>Selecciona un emoji</Text>
+            <Pressable
+              style={styles.customEmojiToggleBtn}
+              onPress={() => setIsCustomEmojiInputVisible((value) => !value)}
+            >
+              <Text style={styles.customEmojiToggleIcon}>🙂➕</Text>
+              <Text style={styles.customEmojiToggleText}>Agregar con teclado</Text>
+            </Pressable>
+
+            {isCustomEmojiInputVisible && (
+              <View style={styles.customEmojiInputWrap}>
+                <TextInput
+                  style={styles.customEmojiInput}
+                  value={customEmojiDraft}
+                  onChangeText={setCustomEmojiDraft}
+                  placeholder="Escribe o pega un emoji"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                  autoFocus
+                  returnKeyType="done"
+                />
+                <Pressable
+                  style={styles.customEmojiApplyBtn}
+                  onPress={() => {
+                    const nextEmoji = customEmojiDraft.trim();
+                    if (!nextEmoji) return;
+                    setEmoji(nextEmoji);
+                    setIsEmojiPickerVisible(false);
+                    setIsCustomEmojiInputVisible(false);
+                    setCustomEmojiDraft('');
+                  }}
+                >
+                  <Text style={styles.customEmojiApplyText}>Usar</Text>
+                </Pressable>
+              </View>
+            )}
+
+            <View style={styles.emojiGrid}>
+              {EMOJI_OPTIONS.map((option) => (
+                <Pressable
+                  key={option}
+                  style={[styles.emojiChip, emoji === option && styles.emojiChipActive]}
+                  onPress={() => {
+                    setEmoji(option);
+                    setIsEmojiPickerVisible(false);
+                    setIsCustomEmojiInputVisible(false);
+                    setCustomEmojiDraft('');
+                  }}
+                >
+                  <Text style={styles.emojiChipText}>{option}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <AppColorPickerSheet
+        visible={isColorPickerVisible}
+        value={color || lifeTheme.colors.primary}
+        onClose={() => setIsColorPickerVisible(false)}
+        onClear={() => setColor('')}
+        onApply={(hex) => setColor(hex)}
+      />
+
       <CustomAlertDialog
         visible={alertState.visible}
         title={alertState.title}
@@ -289,6 +396,10 @@ function QuickEventModal({
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [endTime, setEndTime] = useState<Date | null>(null);
   const [remindMin, setRemindMin] = useState(10);
+  const [isEmojiPickerVisible, setIsEmojiPickerVisible] = useState(false);
+  const [isCustomEmojiInputVisible, setIsCustomEmojiInputVisible] = useState(false);
+  const [customEmojiDraft, setCustomEmojiDraft] = useState('');
+  const [isColorPickerVisible, setIsColorPickerVisible] = useState(false);
 
   function handleSave() {
     if (!title.trim() || !startTime || !endTime) {
@@ -332,25 +443,23 @@ function QuickEventModal({
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalLabel}>Emoji</Text>
-                <TextInput
-                  style={[styles.modalInput, { fontSize: 16, textAlign: 'left' }]}
-                  value={emoji}
-                  onChangeText={(v) => setEmoji(v.slice(0, 2))}
-                  placeholder="📌"
-                  placeholderTextColor={lifeTheme.colors.muted}
-                  maxLength={2}
-                />
+                <Pressable style={styles.selectorInput} onPress={() => setIsEmojiPickerVisible(true)}>
+                  <Text style={styles.selectorEmojiValue}>{emoji || '📌'}</Text>
+                  <Text style={styles.selectorHint}>Seleccionar</Text>
+                </Pressable>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalLabel}>Color</Text>
-                <TextInput
-                  style={[styles.modalInput, { fontSize: 15, textAlign: 'left' }]}
-                  value={color}
-                  onChangeText={setColor}
-                  placeholder="#8FBF00"
-                  placeholderTextColor={lifeTheme.colors.muted}
-                  autoCapitalize="characters"
-                />
+                <Pressable
+                  style={styles.selectorInput}
+                  onPress={() => setIsColorPickerVisible(true)}
+                >
+                  <View style={styles.colorPreviewRow}>
+                    <View style={[styles.colorSwatch, { backgroundColor: color || lifeTheme.colors.primary }]} />
+                    <Text style={styles.selectorColorText}>{color || 'Automático'}</Text>
+                  </View>
+                  <Text style={styles.selectorHint}>Elegir</Text>
+                </Pressable>
               </View>
             </View>
 
@@ -389,6 +498,90 @@ function QuickEventModal({
           </View>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={isEmojiPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setIsEmojiPickerVisible(false);
+          setIsCustomEmojiInputVisible(false);
+          setCustomEmojiDraft('');
+        }}
+      >
+        <Pressable
+          style={styles.pickerOverlay}
+          onPress={() => {
+            setIsEmojiPickerVisible(false);
+            setIsCustomEmojiInputVisible(false);
+            setCustomEmojiDraft('');
+          }}
+        >
+          <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.pickerTitle}>Selecciona un emoji</Text>
+            <Pressable
+              style={styles.customEmojiToggleBtn}
+              onPress={() => setIsCustomEmojiInputVisible((value) => !value)}
+            >
+              <Text style={styles.customEmojiToggleIcon}>🙂➕</Text>
+              <Text style={styles.customEmojiToggleText}>Agregar con teclado</Text>
+            </Pressable>
+
+            {isCustomEmojiInputVisible && (
+              <View style={styles.customEmojiInputWrap}>
+                <TextInput
+                  style={styles.customEmojiInput}
+                  value={customEmojiDraft}
+                  onChangeText={setCustomEmojiDraft}
+                  placeholder="Escribe o pega un emoji"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                  autoFocus
+                  returnKeyType="done"
+                />
+                <Pressable
+                  style={styles.customEmojiApplyBtn}
+                  onPress={() => {
+                    const nextEmoji = customEmojiDraft.trim();
+                    if (!nextEmoji) return;
+                    setEmoji(nextEmoji);
+                    setIsEmojiPickerVisible(false);
+                    setIsCustomEmojiInputVisible(false);
+                    setCustomEmojiDraft('');
+                  }}
+                >
+                  <Text style={styles.customEmojiApplyText}>Usar</Text>
+                </Pressable>
+              </View>
+            )}
+
+            <View style={styles.emojiGrid}>
+              {EMOJI_OPTIONS.map((option) => (
+                <Pressable
+                  key={option}
+                  style={[styles.emojiChip, emoji === option && styles.emojiChipActive]}
+                  onPress={() => {
+                    setEmoji(option);
+                    setIsEmojiPickerVisible(false);
+                    setIsCustomEmojiInputVisible(false);
+                    setCustomEmojiDraft('');
+                  }}
+                >
+                  <Text style={styles.emojiChipText}>{option}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <AppColorPickerSheet
+        visible={isColorPickerVisible}
+        value={color || lifeTheme.colors.primary}
+        onClose={() => setIsColorPickerVisible(false)}
+        onClear={() => setColor('')}
+        onApply={(hex) => setColor(hex)}
+      />
+
       <CustomAlertDialog
         visible={alertState.visible}
         title={alertState.title}
@@ -553,7 +746,7 @@ function MealOptionsModal({
           </View>
 
           <Pressable style={[styles.cancelBtn, { marginTop: 10 }]} onPress={onClose}>
-            <Text style={styles.cancelBtnText}>Cancelar</Text>
+            <Text style={styles.cancelBtnText}>✕ Cancelar</Text>
           </Pressable>
         </View>
       </Pressable>
@@ -857,6 +1050,7 @@ export default function DashboardScreen(): ReactElement {
   const [isSubmittingCompletion, setIsSubmittingCompletion] = useState(false);
   const [transitArrivalPickerVisible, setTransitArrivalPickerVisible] = useState(false);
   const [transitActualArrivalTime, setTransitActualArrivalTime] = useState(new Date());
+  const [energyExpanded, setEnergyExpanded] = useState(false);
 
   useEffect(() => {
     // Actualizar cada 5 segundos para animación de progreso fluida en tiempo real
@@ -907,6 +1101,9 @@ export default function DashboardScreen(): ReactElement {
   const visibleTimeline = useMemo(() => {
     const activeGhostBlocks = completedGhostBlocks.filter((block) => block.end_time.getTime() > now.getTime());
     const activeTimeline = timeline.filter((block) => {
+      if (block.type === 'habit') {
+        return false;
+      }
       if (block.task_id) {
         const task = tasks.find((t) => t.id === block.task_id);
         return !task || task.status !== 'completed';
@@ -924,6 +1121,7 @@ export default function DashboardScreen(): ReactElement {
 
   const hour = new Date().getHours();
   const greeting = hour >= 6 && hour < 12 ? 'Buenos días ☀️' : hour >= 12 && hour < 20 ? 'Buenas tardes 🌤' : 'Buenas noches 🌙';
+  const todayLabel = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
     <>
@@ -952,9 +1150,6 @@ export default function DashboardScreen(): ReactElement {
                 </View>
               </View>
             </View>
-            <Text style={styles.dateText}>
-              {new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
-            </Text>
           </View>
           <Pressable 
             style={styles.statsRow}
@@ -979,102 +1174,95 @@ export default function DashboardScreen(): ReactElement {
 
         {/* Engine badge removed - moved to settings */}
 
-        {/* --- HABIT QUICK ACTIONS --- */}
-        <Animated.View entering={FadeInDown.delay(120).duration(300)} style={styles.habitsRow}>
-          <Text style={styles.habitsTitle}>🌟 Hábitos de hoy</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.habitsList}>
-            {habits.map((habit) => {
-              const isDone = habit.lastCompletedDate === getTodayStr();
-              return (
+        <Animated.View entering={FadeInDown.delay(120).duration(320)} style={styles.actionsCard}>
+          <View style={styles.topActionsRow}>
+            <View style={styles.energyCard}>
+              <View style={styles.energyHeaderRow}>
                 <Pressable
-                  key={habit.id}
-                  style={[styles.habitBubble, isDone && styles.habitBubbleDone]}
+                  style={styles.energyHeaderPressable}
+                  onPress={() => setEnergyExpanded((current) => !current)}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.energyTitle}>⚡ Energía</Text>
+                    {todayEnergyReport ? (
+                      <>
+                        <Text style={styles.energyMetaLevel} numberOfLines={1}>Nivel {todayEnergyReport.level}</Text>
+                        <Text style={styles.energyMetaName} numberOfLines={1}>{getEnergyLevelLabel(todayEnergyReport.level)}</Text>
+                      </>
+                    ) : (
+                      <Text style={styles.energyMeta} numberOfLines={1}>Toca para registrar energía</Text>
+                    )}
+                  </View>
+                  <Text style={styles.energyChevron}>{energyExpanded ? '▴' : '▾'}</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.energyInfoBtn}
                   onPress={() => {
-                    logHabit(habit.id, 1);
-                    if (!isDone) {
-                      showFeedback('✨ Hábito registrado', '+15 EXP en Vitalidad');
-                    }
+                    showAlert(
+                      'Energía y cansancio',
+                      'Este control reordena prioridades y carga cognitiva del día según tu estado.\n\n' +
+                        'Nivel 1 (Muy cansado): baja exigencia, tareas cortas y de menor carga.\n' +
+                        'Nivel 2 (Cansado): prioriza avance ligero y reduce bloques intensos.\n' +
+                        'Nivel 3 (Normal): balance estándar entre progreso y carga.\n' +
+                        'Nivel 4 (Con energía): prioriza tareas importantes y de foco.\n' +
+                        'Nivel 5 (A tope): empuja tareas complejas y bloques profundos.'
+                    );
                   }}
                 >
-                  <Text style={styles.habitEmoji}>{habit.emoji}</Text>
-                  <Text style={[styles.habitName, isDone && styles.habitNameDone]}>
-                    {habit.name}
-                  </Text>
-                  {isDone && <Text style={styles.habitDoneCheck}>✓</Text>}
+                  <Text style={styles.energyInfoText}>i</Text>
                 </Pressable>
-              );
-            })}
-            <Pressable style={styles.habitBubble} onPress={() => router.push('/(tabs)/habits' as any)}>
-              <Text style={styles.habitEmoji}>➕</Text>
-              <Text style={styles.habitName}>Añadir</Text>
-            </Pressable>
-          </ScrollView>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(180).duration(320)} style={styles.actionsCard}>
-          <View style={styles.energyCard}>
-            <View style={styles.energyHeaderRow}>
-              <Text style={styles.energyTitle}>⚡ Energía y cansancio</Text>
-              {todayEnergyReport ? (
-                <Text style={styles.energyMeta}>Nivel {todayEnergyReport.level} · {todayEnergyReport.fatigue}</Text>
-              ) : (
-                <Text style={styles.energyMeta}>Sin reporte de hoy</Text>
-              )}
-            </View>
-
-            <View style={styles.energyLevelsRow}>
-              {[1, 2, 3, 4, 5].map((level) => {
-                const selected = todayEnergyReport?.level === level;
-                return (
-                  <Pressable
-                    key={level}
-                    style={[styles.energyLevelChip, selected && styles.energyLevelChipActive]}
-                    onPress={() => {
-                      const fatigue = level <= 2 ? 'high' : level === 3 ? 'medium' : 'low';
-                      reportDailyEnergy(level as 1 | 2 | 3 | 4 | 5, fatigue);
-                      showFeedback('🧠 Energía registrada', `Nivel ${level} (${fatigue}) aplicado a sugerencias`);
-                    }}
-                  >
-                    <Text style={[styles.energyLevelText, selected && styles.energyLevelTextActive]}>{level}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {suggestedTasks.length > 0 ? (
-              <View style={styles.energySuggestedWrap}>
-                <Text style={styles.energySuggestedLabel}>Sugeridas ahora:</Text>
-                <Text style={styles.energySuggestedText} numberOfLines={2}>
-                  {suggestedTasks.map((task) => task.title).join(' · ')}
-                </Text>
               </View>
-            ) : null}
+
+              {energyExpanded ? (
+                <>
+                  <View style={styles.energyLevelsRow}>
+                    {[1, 2, 3, 4, 5].map((level) => {
+                      const selected = todayEnergyReport?.level === level;
+                      return (
+                        <Pressable
+                          key={level}
+                          style={[styles.energyLevelChip, selected && styles.energyLevelChipActive, isGenerating && styles.disabled]}
+                          disabled={isGenerating}
+                          onPress={() => {
+                            const fatigue = level <= 2 ? 'high' : level === 3 ? 'medium' : 'low';
+                            const fatigueLabel = getFatigueLabel(fatigue);
+                            const levelLabel = getEnergyLevelLabel(level as 1 | 2 | 3 | 4 | 5);
+                            reportDailyEnergy(level as 1 | 2 | 3 | 4 | 5, fatigue);
+                            void applyEnergyBasedSuggestions();
+                            showFeedback('🔁 Plan ajustado', `Nivel ${level}: ${levelLabel} (${fatigueLabel}) aplicado`);
+                          }}
+                        >
+                          <Text style={[styles.energyLevelText, selected && styles.energyLevelTextActive]} numberOfLines={1}>
+                            {level}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {suggestedTasks.length > 0 ? (
+                    <View style={styles.energySuggestedWrap}>
+                      <Text style={styles.energySuggestedLabel}>Sugeridas ahora:</Text>
+                      <Text style={styles.energySuggestedText} numberOfLines={2}>
+                        {suggestedTasks.map((task) => task.title).join(' · ')}
+                      </Text>
+                    </View>
+                  ) : null}
+                </>
+              ) : null}
+            </View>
 
             <Pressable
-              style={({ pressed }) => [
-                styles.energyApplyBtn,
-                pressed && styles.pressed,
-                suggestedTasks.length === 0 && styles.disabled
-              ]}
-              disabled={suggestedTasks.length === 0 || isGenerating}
-              onPress={() => {
-                void applyEnergyBasedSuggestions();
-                showFeedback('🔁 Plan ajustado', 'Se priorizaron tareas según tu energía reportada');
-              }}
+              style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed, isGenerating && styles.disabled]}
+              onPress={() => void generateTimeline(new Date())}
+              disabled={isGenerating}
             >
-              <Text style={styles.energyApplyText}>Aplicar energía al plan</Text>
+              <Text style={styles.primaryBtnText}>
+                {isGenerating ? '⏳ Optimizando...' : '⚡ Organizar mi día'}
+              </Text>
             </Pressable>
           </View>
-
-          <Pressable
-            style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed, isGenerating && styles.disabled]}
-            onPress={() => void generateTimeline(new Date())}
-            disabled={isGenerating}
-          >
-            <Text style={styles.primaryBtnText}>
-              {isGenerating ? '⏳ Optimizando...' : '⚡ Organizar mi día'}
-            </Text>
-          </Pressable>
 
           <View style={styles.secondaryActionsRow}>
             {activeTimer ? (
@@ -1131,6 +1319,45 @@ export default function DashboardScreen(): ReactElement {
           </View>
         </Animated.View>
 
+        {/* --- HABIT QUICK ACTIONS --- */}
+        <Animated.View entering={FadeInDown.delay(220).duration(280)} style={styles.habitsRow}>
+          <Text style={styles.habitsTitle}>🌟 Hábitos de hoy</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.habitsList}>
+            {habits.map((habit) => {
+              const todayStr = getTodayStr();
+              const isDone = habit.lastCompletedDate === todayStr;
+              const goal = Math.max(1, habit.goalValue || 1);
+              const todayProgress = habit.logs.reduce((sum, log) => {
+                const logDate = new Date(log.timestamp).toISOString().slice(0, 10);
+                return logDate === todayStr ? sum + log.value : sum;
+              }, 0);
+              const remainingToComplete = Math.max(0, goal - todayProgress);
+
+              return (
+                <Pressable
+                  key={habit.id}
+                  style={[styles.habitBubble, isDone && styles.habitBubbleDone]}
+                  onPress={() => {
+                    if (remainingToComplete <= 0) return;
+                    logHabit(habit.id, remainingToComplete);
+                    showFeedback('✨ Hábito completado', '+15 EXP en Vitalidad');
+                  }}
+                >
+                  <Text style={styles.habitEmoji}>{habit.emoji}</Text>
+                  <Text style={[styles.habitName, isDone && styles.habitNameDone]}>
+                    {habit.name}
+                  </Text>
+                  {isDone && <Text style={styles.habitDoneCheck}>✓</Text>}
+                </Pressable>
+              );
+            })}
+            <Pressable style={styles.habitBubble} onPress={() => router.push('/(tabs)/habits' as any)}>
+              <Text style={styles.habitEmoji}>➕</Text>
+              <Text style={styles.habitName}>Añadir</Text>
+            </Pressable>
+          </ScrollView>
+        </Animated.View>
+
         <QuickTaskModal visible={quickAddVisible} onClose={() => setQuickAddVisible(false)} />
         <QuickEventModal visible={quickEventVisible} onClose={() => setQuickEventVisible(false)} />
         <QuickNoteModal visible={quickNoteVisible} onClose={() => setQuickNoteVisible(false)} />
@@ -1141,7 +1368,7 @@ export default function DashboardScreen(): ReactElement {
         {/* Timeline */}
         {visibleTimeline.length > 0 ? (
           <Animated.View entering={FadeInDown.delay(220).duration(320)} style={styles.section}>
-            <Text style={styles.sectionTitle}>📆 Timeline de hoy</Text>
+            <Text style={styles.timelineTitle}>📆 Timeline de hoy · {todayLabel}</Text>
             <View style={styles.blockList}>
               {visibleTimeline.map((block, idx) => (
                 <BlockCard
@@ -1345,7 +1572,7 @@ export default function DashboardScreen(): ReactElement {
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
-  content: { paddingHorizontal: 16, gap: 14, paddingBottom: 32 },
+  content: { paddingHorizontal: 16, gap: 12, paddingBottom: 32 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
   headerActionRow: { flexDirection: 'row', gap: 10, marginTop: -4 },
   greeting: { color: lifeTheme.colors.muted, fontSize: 16, fontWeight: '600' },
@@ -1364,6 +1591,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   analyticsBtnIcon: { fontSize: 18 },
   analyticsBtnLabel: { color: lifeTheme.colors.primary, fontSize: 14, fontWeight: '800' },
   dateText: { color: lifeTheme.colors.text, fontSize: 24, fontWeight: '900', marginTop: 2, textTransform: 'capitalize' },
+  timelineTitle: { color: lifeTheme.colors.text, fontSize: 18, fontWeight: '900', textTransform: 'capitalize' },
   statsRow: { flexDirection: 'row', gap: 6, marginTop: 4 },
   statChip: {
     backgroundColor: lifeTheme.colors.surface, borderRadius: 10,
@@ -1379,15 +1607,19 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   engineText: { fontSize: 10, fontWeight: '700', fontFamily: 'monospace' },
   actionsCard: {
     backgroundColor: lifeTheme.colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: lifeTheme.colors.border, padding: 14, gap: 10
+    borderWidth: 1, borderColor: lifeTheme.colors.border, padding: 10, gap: 8
   },
+  topActionsRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   energyCard: {
+    flex: 1,
     backgroundColor: lifeTheme.colors.surfaceAlt,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: lifeTheme.colors.border,
-    padding: 10,
-    gap: 8
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    minHeight: 56,
+    gap: 6
   },
   energyHeaderRow: {
     flexDirection: 'row',
@@ -1395,14 +1627,42 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     alignItems: 'center',
     gap: 8
   },
-  energyTitle: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '800' },
-  energyMeta: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '700' },
-  energyLevelsRow: { flexDirection: 'row', gap: 8 },
+  energyHeaderPressable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  energyChevron: {
+    color: lifeTheme.colors.muted,
+    fontSize: 14,
+    fontWeight: '900'
+  },
+  energyInfoBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    backgroundColor: lifeTheme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  energyInfoText: {
+    color: lifeTheme.colors.primary,
+    fontSize: 12,
+    fontWeight: '900'
+  },
+  energyTitle: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '800' },
+  energyMetaLevel: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '800' },
+  energyMetaName: { color: lifeTheme.colors.text, fontSize: 11, fontWeight: '700' },
+  energyMeta: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '700' },
+  energyLevelsRow: { flexDirection: 'row', gap: 6 },
   energyLevelChip: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderRadius: 10,
     backgroundColor: lifeTheme.colors.surface,
     borderWidth: 1,
@@ -1412,31 +1672,27 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderColor: lifeTheme.colors.primary,
     backgroundColor: `${lifeTheme.colors.primary}20`
   },
-  energyLevelText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '900' },
+  energyLevelText: { color: lifeTheme.colors.text, fontSize: 11, fontWeight: '900' },
   energyLevelTextActive: { color: lifeTheme.colors.primary },
-  energySuggestedWrap: { gap: 2 },
-  energySuggestedLabel: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '700' },
-  energySuggestedText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
-  energyApplyBtn: {
-    marginTop: 2,
-    backgroundColor: `${lifeTheme.colors.primary}20`,
-    borderWidth: 1,
-    borderColor: `${lifeTheme.colors.primary}45`,
-    borderRadius: 10,
-    alignItems: 'center',
-    paddingVertical: 9
-  },
-  energyApplyText: { color: lifeTheme.colors.primary, fontSize: 12, fontWeight: '800' },
+  energySuggestedWrap: { gap: 1 },
+  energySuggestedLabel: { color: lifeTheme.colors.muted, fontSize: 9, fontWeight: '700' },
+  energySuggestedText: { color: lifeTheme.colors.text, fontSize: 11, fontWeight: '700' },
   primaryBtn: {
-    backgroundColor: lifeTheme.colors.primary, borderRadius: 12,
-    paddingVertical: 14, alignItems: 'center'
+    backgroundColor: lifeTheme.colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 118,
+    alignSelf: 'flex-start'
   },
-  primaryBtnText: { color: lifeTheme.colors.onPrimary, fontSize: 15, fontWeight: '800' },
+  primaryBtnText: { color: lifeTheme.colors.onPrimary, fontSize: 13, fontWeight: '800', textAlign: 'center' },
   secondaryBtn: {
     backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12,
-    paddingVertical: 10, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 8, alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: lifeTheme.colors.border,
-    height: 60
+    height: 52
   },
   playerHUDRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
   levelBadge: {
@@ -1472,7 +1728,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     alignItems: 'center',
     gap: 4
   },
-  actionBtnLabel: { color: lifeTheme.colors.text, fontSize: 10, fontWeight: '700' },
+  actionBtnLabel: { color: lifeTheme.colors.text, fontSize: 9, fontWeight: '700' },
   timerDigitsSmall: { color: lifeTheme.colors.primary, fontSize: 13, fontWeight: '900', fontFamily: 'monospace' },
   secondaryBtnText: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '600' },
   pressed: { opacity: 0.72, transform: [{ scale: 0.975 }] },
@@ -1580,6 +1836,29 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     color: lifeTheme.colors.text, fontSize: 24, fontWeight: '700',
     padding: 14, textAlign: 'center'
   },
+  selectorInput: {
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderColor: lifeTheme.colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  selectorHint: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '700' },
+  selectorEmojiValue: { color: lifeTheme.colors.text, fontSize: 22 },
+  colorPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  colorSwatch: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border
+  },
+  selectorColorText: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
   modalBtns: { flexDirection: 'row', gap: 10 },
   cancelBtn: {
     flex: 1, backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12,
@@ -1588,6 +1867,93 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   cancelBtnText: { color: lifeTheme.colors.text, fontWeight: '800' },
   saveBtn: { flex: 1, backgroundColor: lifeTheme.colors.primary, borderRadius: 12, padding: 13, alignItems: 'center' },
   saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    paddingHorizontal: 20
+  },
+  pickerCard: {
+    backgroundColor: lifeTheme.colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 14,
+    gap: 12
+  },
+  pickerTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800' },
+  customEmojiToggleBtn: {
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  customEmojiToggleIcon: { fontSize: 16 },
+  customEmojiToggleText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
+  customEmojiInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  customEmojiInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    borderRadius: 12,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: lifeTheme.colors.text,
+    fontSize: 14,
+    fontWeight: '600'
+  },
+  customEmojiApplyBtn: {
+    borderRadius: 12,
+    backgroundColor: lifeTheme.colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  customEmojiApplyText: { color: lifeTheme.colors.onPrimary, fontSize: 12, fontWeight: '800' },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  emojiChip: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  emojiChipActive: {
+    borderColor: lifeTheme.colors.primary,
+    backgroundColor: lifeTheme.colors.softPrimary
+  },
+  emojiChipText: { fontSize: 22 },
+  colorPickerCard: {
+    backgroundColor: lifeTheme.colors.surface,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 14,
+    gap: 12,
+    marginTop: 'auto'
+  },
+  colorWheelWrap: {
+    height: 280,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 8
+  },
+  colorPickerActions: { flexDirection: 'row', gap: 10 },
   // Actions Grid
   secondaryActionsRow: { flexDirection: 'row', gap: 10 },
   flex1: { flex: 1 },
@@ -1596,16 +1962,16 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   urgencyMiniChip: { flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: lifeTheme.colors.surfaceAlt, alignItems: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
   urgencyMiniChipActive: { backgroundColor: lifeTheme.colors.primary, borderColor: lifeTheme.colors.primary },
   urgencyMiniText: { fontSize: 11, fontWeight: '700', color: lifeTheme.colors.muted },
-  habitsRow: { gap: 8, marginTop: 4 },
+  habitsRow: { gap: 8, marginTop: 2 },
   habitsTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800', marginLeft: 4 },
-  habitsList: { gap: 10, paddingRight: 16, paddingTop: 6 },
+  habitsList: { gap: 10, paddingRight: 16, paddingTop: 4 },
   habitBubble: {
     backgroundColor: lifeTheme.colors.surface, borderRadius: 14,
     borderWidth: 1, borderColor: lifeTheme.colors.border,
-    paddingHorizontal: 8, paddingVertical: 6, alignItems: 'center', minWidth: 50, gap: 2
+    paddingHorizontal: 7, paddingVertical: 5, alignItems: 'center', minWidth: 48, gap: 2
   },
-  habitEmoji: { fontSize: 16 },
-  habitName: { color: lifeTheme.colors.muted, fontSize: 9, fontWeight: '700' },
+  habitEmoji: { fontSize: 15 },
+  habitName: { color: lifeTheme.colors.muted, fontSize: 8, fontWeight: '700' },
   habitBubbleDone: { backgroundColor: 'rgba(108,252,184,0.1)', borderColor: lifeTheme.colors.success },
   habitNameDone: { color: lifeTheme.colors.success },
   habitDoneCheck: {

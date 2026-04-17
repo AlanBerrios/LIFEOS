@@ -1,8 +1,8 @@
 # LIFEOS: Documentación Completa
 
 **Visión, Auditoría, Soluciones y Roadmap Integrados**  
-**Última actualización:** 15-04-2026 (UTC)
-**Estado:** FASE B ✅ Completada, FASE C ✅ Completada, Scheduler Runtime ✅ Local-Only
+**Última actualización:** 17-04-2026 (UTC)
+**Estado:** FASE B ✅ Completada, FASE C ✅ Completada, Scheduler Runtime ✅ Local-Only, v4.1 ✅ UX Refinement
 
 **Fuente canónica vigente:** `docs/FUENTE_DE_VERDAD_LIFEOS.md`  
 Este archivo mantiene detalle extendido e histórico.
@@ -205,6 +205,49 @@ Prioridad recomendada: **cerrar confiabilidad (R0) y luego integridad funcional 
 - Se añadió bitácora visible de replanificaciones en la pantalla de estadísticas.
 - El sistema registra y muestra `last_replan_reason`, `replan_history` y contexto de decisión en `DailySession`.
 - El usuario puede auditar por qué cambió el plan, cuándo ocurrió y cuántos bloques se movieron.
+
+### v4.1 — UX REFINEMENT (17-04-2026)
+
+#### Gestos y zoom inteligente en calendario
+
+- El zoom en vista semanal ahora respeta el **punto de origen del gesto** (pinch midpoint) en lugar de escalar desde la esquina superior izquierda.
+- Implementado con PanResponder nativo capturando coordenadas `(t1.pageX + t2.pageX) / 2` y aplicando `transform: [{ scale }]` en el contenedor.
+- Rango de zoom: 0.6x (60%) hasta 3.2x (320%), mejorando la fluidez de exploración en timeline compacto.
+
+#### Sistema de logros RPG expansivo (20+)
+
+- Se ampliaron significativamente los logros desde 7 a 20 con sistema de **rareza jerárquica**:
+  - **Común:** streaks 3/7 dias, 10/30/60 días activos.
+  - **Raro:** Perfect day (100% completado), Early bird (antes de 6 AM), Night owl (después de 10 PM).
+  - **Épico:** Multitasker (5+ tareas simultáneas), Consistent master (30 días sin fallar).
+  - **Legendario:** Zero drain (0 energía reportada crítica), Comeback kid (desde replan profundo), Focus master (0 distracciones detectadas).
+  - **Misterioso:** All nighter (sesión nocturna 4+ horas), Speedrunner (tarea completada 50% antes), + 3 más aún secretos.
+- Sistema de **logros secretos** con toggle de visibilidad en página de logros.
+- Cada logro incluye: icono, título, rareza badge, descripción, requisistos, XP reward, fecha de desbloqueo.
+
+#### Navegación modular de estadísticas
+
+- **Página `/achievements` (dedicada):**
+  - Grid de 2 columnas con cards expandibles.
+  - Stats row: desbloqueados / faltantes / secretos.
+  - Toggle 🔐 para mostrar/ocultar secretos.
+  - Modal de detalle con requisitos, progreso y contexto de desbloqueo.
+
+- **Página `/advanced-metrics` (drill-down profundo):**
+  - Secciones: Paridad Scheduler, Actividad Replan, Telemetría Energía, Historial de Datos.
+  - Métrica Cards con expandible modal por categoría.
+  - Resumen de sesiones, replans y reportes de energía.
+
+- **Dashboard Stats simplificado:**
+  - Bloque Energía Cognitiva ahora collapsible (info expandible vs. siempre visible).
+  - Bloque Métricas muestra solo **3 métricas principales** + botón "Ver métricas avanzadas →".
+  - Reorden global: Resumen → Pool → Últimos 7 días → Atributos → Energía → Logros → Métricas.
+  - Botón "Ver todos los logros y secretos →" para acceso rápido a achievements page.
+
+#### Limpieza de características
+
+- Eliminada mención de "planificador local en dispositivo (sin backend remoto obligatorio)" de la lista de características en Settings.
+- Enfoque refocusado en funcionalidad real: Expo Router, React Native, TypeScript, Zustand.
 
 ### UI transversal
 

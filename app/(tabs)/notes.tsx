@@ -122,17 +122,21 @@ export default function NotesScreen(): ReactElement {
   }
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.hdr}>
-        <Text style={styles.title}>📝 Bloc de Notas</Text>
-        <Pressable style={styles.addBtn} onPress={openCreate} accessibilityRole="button" accessibilityLabel="Crear nueva nota">
-          <Text style={styles.addBtnText}>+ Nueva</Text>
-        </Pressable>
-      </View>
+    <View style={styles.screen}>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: insets.top + 16,
+            paddingBottom: Math.max(insets.bottom, 16) + 96
+          }
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.hdr}>
+          <Text style={styles.title}>📝 Bloc de Notas</Text>
+        </View>
 
       <View style={styles.list}>
         {notes.length === 0 ? (
@@ -178,6 +182,17 @@ export default function NotesScreen(): ReactElement {
           ))
         )}
       </View>
+
+      </ScrollView>
+
+      <Pressable
+        style={[styles.fab, { bottom: Math.max(insets.bottom, 16) + 8 }]}
+        onPress={openCreate}
+        accessibilityRole="button"
+        accessibilityLabel="Crear nueva nota"
+      >
+        <Text style={styles.fabText}>+ Nota</Text>
+      </Pressable>
 
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
@@ -263,8 +278,7 @@ export default function NotesScreen(): ReactElement {
         onDismiss={hideAlert}
       />
 
-      <View style={{ height: 40 }} />
-    </ScrollView>
+    </View>
   );
 }
 
@@ -281,8 +295,20 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   content: { paddingHorizontal: lifeTheme.spacing.lg, gap: lifeTheme.spacing.lg },
   hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { color: lifeTheme.colors.text, fontSize: lifeTheme.typography.titleLg, fontWeight: '900' },
-  addBtn: { backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: ui.radiusBtn },
-  addBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 13 },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    backgroundColor: lifeTheme.colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 28,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5
+  },
+  fabText: { color: lifeTheme.colors.onPrimary, fontWeight: '900', fontSize: 14 },
   list: { gap: 12 },
   noteCard: {
     backgroundColor: lifeTheme.colors.surface, borderRadius: ui.radiusCard,

@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import type { ReactElement } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,14 +14,15 @@ import {
 import Slider from '@react-native-community/slider';
 import Animated, { FadeInDown, FadeOutUp, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { SwipeableTaskCard } from '../../src/components/SwipeableTaskCard';
 import { TaskCompletionCheckDialog } from '../../src/components/TaskCompletionCheckDialog';
 import { ReplanificationPrompt } from '../../src/components/ReplanificationPrompt';
 import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
+import { AppColorPickerSheet } from '../../src/components/AppColorPickerSheet';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
-import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
 import type { PostponeReason, ScheduleBlock, SkipReason, Task, TaskUrgency } from '../../src/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -99,9 +101,13 @@ const FILTER_OPTIONS: Array<{ key: FilterType; label: string }> = [
   { key: 'completed', label: 'Completadas' }
 ];
 
-// ─── Android-safe DatePicker ──────────────────────────────────────────────────
-// Android DateTimePicker crashes when mode="datetime".
-// We use two separate pickers: first date, then time.
+const EMOJI_OPTIONS = [
+  '✨', '🔥', '✅', '🧠', '💼', '📚', '🏃', '💪',
+  '🛒', '🧹', '🍳', '🧘', '🎯', '📝', '💡', '🚀',
+  '📞', '📦', '💻', '🎵', '🏠', '🧪', '📊', '🛠️'
+];
+
+// ─── Date/Time Picker (popup nativo) ─────────────────────────────────────────
 
 function SafeDatePicker({
   label,
@@ -115,23 +121,26 @@ function SafeDatePicker({
   onConfirm: (d: Date) => void;
 }): ReactElement {
   const lifeTheme = useAppTheme();
+  const uiThemeMode = useLifeStore((s) => s.settings.uiThemeMode ?? 'dark');
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const [showDate, setShowDate] = useState(false);
   const [showTime, setShowTime] = useState(false);
   const [pendingDate, setPendingDate] = useState<Date | null>(null);
 
   function handleDateConfirm(selected: Date) {
+    const nextDate = value ? new Date(value) : new Date();
+    nextDate.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+    setPendingDate(nextDate);
     setShowDate(false);
-    setPendingDate(selected);
-    setShowTime(true);
+    setTimeout(() => setShowTime(true), 0);
   }
 
   function handleTimeConfirm(selected: Date) {
-    setShowTime(false);
-    if (pendingDate == null) { setPendingDate(null); return; }
-    const combined = new Date(pendingDate);
+    const baseDate = pendingDate ?? value ?? new Date();
+    const combined = new Date(baseDate);
     combined.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
     setPendingDate(null);
+    setShowTime(false);
     onConfirm(combined);
   }
 
@@ -151,25 +160,37 @@ function SafeDatePicker({
         )}
       </Pressable>
 
-      <AppDateTimePickerSheet
-        visible={showDate}
+      <DateTimePickerModal
+        isVisible={showDate}
         mode="date"
-        value={value ?? new Date()}
-        title={label}
-        subtitle="Elige la fecha con el estilo de la app."
-        confirmLabel="Siguiente"
+        date={value ?? new Date()}
+        locale="es-ES"
+        is24Hour
+        isDarkModeEnabled={uiThemeMode === 'dark'}
+        display={Platform.OS === 'android' ? 'calendar' : 'inline'}
+        confirmTextIOS="Siguiente"
+        cancelTextIOS="Cancelar"
+        buttonTextColorIOS={lifeTheme.colors.primary}
         onConfirm={handleDateConfirm}
-        onClose={() => setShowDate(false)}
+        onCancel={() => {
+          setShowDate(false);
+          setPendingDate(null);
+        }}
       />
-      <AppDateTimePickerSheet
-        visible={showTime}
+      <DateTimePickerModal
+        isVisible={showTime}
         mode="time"
-        value={pendingDate ?? new Date()}
-        title={label}
-        subtitle="Ahora elige la hora exacta."
-        confirmLabel="Guardar"
+        date={pendingDate ?? value ?? new Date()}
+        locale="es-ES"
+        is24Hour
+        isDarkModeEnabled={uiThemeMode === 'dark'}
+        minuteInterval={5}
+        display={Platform.OS === 'android' ? 'clock' : 'spinner'}
+        confirmTextIOS="Guardar"
+        cancelTextIOS="Cancelar"
+        buttonTextColorIOS={lifeTheme.colors.primary}
         onConfirm={handleTimeConfirm}
-        onClose={() => {
+        onCancel={() => {
           setShowTime(false);
           setPendingDate(null);
         }}
@@ -202,7 +223,11 @@ export default function PoolScreen(): ReactElement {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
   const [filter, setFilter] = useState<FilterType>('all');
-  const [isFormCollapsed, setIsFormCollapsed] = useState(false);
+  const [isTaskModalVisible, setIsTaskModalVisible] = useState(false);
+  const [isEmojiPickerVisible, setIsEmojiPickerVisible] = useState(false);
+  const [isCustomEmojiInputVisible, setIsCustomEmojiInputVisible] = useState(false);
+  const [customEmojiDraft, setCustomEmojiDraft] = useState('');
+  const [isColorPickerVisible, setIsColorPickerVisible] = useState(false);
   const [isFilterMenuVisible, setIsFilterMenuVisible] = useState(false);
   const [recentlyCompletedTaskIds, setRecentlyCompletedTaskIds] = useState<string[]>([]);
   const [completionTask, setCompletionTask] = useState<Task | null>(null);
@@ -264,17 +289,9 @@ export default function PoolScreen(): ReactElement {
     setForm(DEFAULT_FORM);
   }
 
-  function toggleTaskForm() {
-    if (isFormCollapsed) {
-      resetForm();
-      setIsFormCollapsed(false);
-      return;
-    }
-
-    if (editingId) {
-      resetForm();
-    }
-    setIsFormCollapsed(true);
+  function openNewTaskModal() {
+    resetForm();
+    setIsTaskModalVisible(true);
   }
 
   function markRecentlyCompleted(taskId: string) {
@@ -285,7 +302,7 @@ export default function PoolScreen(): ReactElement {
   }
 
   function handleEdit(task: Task) {
-    setIsFormCollapsed(false);
+    setIsTaskModalVisible(true);
     setEditingId(task.id);
     setForm({
       title: task.title,
@@ -396,11 +413,10 @@ export default function PoolScreen(): ReactElement {
     };
     if (editingId) updateTask(editingId, payload);
     else addTask(payload);
+    setIsTaskModalVisible(false);
     resetForm();
   }
 
-  const todayCount = tasks.filter((t) => t.urgency === 'today' && t.status !== 'completed').length;
-  const weekCount  = tasks.filter((t) => t.urgency === 'this_week' && t.status !== 'completed').length;
   const doneCount  = tasks.filter((t) => t.status === 'completed').length;
   const totalCount = tasks.length;
 
@@ -412,8 +428,8 @@ export default function PoolScreen(): ReactElement {
   const loadColor = getLoadColor(form.cognitive_load, lifeTheme);
 
   return (
+    <View style={styles.screen}>
     <ScrollView
-      style={styles.screen}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
@@ -424,204 +440,14 @@ export default function PoolScreen(): ReactElement {
         <View style={styles.hdrLeft}>
           <Text style={styles.title}>📋 Task Pool</Text>
           <Text style={styles.subtitle}>Captura, organiza y prioriza tus tareas antes de programarlas.</Text>
-          <Pressable style={styles.formToggleBtn} onPress={toggleTaskForm}>
-            <Text style={styles.formToggleText}>{isFormCollapsed ? '+ Nueva tarea' : '− Minimizar form'}</Text>
-          </Pressable>
         </View>
         <View style={styles.badges}>
-          <View style={[styles.badge, { borderColor: `${lifeTheme.colors.alert}55` }]}>
-            <Text style={[styles.badgeNum, { color: lifeTheme.colors.alert }]}>{todayCount}</Text>
-            <Text style={styles.badgeLbl}>hoy</Text>
-          </View>
-          <View style={[styles.badge, { borderColor: '#f59e0b55' }]}>
-            <Text style={[styles.badgeNum, { color: '#f59e0b' }]}>{weekCount}</Text>
-            <Text style={styles.badgeLbl}>semana</Text>
-          </View>
           <View style={[styles.badge, { borderColor: `${lifeTheme.colors.success}55` }]}>
             <Text style={[styles.badgeNum, { color: lifeTheme.colors.success }]}>{doneCount}</Text>
             <Text style={styles.badgeLbl}>✓</Text>
           </View>
         </View>
       </View>
-
-      <View style={styles.guideCard}>
-        <Text style={styles.guideTitle}>Cómo aprovechar el Pool</Text>
-        <Text style={styles.guideItem}>• Vuelca todo lo pendiente sin fricción.</Text>
-        <Text style={styles.guideItem}>• Ajusta urgencia, prioridad y duración para ordenar.</Text>
-        <Text style={styles.guideItem}>• Completa desde la lista para registrar tu avance.</Text>
-        <Text style={styles.guideMeta}>Tienes {totalCount} tarea{totalCount !== 1 ? 's' : ''} registradas.</Text>
-      </View>
-
-      {/* Form */}
-      {isFormCollapsed ? (
-        <Pressable style={styles.formCollapsedCard} onPress={toggleTaskForm}>
-          <Text style={styles.formCollapsedTitle}>+ Crear tarea nueva</Text>
-          <Text style={styles.formCollapsedSubtitle}>Abre el formulario cuando necesites capturar una tarea.</Text>
-        </Pressable>
-      ) : (
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{editingId ? '✏️ Editar tarea' : '+ Nueva tarea'}</Text>
-        <Text style={styles.formHint}>Usa este formulario para definir contexto, tiempo y prioridad.</Text>
-
-        <TextInput
-          style={styles.input}
-          value={form.title}
-          onChangeText={(v) => setForm((f) => ({ ...f, title: v }))}
-          placeholder="Título de la tarea"
-          placeholderTextColor={lifeTheme.colors.muted}
-          returnKeyType="next"
-        />
-
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          value={form.description}
-          onChangeText={(v) => setForm((f) => ({ ...f, description: v }))}
-          placeholder="Descripción (opcional)"
-          placeholderTextColor={lifeTheme.colors.muted}
-          multiline
-          numberOfLines={2}
-        />
-
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.fieldLabel}>Emoji</Text>
-            <TextInput
-              style={styles.input}
-              value={form.emoji}
-              onChangeText={(v) => setForm((f) => ({ ...f, emoji: v.slice(0, 2) }))}
-              placeholder="✨"
-              placeholderTextColor={lifeTheme.colors.muted}
-              maxLength={2}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.fieldLabel}>Color</Text>
-            <TextInput
-              style={styles.input}
-              value={form.color}
-              onChangeText={(v) => setForm((f) => ({ ...f, color: v }))}
-              placeholder="#8FBF00"
-              placeholderTextColor={lifeTheme.colors.muted}
-              autoCapitalize="characters"
-            />
-          </View>
-        </View>
-
-        {/* Urgency */}
-        <View>
-          <Text style={styles.fieldLabel}>¿Cuándo debe hacerse? *</Text>
-          <View style={styles.urgencyRow}>
-            {urgencyOptions.map((opt) => (
-              <Pressable
-                key={opt.value}
-                style={[
-                  styles.urgencyChip,
-                  form.urgency === opt.value && {
-                    backgroundColor: `${opt.color}1A`,
-                    borderColor: opt.color
-                  }
-                ]}
-                onPress={() => setForm((f) => ({ ...f, urgency: opt.value }))}
-              >
-                <Text style={styles.urgencyIcon}>{opt.icon}</Text>
-                <Text style={[styles.urgencyLabel, form.urgency === opt.value && { color: opt.color, fontWeight: '800' }]}>
-                  {opt.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <Text style={styles.fieldHint}>La urgencia define en qué vistas aparece y cómo se prioriza.</Text>
-        </View>
-
-        {/* Duration */}
-        <View>
-          <View style={styles.sliderHdr}>
-            <Text style={styles.fieldLabel}>Duración estimada</Text>
-            <Text style={[styles.sliderVal, { fontFamily: 'monospace' }]}>{form.eta_minutes} min</Text>
-          </View>
-          <Slider
-            style={styles.slider}
-            minimumValue={5} maximumValue={240} step={5}
-            value={form.eta_minutes}
-            onValueChange={(v) => setForm((f) => ({ ...f, eta_minutes: Math.round(v) }))}
-            minimumTrackTintColor={lifeTheme.colors.primary}
-            maximumTrackTintColor={lifeTheme.colors.border}
-            thumbTintColor={lifeTheme.colors.primary}
-          />
-        </View>
-
-        {/* Priority */}
-        <View>
-          <View style={styles.sliderHdr}>
-            <Text style={styles.fieldLabel}>Prioridad</Text>
-            <Text style={[styles.sliderVal, { color: prioColor }]}>{'★'.repeat(p)}{'☆'.repeat(5 - p)}</Text>
-          </View>
-          <Slider
-            style={styles.slider}
-            minimumValue={1} maximumValue={5} step={1}
-            value={form.priority}
-            onValueChange={(v) => setForm((f) => ({ ...f, priority: Math.round(v) as 1|2|3|4|5 }))}
-            minimumTrackTintColor={prioColor}
-            maximumTrackTintColor={lifeTheme.colors.border}
-            thumbTintColor={prioColor}
-          />
-        </View>
-
-        {/* Cognitive Load */}
-        <View>
-          <View style={styles.sliderHdr}>
-            <Text style={styles.fieldLabel}>Carga cognitiva</Text>
-            <Text style={[styles.sliderVal, { color: loadColor }]}>{form.cognitive_load}/10</Text>
-          </View>
-          <Slider
-            style={styles.slider}
-            minimumValue={1} maximumValue={10} step={1}
-            value={form.cognitive_load}
-            onValueChange={(v) => setForm((f) => ({ ...f, cognitive_load: Math.round(v) }))}
-            minimumTrackTintColor={loadColor}
-            maximumTrackTintColor={lifeTheme.colors.border}
-            thumbTintColor={loadColor}
-          />
-        </View>
-
-        {/* Hora de inicio */}
-        <SafeDatePicker
-          label="🕐 Hora de inicio fija (opcional)"
-          value={form.fixed_start}
-          onClear={() => setForm((f) => ({ ...f, fixed_start: null }))}
-          onConfirm={(d) => setForm((f) => ({ ...f, fixed_start: d }))}
-        />
-
-        {/* Hora de fin */}
-        <SafeDatePicker
-          label="🕐 Hora de fin fija (opcional)"
-          value={form.fixed_end}
-          onClear={() => setForm((f) => ({ ...f, fixed_end: null }))}
-          onConfirm={(d) => setForm((f) => ({ ...f, fixed_end: d }))}
-        />
-
-        {/* Deadline */}
-        <SafeDatePicker
-          label="⏰ Fecha límite / Deadline (opcional)"
-          value={form.deadline}
-          onClear={() => setForm((f) => ({ ...f, deadline: null }))}
-          onConfirm={(d) => setForm((f) => ({ ...f, deadline: d }))}
-        />
-        <Text style={styles.fieldHint}>Si hay horario fijo, usa inicio y fin para respetar tu agenda.</Text>
-
-        {/* Buttons */}
-        <View style={styles.formBtns}>
-          <Pressable style={styles.primaryBtn} onPress={handleSubmit}>
-            <Text style={styles.primaryBtnText}>{editingId ? 'Actualizar tarea' : 'Guardar tarea'}</Text>
-          </Pressable>
-          {editingId && (
-            <Pressable style={styles.cancelBtn} onPress={resetForm}>
-              <Text style={styles.cancelBtnText}>Cancelar</Text>
-            </Pressable>
-          )}
-        </View>
-      </View>
-      )}
 
       {/* Filters */}
       <View style={styles.filterDropdownRow}>
@@ -674,7 +500,7 @@ export default function PoolScreen(): ReactElement {
             <Text style={styles.emptyText}>
               {filter === 'today'
                 ? 'No hay tareas marcadas para hoy. ¡Crea una!'
-                : 'Crea tu primera tarea usando el formulario de arriba.'}
+                : 'Usa el botón flotante para crear tu primera tarea.'}
             </Text>
           </View>
         ) : (
@@ -698,6 +524,287 @@ export default function PoolScreen(): ReactElement {
           ))
         )}
       </View>
+
+      <View style={styles.guideCard}>
+        <Text style={styles.guideTitle}>Cómo aprovechar el Pool</Text>
+        <Text style={styles.guideItem}>• Vuelca todo lo pendiente sin fricción.</Text>
+        <Text style={styles.guideItem}>• Ajusta urgencia, prioridad y duración para ordenar.</Text>
+        <Text style={styles.guideItem}>• Completa desde la lista para registrar tu avance.</Text>
+        <Text style={styles.guideMeta}>Tienes {totalCount} tarea{totalCount !== 1 ? 's' : ''} registradas.</Text>
+      </View>
+
+      <View style={{ height: 96 }} />
+    </ScrollView>
+
+      <Modal visible={isTaskModalVisible} transparent animationType="slide" onRequestClose={() => setIsTaskModalVisible(false)}>
+        <View style={styles.formModalOverlay}>
+          <ScrollView
+            style={styles.formModalScroll}
+            contentContainerStyle={styles.formModalContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{editingId ? '✏️ Editar tarea' : '+ Nueva tarea'}</Text>
+              <Text style={styles.formHint}>Usa este formulario para definir contexto, tiempo y prioridad.</Text>
+
+              <TextInput
+                style={styles.input}
+                value={form.title}
+                onChangeText={(v) => setForm((f) => ({ ...f, title: v }))}
+                placeholder="Título de la tarea"
+                placeholderTextColor={lifeTheme.colors.muted}
+                returnKeyType="next"
+              />
+
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={form.description}
+                onChangeText={(v) => setForm((f) => ({ ...f, description: v }))}
+                placeholder="Descripción (opcional)"
+                placeholderTextColor={lifeTheme.colors.muted}
+                multiline
+                numberOfLines={2}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Emoji</Text>
+                  <Pressable
+                    style={styles.selectorInput}
+                    onPress={() => setIsEmojiPickerVisible(true)}
+                  >
+                    <Text style={styles.selectorEmojiValue}>{form.emoji || '✨'}</Text>
+                    <Text style={styles.selectorHint}>Seleccionar</Text>
+                  </Pressable>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Color</Text>
+                  <Pressable
+                    style={styles.selectorInput}
+                    onPress={() => {
+                      setIsColorPickerVisible(true);
+                    }}
+                  >
+                    <View style={styles.colorPreviewRow}>
+                      <View
+                        style={[
+                          styles.colorSwatch,
+                          { backgroundColor: form.color || lifeTheme.colors.primary }
+                        ]}
+                      />
+                      <Text style={styles.selectorColorText}>{form.color || 'Automático'}</Text>
+                    </View>
+                    <Text style={styles.selectorHint}>Elegir</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View>
+                <Text style={styles.fieldLabel}>¿Cuándo debe hacerse? *</Text>
+                <View style={styles.urgencyRow}>
+                  {urgencyOptions.map((opt) => (
+                    <Pressable
+                      key={opt.value}
+                      style={[
+                        styles.urgencyChip,
+                        form.urgency === opt.value && {
+                          backgroundColor: `${opt.color}1A`,
+                          borderColor: opt.color
+                        }
+                      ]}
+                      onPress={() => setForm((f) => ({ ...f, urgency: opt.value }))}
+                    >
+                      <Text style={styles.urgencyIcon}>{opt.icon}</Text>
+                      <Text style={[styles.urgencyLabel, form.urgency === opt.value && { color: opt.color, fontWeight: '800' }]}>
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.fieldHint}>La urgencia define en qué vistas aparece y cómo se prioriza.</Text>
+              </View>
+
+              <View>
+                <View style={styles.sliderHdr}>
+                  <Text style={styles.fieldLabel}>Duración estimada</Text>
+                  <Text style={[styles.sliderVal, { fontFamily: 'monospace' }]}>{form.eta_minutes} min</Text>
+                </View>
+                <Slider
+                  style={styles.slider}
+                  minimumValue={5} maximumValue={240} step={5}
+                  value={form.eta_minutes}
+                  onValueChange={(v) => setForm((f) => ({ ...f, eta_minutes: Math.round(v) }))}
+                  minimumTrackTintColor={lifeTheme.colors.primary}
+                  maximumTrackTintColor={lifeTheme.colors.border}
+                  thumbTintColor={lifeTheme.colors.primary}
+                />
+              </View>
+
+              <View>
+                <View style={styles.sliderHdr}>
+                  <Text style={styles.fieldLabel}>Prioridad</Text>
+                  <Text style={[styles.sliderVal, { color: prioColor }]}>{'★'.repeat(p)}{'☆'.repeat(5 - p)}</Text>
+                </View>
+                <Slider
+                  style={styles.slider}
+                  minimumValue={1} maximumValue={5} step={1}
+                  value={form.priority}
+                  onValueChange={(v) => setForm((f) => ({ ...f, priority: Math.round(v) as 1|2|3|4|5 }))}
+                  minimumTrackTintColor={prioColor}
+                  maximumTrackTintColor={lifeTheme.colors.border}
+                  thumbTintColor={prioColor}
+                />
+              </View>
+
+              <View>
+                <View style={styles.sliderHdr}>
+                  <Text style={styles.fieldLabel}>Carga cognitiva</Text>
+                  <Text style={[styles.sliderVal, { color: loadColor }]}>{form.cognitive_load}/10</Text>
+                </View>
+                <Slider
+                  style={styles.slider}
+                  minimumValue={1} maximumValue={10} step={1}
+                  value={form.cognitive_load}
+                  onValueChange={(v) => setForm((f) => ({ ...f, cognitive_load: Math.round(v) }))}
+                  minimumTrackTintColor={loadColor}
+                  maximumTrackTintColor={lifeTheme.colors.border}
+                  thumbTintColor={loadColor}
+                />
+              </View>
+
+              <SafeDatePicker
+                label="🕐 Hora de inicio fija (opcional)"
+                value={form.fixed_start}
+                onClear={() => setForm((f) => ({ ...f, fixed_start: null }))}
+                onConfirm={(d) => setForm((f) => ({ ...f, fixed_start: d }))}
+              />
+
+              <SafeDatePicker
+                label="🕐 Hora de fin fija (opcional)"
+                value={form.fixed_end}
+                onClear={() => setForm((f) => ({ ...f, fixed_end: null }))}
+                onConfirm={(d) => setForm((f) => ({ ...f, fixed_end: d }))}
+              />
+
+              <SafeDatePicker
+                label="⏰ Fecha límite / Deadline (opcional)"
+                value={form.deadline}
+                onClear={() => setForm((f) => ({ ...f, deadline: null }))}
+                onConfirm={(d) => setForm((f) => ({ ...f, deadline: d }))}
+              />
+              <Text style={styles.fieldHint}>Si hay horario fijo, usa inicio y fin para respetar tu agenda.</Text>
+
+              <View style={styles.formBtns}>
+                <Pressable style={styles.primaryBtn} onPress={handleSubmit}>
+                  <Text style={styles.primaryBtnText}>{editingId ? 'Actualizar tarea' : 'Guardar tarea'}</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.cancelBtn}
+                  onPress={() => {
+                    setIsTaskModalVisible(false);
+                    if (!editingId) resetForm();
+                  }}
+                >
+                  <Text style={styles.cancelBtnText}>Cerrar</Text>
+                </Pressable>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={isEmojiPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setIsEmojiPickerVisible(false);
+          setIsCustomEmojiInputVisible(false);
+          setCustomEmojiDraft('');
+        }}
+      >
+        <Pressable
+          style={styles.pickerOverlay}
+          onPress={() => {
+            setIsEmojiPickerVisible(false);
+            setIsCustomEmojiInputVisible(false);
+            setCustomEmojiDraft('');
+          }}
+        >
+          <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.pickerTitle}>Selecciona un emoji</Text>
+            <Pressable
+              style={styles.customEmojiToggleBtn}
+              onPress={() => setIsCustomEmojiInputVisible((value) => !value)}
+            >
+              <Text style={styles.customEmojiToggleIcon}>🙂➕</Text>
+              <Text style={styles.customEmojiToggleText}>Agregar con teclado</Text>
+            </Pressable>
+
+            {isCustomEmojiInputVisible && (
+              <View style={styles.customEmojiInputWrap}>
+                <TextInput
+                  style={styles.customEmojiInput}
+                  value={customEmojiDraft}
+                  onChangeText={setCustomEmojiDraft}
+                  placeholder="Escribe o pega un emoji"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                  autoFocus
+                  returnKeyType="done"
+                />
+                <Pressable
+                  style={styles.customEmojiApplyBtn}
+                  onPress={() => {
+                    const nextEmoji = customEmojiDraft.trim();
+                    if (!nextEmoji) return;
+                    setForm((current) => ({ ...current, emoji: nextEmoji }));
+                    setIsEmojiPickerVisible(false);
+                    setIsCustomEmojiInputVisible(false);
+                    setCustomEmojiDraft('');
+                  }}
+                >
+                  <Text style={styles.customEmojiApplyText}>Usar</Text>
+                </Pressable>
+              </View>
+            )}
+
+            <View style={styles.emojiGrid}>
+              {EMOJI_OPTIONS.map((emoji) => (
+                <Pressable
+                  key={emoji}
+                  style={[styles.emojiChip, form.emoji === emoji && styles.emojiChipActive]}
+                  onPress={() => {
+                    setForm((current) => ({ ...current, emoji }));
+                    setIsEmojiPickerVisible(false);
+                    setIsCustomEmojiInputVisible(false);
+                    setCustomEmojiDraft('');
+                  }}
+                >
+                  <Text style={styles.emojiChipText}>{emoji}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <AppColorPickerSheet
+        visible={isColorPickerVisible}
+        value={form.color || lifeTheme.colors.primary}
+        onClose={() => setIsColorPickerVisible(false)}
+        onClear={() => setForm((current) => ({ ...current, color: '' }))}
+        onApply={(hex) => setForm((current) => ({ ...current, color: hex }))}
+      />
+
+      <Pressable
+        style={[styles.fab, { bottom: Math.max(insets.bottom, 16) + 8 }]}
+        onPress={openNewTaskModal}
+        accessibilityRole="button"
+        accessibilityLabel="Crear nueva tarea"
+      >
+        <Text style={styles.fabText}>+ Tarea</Text>
+      </Pressable>
 
       <TaskCompletionCheckDialog
         visible={completionTask != null}
@@ -731,8 +838,6 @@ export default function PoolScreen(): ReactElement {
         }}
       />
 
-      <View style={{ height: 24 }} />
-
       <CustomAlertDialog
         visible={alertState.visible}
         title={alertState.title}
@@ -740,7 +845,7 @@ export default function PoolScreen(): ReactElement {
         buttons={alertState.buttons}
         onDismiss={hideAlert}
       />
-    </ScrollView>
+    </View>
   );
 }
 
@@ -750,6 +855,13 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
   content: { paddingHorizontal: 16, gap: 14, paddingBottom: 32 },
+  formModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end'
+  },
+  formModalScroll: { flex: 1 },
+  formModalContent: { paddingHorizontal: 12, paddingTop: 46, paddingBottom: 24 },
   hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   hdrLeft: { gap: 8 },
   title: { color: lifeTheme.colors.text, fontSize: 22, fontWeight: '800' },
@@ -804,6 +916,29 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
     color: lifeTheme.colors.text, fontSize: 15
   },
+  selectorInput: {
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderColor: lifeTheme.colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  selectorHint: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '700' },
+  selectorEmojiValue: { color: lifeTheme.colors.text, fontSize: 22 },
+  colorPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  colorSwatch: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border
+  },
+  selectorColorText: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
   textArea: { minHeight: 70, textAlignVertical: 'top' },
   fieldLabel: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
   fieldHint: { color: lifeTheme.colors.muted, fontSize: 11, lineHeight: 16, marginTop: 6 },
@@ -892,6 +1027,106 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     padding: 24, gap: 8, alignItems: 'center'
   },
   emptyTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '700' },
-  emptyText: { color: lifeTheme.colors.muted, fontSize: 13, textAlign: 'center', lineHeight: 20 }
+  emptyText: { color: lifeTheme.colors.muted, fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    paddingHorizontal: 20
+  },
+  pickerCard: {
+    backgroundColor: lifeTheme.colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 14,
+    gap: 12
+  },
+  pickerTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800' },
+  customEmojiToggleBtn: {
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  customEmojiToggleIcon: { fontSize: 16 },
+  customEmojiToggleText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
+  customEmojiInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  customEmojiInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    borderRadius: 12,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: lifeTheme.colors.text,
+    fontSize: 14
+  },
+  customEmojiApplyBtn: {
+    borderRadius: 12,
+    backgroundColor: lifeTheme.colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  customEmojiApplyText: { color: lifeTheme.colors.onPrimary, fontSize: 12, fontWeight: '800' },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  emojiChip: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  emojiChipActive: {
+    borderColor: lifeTheme.colors.primary,
+    backgroundColor: lifeTheme.colors.softPrimary
+  },
+  emojiChipText: { fontSize: 22 },
+  colorPickerCard: {
+    backgroundColor: lifeTheme.colors.surface,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 14,
+    gap: 12,
+    marginTop: 'auto'
+  },
+  colorWheelWrap: {
+    height: 280,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    padding: 8
+  },
+  colorPickerActions: { flexDirection: 'row', gap: 10 },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    backgroundColor: lifeTheme.colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 28,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5
+  },
+  fabText: { color: lifeTheme.colors.onPrimary, fontWeight: '900', fontSize: 14 }
   });
 }

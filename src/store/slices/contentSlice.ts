@@ -177,7 +177,10 @@ export const createContentSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
 
     if (dayOfWeek === new Date().getDay()) {
       await get().generateTimeline(new Date());
+      return;
     }
+
+    triggerNotificationResync(get, set, 'resincronizar notificaciones de rutinas');
   },
 
   addTravelLog: (type: TravelLog['type']) => {

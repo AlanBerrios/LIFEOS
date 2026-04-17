@@ -1,8 +1,8 @@
 <div align="center">
-  <img src="https://img.shields.io/badge/LIFEOS-v4.0%20HELL%20YEAH%20UPDATE-22c55e?style=for-the-badge&logo=react&logoColor=white" alt="LifeOS Hell Yeah Update" />
+  <img src="https://img.shields.io/badge/LIFEOS-v4.1%20UX%20REFINEMENT-22c55e?style=for-the-badge&logo=react&logoColor=white" alt="LifeOS UX Refinement" />
   <br />
-  <img src="assets/branding/icon-v3.png" alt="Logo LIFEOS v4.0" width="240" />
-  <h1 align="center">LifeOS ✨ v4.0 "HELL YEAH UPDATE"</h1>
+  <img src="assets/branding/icon-v3.png" alt="Logo LIFEOS v4.1" width="240" />
+  <h1 align="center">LifeOS ✨ v4.1 "UX REFINEMENT"</h1>
   <p align="center">
     <strong>Sistema operativo personal para ejecutar tu día con foco, estructura y replanificación inteligente.</strong>
   </p>
@@ -31,6 +31,16 @@ La referencia canónica y vigente del estado del proyecto vive en:
 Si existe conflicto entre documentos históricos y el estado operativo actual, esta fuente prevalece.
 
 ## 🆕 Últimas actualizaciones
+
+### v4.1 - UX REFINEMENT
+
+- **Zoom inteligente en calendario:** El zoom en vista semanal ahora se centra en el punto del gesto (pinch midpoint) en lugar de la esquina superior izquierda, mejorando la intuitividad de exploración del timeline.
+- **Sistema de logros expansivo (20+):** Se amplió significativamente el catálogo de logros RPG con niveles de rareza (común → raro → épico → legendario → misterioso) y 13 logros secretos desconocidos.
+- **Página dedicada de logros:** Los logros ahora tienen navegación independiente (/achievements) con grid de 2 columnas, estadísticas de desbloqueados/faltantes/secretos y toggle para mostrar/ocultar secretos.
+- **Página de métricas avanzadas:** Se creó pestaña (/advanced-metrics) con drill-down exhaustivo de paridad scheduler, actividad de replan, telemetría de energía e historial de datos.
+- **Métricas simplificadas en dashboard:** El bloque de estadísticas en Stats ahora muestra solo 3 métricas principales con botón "Ver métricas avanzadas" para acceso a análisis profundo.
+- **Energía cognitiva collapsible:** Se mejoró la sección de energía con toggle de información expandible, reduciendo ruido visual en dashboard principal.
+- **Limpieza de características:** Se eliminó referencia a "planificador local en dispositivo" de la lista de características para enfoque en funcionalidad real.
 
 ### v4.0 - HELL YEAH UPDATE
 

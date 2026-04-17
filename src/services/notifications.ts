@@ -57,7 +57,7 @@ export function initNotifications(): void {
     })
   });
 
-  Notifications.setNotificationCategoryAsync('distraction_alert', [
+  void Notifications.setNotificationCategoryAsync('distraction_alert', [
     {
       identifier: 'snooze',
       buttonTitle: '⏳ Dame 5 min',
@@ -68,9 +68,11 @@ export function initNotifications(): void {
       buttonTitle: '✅ Iniciar Tarea',
       options: { opensAppToForeground: true }
     }
-  ]);
+  ]).catch((error) => {
+    console.log('Error setting distraction notification category:', error);
+  });
 
-  Notifications.setNotificationCategoryAsync('completion_check', [
+  void Notifications.setNotificationCategoryAsync('completion_check', [
     {
       identifier: 'done',
       buttonTitle: '✅ Hecho',
@@ -86,10 +88,12 @@ export function initNotifications(): void {
       buttonTitle: '⏭️ Saltar',
       options: { opensAppToForeground: true }
     }
-  ]);
+  ]).catch((error) => {
+    console.log('Error setting completion notification category:', error);
+  });
 
   if (Platform.OS === 'android') {
-    Notifications.setNotificationChannelAsync('default', {
+    void Notifications.setNotificationChannelAsync('default', {
       name: 'LifeOS Alarms',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
@@ -99,6 +103,8 @@ export function initNotifications(): void {
         usage: Notifications.AndroidAudioUsage.ALARM, // Bypasses Silent/DND if configured properly!
         contentType: Notifications.AndroidAudioContentType.SONIFICATION,
       },
+    }).catch((error) => {
+      console.log('Error setting default notification channel:', error);
     });
   }
 }

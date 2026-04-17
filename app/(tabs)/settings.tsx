@@ -59,6 +59,101 @@ const CONTRAST_MODES: Array<{ key: 'auto' | 'light' | 'dark'; label: string; sub
   { key: 'dark', label: 'Forzado oscuro', subtitle: 'Texto oscuro sobre acento' }
 ];
 
+const THEME_MODES: Array<{ key: 'dark' | 'light'; label: string; subtitle: string }> = [
+  { key: 'dark', label: 'Modo oscuro', subtitle: 'Ideal para uso nocturno y menor brillo' },
+  { key: 'light', label: 'Modo claro', subtitle: 'Mayor contraste en ambientes iluminados' }
+];
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizeHex(hex: string): string {
+  const cleaned = hex.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+  return cleaned.length === 6 ? `#${cleaned}`.toUpperCase() : '#8FBF00';
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const safeHex = normalizeHex(hex).replace('#', '');
+  return {
+    r: Number.parseInt(safeHex.slice(0, 2), 16),
+    g: Number.parseInt(safeHex.slice(2, 4), 16),
+    b: Number.parseInt(safeHex.slice(4, 6), 16)
+  };
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const toHex = (channel: number) => clamp(Math.round(channel), 0, 255).toString(16).padStart(2, '0').toUpperCase();
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const delta = max - min;
+
+  let h = 0;
+  if (delta > 0) {
+    if (max === rn) {
+      h = 60 * (((gn - bn) / delta) % 6);
+    } else if (max === gn) {
+      h = 60 * (((bn - rn) / delta) + 2);
+    } else {
+      h = 60 * (((rn - gn) / delta) + 4);
+    }
+  }
+
+  if (h < 0) h += 360;
+  const s = max === 0 ? 0 : delta / max;
+  return { h, s, v: max };
+}
+
+function hsvToRgb(h: number, s: number, v: number): { r: number; g: number; b: number } {
+  const chroma = v * s;
+  const sector = (h / 60) % 6;
+  const x = chroma * (1 - Math.abs((sector % 2) - 1));
+
+  let r1 = 0;
+  let g1 = 0;
+  let b1 = 0;
+
+  if (sector >= 0 && sector < 1) {
+    r1 = chroma; g1 = x; b1 = 0;
+  } else if (sector < 2) {
+    r1 = x; g1 = chroma; b1 = 0;
+  } else if (sector < 3) {
+    r1 = 0; g1 = chroma; b1 = x;
+  } else if (sector < 4) {
+    r1 = 0; g1 = x; b1 = chroma;
+  } else if (sector < 5) {
+    r1 = x; g1 = 0; b1 = chroma;
+  } else {
+    r1 = chroma; g1 = 0; b1 = x;
+  }
+
+  const m = v - chroma;
+  return {
+    r: (r1 + m) * 255,
+    g: (g1 + m) * 255,
+    b: (b1 + m) * 255
+  };
+}
+
+function getBrightnessFromHex(hex: string): number {
+  const { r, g, b } = hexToRgb(hex);
+  return rgbToHsv(r, g, b).v;
+}
+
+function adjustHexBrightness(hex: string, brightness: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  const { h, s } = rgbToHsv(r, g, b);
+  const adjusted = hsvToRgb(h, s, clamp(brightness, 0.15, 1));
+  return rgbToHex(adjusted.r, adjusted.g, adjusted.b);
+}
+
 // ─── Accordion Component ──────────────────────────────────────────────────
 function Accordion({
   title,
@@ -132,6 +227,7 @@ export default function SettingsScreen(): ReactElement {
 
   const [icsUrl, setIcsUrl] = useState('');
   const { alertState, showAlert, hideAlert } = useCustomAlert();
+  const accentBrightness = useMemo(() => getBrightnessFromHex(settings.uiAccentColor), [settings.uiAccentColor]);
 
   async function handleBackup() {
     try {
@@ -261,6 +357,32 @@ export default function SettingsScreen(): ReactElement {
       </View>
 
       <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Apariencia" icon="🎨">
+        <Text style={styles.inputLabel}>Tema de la interfaz</Text>
+        <Text style={styles.helperText}>Elige entre modo oscuro o modo claro para toda la app.</Text>
+        <View style={styles.contrastRow}>
+          {THEME_MODES.map((mode) => {
+            const selected = settings.uiThemeMode === mode.key;
+            return (
+              <Pressable
+                key={mode.key}
+                onPress={() => updateSettings({ uiThemeMode: mode.key })}
+                style={[
+                  styles.contrastOption,
+                  selected && { backgroundColor: lifeTheme.colors.primary, borderColor: lifeTheme.colors.primary }
+                ]}
+              >
+                <Text style={[styles.contrastOptionText, selected && { color: lifeTheme.colors.onPrimary }]}> 
+                  {mode.label}
+                </Text>
+                <Text style={[styles.contrastOptionSubtext, selected && { color: lifeTheme.colors.onPrimary }]}> 
+                  {mode.subtitle}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={styles.divider} />
         <SettingRow styles={styles} label="Color principal" subtitle="Arrastra sobre el círculo para cambiar el acento de toda la interfaz.">
           <Text style={styles.valueText}>{settings.uiAccentColor.toUpperCase()}</Text>
         </SettingRow>
@@ -272,6 +394,22 @@ export default function SettingsScreen(): ReactElement {
           />
         </View>
         <Text style={styles.helperText}>El cambio se aplica en tiempo real a botones, indicadores y resaltados.</Text>
+
+        <View style={styles.divider} />
+        <SettingRow styles={styles} label="Brillo del acento" subtitle="Aclara u oscurece el color seleccionado sin cambiar su tono.">
+          <Text style={styles.valueText}>{Math.round(accentBrightness * 100)}%</Text>
+        </SettingRow>
+        <Slider
+          style={styles.slider}
+          minimumValue={0.15}
+          maximumValue={1}
+          step={0.01}
+          value={accentBrightness}
+          onValueChange={(value) => updateSettings({ uiAccentColor: adjustHexBrightness(settings.uiAccentColor, value) })}
+          minimumTrackTintColor={lifeTheme.colors.primary}
+          maximumTrackTintColor={lifeTheme.colors.border}
+          thumbTintColor={lifeTheme.colors.primary}
+        />
 
         <View style={styles.divider} />
         <Text style={styles.inputLabel}>Contraste del texto</Text>
@@ -499,7 +637,6 @@ export default function SettingsScreen(): ReactElement {
 
       <View style={styles.footer}>
         <Text style={styles.footerTitle}>Características de la app</Text>
-        <Text style={styles.featureLine}>• Planificador local en dispositivo (sin backend remoto obligatorio)</Text>
         <Text style={styles.featureLine}>• Stack: Expo Router, React Native, TypeScript y Zustand</Text>
         <Text style={styles.featureLine}>• Notificaciones locales con alarmas, rutinas, eventos y notas</Text>
         <Text style={styles.buildInfo}>

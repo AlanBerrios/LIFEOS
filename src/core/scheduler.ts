@@ -22,8 +22,6 @@ const SA_COOLING = 0.97;
 const HARD_DEADLINE_HOURS = 2;
 const HIGH_LOAD_THRESHOLD = 7;
 const MAX_HIGH_LOAD_STREAK = 2;
-const HABIT_REMINDER_MINUTES = 12;
-const HABIT_ANCHORS_MINUTES = [9 * 60 + 30, 13 * 60, 18 * 60 + 30, 21 * 60];
 
 interface ScoredTask {
   task: Task;
@@ -263,62 +261,6 @@ function buildEventBlocks(events: StaticEvent[], now: Date): ScheduleBlock[] {
     }));
 }
 
-function hashString(input: string): number {
-  let hash = 0;
-  for (let i = 0; i < input.length; i += 1) {
-    hash = (hash << 5) - hash + input.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-function isHabitCompletedOnDate(habit: Habit, dayKey: string): boolean {
-  if (habit.lastCompletedDate === dayKey) return true;
-  return habit.logs.some((log) => new Date(log.timestamp).toISOString().slice(0, 10) === dayKey);
-}
-
-function buildHabitSoftBlocks(habits: Habit[], now: Date): ScheduleBlock[] {
-  if (habits.length === 0) return [];
-
-  const dayKey = now.toISOString().slice(0, 10);
-  const pendingHabits = habits.filter((habit) => !isHabitCompletedOnDate(habit, dayKey));
-  if (pendingHabits.length === 0) return [];
-
-  const baseDate = new Date(now);
-  baseDate.setSeconds(0, 0);
-
-  return pendingHabits.map((habit, index) => {
-    const [anchorHours, anchorMinutes] = [
-      Math.floor(HABIT_ANCHORS_MINUTES[index % HABIT_ANCHORS_MINUTES.length] / 60),
-      HABIT_ANCHORS_MINUTES[index % HABIT_ANCHORS_MINUTES.length] % 60
-    ];
-    const jitter = (hashString(habit.id) % 11) - 5;
-
-    const start = new Date(baseDate);
-    start.setHours(anchorHours, anchorMinutes + jitter, 0, 0);
-
-    const latestReasonableStart = new Date(baseDate);
-    latestReasonableStart.setHours(22, 30, 0, 0);
-    if (start < now) {
-      start.setTime(now.getTime() + 10 * 60_000);
-    }
-    if (start > latestReasonableStart) {
-      start.setTime(latestReasonableStart.getTime());
-    }
-
-    const end = new Date(start.getTime() + HABIT_REMINDER_MINUTES * 60_000);
-    return {
-      id: createId('habit-block'),
-      type: 'habit',
-      habit_id: habit.id,
-      title: `${habit.emoji || '🌱'} ${habit.name}`,
-      start_time: start,
-      end_time: end,
-      pinned: false,
-      isSoftBlock: true
-    };
-  });
-}
 
 function findNextCoherentStart(candidateStart: Date, durationMs: number, hardBlocks: ScheduleBlock[]): Date {
   let start = new Date(candidateStart);
@@ -382,10 +324,8 @@ export function generateTimeline(
 
   const hardBlocks = [...buildRoutineBlocks(routines, now, routineOverrides), ...buildEventBlocks(events, now)]
     .sort((a, b) => a.start_time.getTime() - b.start_time.getTime());
-  const habitSoftBlocks = buildHabitSoftBlocks(habits, now);
-
   if (schedulableTasks.length === 0) {
-    return mergeRestBlocks([...hardBlocks, ...habitSoftBlocks].sort((a, b) => a.start_time.getTime() - b.start_time.getTime()));
+    return mergeRestBlocks([...hardBlocks].sort((a, b) => a.start_time.getTime() - b.start_time.getTime()));
   }
 
   const scored = scoreAll(schedulableTasks, now, preferredTaskIds);
@@ -428,7 +368,7 @@ export function generateTimeline(
   const bestFlexible = beams[0]?.sequence ?? [];
   const finalSequence = simulatedAnnealing([...hardFirst.map((s) => s.task), ...bestFlexible], now);
 
-  const blocks: ScheduleBlock[] = [...hardBlocks.map((block) => ({ ...block })), ...habitSoftBlocks.map((block) => ({ ...block }))];
+  const blocks: ScheduleBlock[] = [...hardBlocks.map((block) => ({ ...block }))];
   let cursor = new Date(now);
 
   for (let idx = 0; idx < finalSequence.length; idx++) {

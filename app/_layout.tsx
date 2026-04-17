@@ -65,57 +65,61 @@ export default function RootLayout(): ReactElement {
       Notifications: typeof import('expo-notifications'),
       resp: import('expo-notifications').NotificationResponse | null
     ) => {
-      if (!resp) return;
+      try {
+        if (!resp) return;
 
-      const actionId = resp.actionIdentifier;
-      if (actionId === Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+        const actionId = resp.actionIdentifier;
+        if (actionId === Notifications.DEFAULT_ACTION_IDENTIFIER) return;
 
-      const requestId = resp.notification.request.identifier;
-      const actionKey = `${requestId}:${actionId}`;
-      if (processedActionKeys.has(actionKey)) return;
-      processedActionKeys.add(actionKey);
-      if (processedActionKeys.size > 50) {
-        const oldest = processedActionKeys.values().next().value;
-        if (oldest) processedActionKeys.delete(oldest);
-      }
+        const requestId = resp.notification.request.identifier;
+        const actionKey = `${requestId}:${actionId}`;
+        if (processedActionKeys.has(actionKey)) return;
+        processedActionKeys.add(actionKey);
+        if (processedActionKeys.size > 50) {
+          const oldest = processedActionKeys.values().next().value;
+          if (oldest) processedActionKeys.delete(oldest);
+        }
 
-      const rawData = resp.notification.request.content.data;
-      const data: NotificationPayloadData =
-        rawData && typeof rawData === 'object' ? (rawData as NotificationPayloadData) : {};
-      const taskId = getTaskIdFromData(data);
+        const rawData = resp.notification.request.content.data;
+        const data: NotificationPayloadData =
+          rawData && typeof rawData === 'object' ? (rawData as NotificationPayloadData) : {};
+        const taskId = getTaskIdFromData(data);
 
-      if (actionId === 'snooze') {
-        const taskName =
-          (typeof data.taskTitle === 'string' && data.taskTitle.trim()) ||
-          resp.notification.request.content.body?.split(': ').at(-1) ||
-          'Tu tarea';
-        const module = await import('../src/services/notifications');
-        await module.scheduleDistractionWarning(taskName, 5, taskId);
-        return;
-      }
+        if (actionId === 'snooze') {
+          const taskName =
+            (typeof data.taskTitle === 'string' && data.taskTitle.trim()) ||
+            resp.notification.request.content.body?.split(': ').at(-1) ||
+            'Tu tarea';
+          const module = await import('../src/services/notifications');
+          await module.scheduleDistractionWarning(taskName, 5, taskId);
+          return;
+        }
 
-      if (actionId === 'start_task') {
+        if (actionId === 'start_task') {
+          if (!taskId) return;
+          const store = useLifeStore.getState();
+          store.startTask(taskId);
+          store.startTaskExecution(taskId);
+          return;
+        }
+
         if (!taskId) return;
-        const store = useLifeStore.getState();
-        store.startTask(taskId);
-        store.startTaskExecution(taskId);
-        return;
-      }
 
-      if (!taskId) return;
-
-      if (actionId === 'done') {
-        await useLifeStore.getState().confirmCompletionOK(taskId);
-      } else if (actionId === 'skip') {
-        await useLifeStore.getState().reportTaskSkipped(taskId, 'distraction', 'Marcado desde notificación');
-      } else if (actionId === 'postpone') {
-        const postponedUntil = new Date(Date.now() + 60 * 60_000);
-        await useLifeStore.getState().reportTaskPostponed(
-          taskId,
-          'need_more_time',
-          'Pospuesto desde notificación',
-          postponedUntil
-        );
+        if (actionId === 'done') {
+          await useLifeStore.getState().confirmCompletionOK(taskId);
+        } else if (actionId === 'skip') {
+          await useLifeStore.getState().reportTaskSkipped(taskId, 'distraction', 'Marcado desde notificación');
+        } else if (actionId === 'postpone') {
+          const postponedUntil = new Date(Date.now() + 60 * 60_000);
+          await useLifeStore.getState().reportTaskPostponed(
+            taskId,
+            'need_more_time',
+            'Pospuesto desde notificación',
+            postponedUntil
+          );
+        }
+      } catch (error) {
+        console.log('Error processing notification response:', error);
       }
     };
 
@@ -146,28 +150,39 @@ export default function RootLayout(): ReactElement {
       ]);
       if (mounted) setIsBooting(false);
     };
-    bootstrap();
+    void bootstrap().catch((error) => {
+      console.log('Error during app bootstrap:', error);
+      if (mounted) setIsBooting(false);
+    });
 
     let notifSub: { remove: () => void } | undefined;
     const importNotifs = async () => {
-      const Notifications = await import('expo-notifications');
-      notifSub = Notifications.addNotificationResponseReceivedListener((resp) => {
-        void processNotificationResponse(Notifications, resp);
-      });
+      try {
+        const Notifications = await import('expo-notifications');
+        notifSub = Notifications.addNotificationResponseReceivedListener((resp) => {
+          void processNotificationResponse(Notifications, resp);
+        });
 
-      const lastResponse = await Notifications.getLastNotificationResponseAsync();
-      await processNotificationResponse(Notifications, lastResponse);
-      if (typeof Notifications.clearLastNotificationResponseAsync === 'function') {
-        await Notifications.clearLastNotificationResponseAsync();
+        const lastResponse = await Notifications.getLastNotificationResponseAsync();
+        await processNotificationResponse(Notifications, lastResponse);
+        if (typeof Notifications.clearLastNotificationResponseAsync === 'function') {
+          await Notifications.clearLastNotificationResponseAsync();
+        }
+      } catch (error) {
+        console.log('Error importing notifications listener:', error);
       }
     };
-    importNotifs();
+    void importNotifs();
 
     // Escuchar el estado de la app (foreground/background) para tracker Nativo
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        try { checkScreenTimeDistraction(nextState); } catch(e){}
-        try { checkGeofenceState(); } catch(e){}
+        void checkScreenTimeDistraction(nextState).catch((error) => {
+          console.log('Error checking screen time distraction:', error);
+        });
+        void checkGeofenceState().catch((error) => {
+          console.log('Error checking geofence state:', error);
+        });
       }
     });
 
@@ -189,7 +204,7 @@ export default function RootLayout(): ReactElement {
     dismissPrompt();
     setShowDailyPrompt(false);
     // Navegar a la pestaña "Hoy" para empezar el día
-    router.push('/(tabs)/index' as any);
+    router.push('/(tabs)' as any);
   };
 
   const handleCaptureQuick = () => {
@@ -210,7 +225,7 @@ export default function RootLayout(): ReactElement {
     markRestDay();
     setShowRestDayPrompt(false);
     // Navegar a la pestaña "Hoy" con un plan vacío (no se generan tareas)
-    router.push('/(tabs)/index' as any);
+    router.push('/(tabs)' as any);
   };
 
   if (isBooting) {

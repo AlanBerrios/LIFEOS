@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Modal,
+  LayoutChangeEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,15 +11,14 @@ import {
   TextInput,
   View
 } from 'react-native';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
 import { createId } from '../../src/utils/ids';
-import { requestNotificationPermission, rescheduleAll } from '../../src/services/notifications';
 import type { MealRoutine, TransitRoutine } from '../../src/types';
 import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
-import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
 
 const DAYS_SHORT = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
@@ -33,6 +34,7 @@ function SafeTimePicker({
   onConfirm: (t: string) => void;
 }): ReactElement {
   const lifeTheme = useAppTheme();
+  const uiThemeMode = useLifeStore((s) => s.settings.uiThemeMode ?? 'dark');
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const [show, setShow] = useState(false);
 
@@ -48,20 +50,25 @@ function SafeTimePicker({
         <Text style={styles.timeValueText}>{value}</Text>
       </Pressable>
 
-      <AppDateTimePickerSheet
-        visible={show}
+      <DateTimePickerModal
+        isVisible={show}
         mode="time"
-        value={dateValue}
-        title={label}
-        subtitle="Elige la hora con el estilo de la app."
-        confirmLabel="Guardar hora"
+        date={dateValue}
+        locale="es-ES"
+        is24Hour
+        isDarkModeEnabled={uiThemeMode === 'dark'}
+        minuteInterval={5}
+        display={Platform.OS === 'android' ? 'clock' : 'spinner'}
+        confirmTextIOS="Guardar hora"
+        cancelTextIOS="Cancelar"
+        buttonTextColorIOS={lifeTheme.colors.primary}
         onConfirm={(selected) => {
           const hh = String(selected.getHours()).padStart(2, '0');
           const mm = String(selected.getMinutes()).padStart(2, '0');
           onConfirm(`${hh}:${mm}`);
           setShow(false);
         }}
-        onClose={() => setShow(false)}
+        onCancel={() => setShow(false)}
       />
     </View>
   );
@@ -71,11 +78,6 @@ export default function RoutinesScreen(): ReactElement {
   const insets = useSafeAreaInsets();
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
-  const tasks = useLifeStore((s) => s.tasks);
-  const timeline = useLifeStore((s) => s.timeline);
-  const settings = useLifeStore((s) => s.settings);
-  const events = useLifeStore((s) => s.events);
-  const notes = useLifeStore((s) => s.notes);
   const routines = useLifeStore((s) => s.routines);
   const alarms = useLifeStore((s) => s.alarms);
   const updateRoutine = useLifeStore((s) => s.updateRoutineDay);
@@ -88,6 +90,8 @@ export default function RoutinesScreen(): ReactElement {
   const [newAlarmLabel, setNewAlarmLabel] = useState('Alarma');
   const [newAlarmTime, setNewAlarmTime] = useState('07:00');
   const [newAlarmDays, setNewAlarmDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [pendingScrollTargetId, setPendingScrollTargetId] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView | null>(null);
   const { alertState, showAlert, hideAlert } = useCustomAlert();
 
   const currentRoutine = routines.find(r => r.dayOfWeek === selectedDay);
@@ -129,7 +133,9 @@ export default function RoutinesScreen(): ReactElement {
       time: '14:00',
       durationMinutes: 45
     };
+    setPendingScrollTargetId(newMeal.id);
     updateRoutine(selectedDay, { meals: [...(currentRoutine?.meals || []), newMeal] });
+    showAlert('Comida añadida', 'Te llevé a la nueva comida para que ajustes nombre, hora y duración.');
   }
 
   function handleAddTransit() {
@@ -140,7 +146,9 @@ export default function RoutinesScreen(): ReactElement {
       durationMinutes: 30,
       arrivalTime: '08:00'
     };
+    setPendingScrollTargetId(newTransit.id);
     updateRoutine(selectedDay, { transits: [...(currentRoutine?.transits || []), newTransit] });
+    showAlert('Traslado añadido', 'Te llevé al nuevo traslado para que configures salida, llegada y duración.');
   }
 
   function handleDeleteMeal(mealId: string) {
@@ -197,20 +205,13 @@ export default function RoutinesScreen(): ReactElement {
     });
   }
 
-  async function handleSyncNotifications(): Promise<void> {
-    try {
-      const granted = await requestNotificationPermission();
-      if (!granted) {
-        showAlert('Permiso requerido', 'Activa notificaciones del sistema para sincronizar rutinas.');
-        return;
-      }
-
-      const syncedAlarms = await rescheduleAll(timeline, tasks, settings, routines, events, notes, useLifeStore.getState().alarms);
-      useLifeStore.setState({ alarms: syncedAlarms });
-      showAlert('Listo', 'Notificaciones sincronizadas correctamente.');
-    } catch {
-      showAlert('Error', 'No se pudieron sincronizar las notificaciones.');
-    }
+  function handleNewRoutineLayout(id: string, event: LayoutChangeEvent): void {
+    if (pendingScrollTargetId !== id) return;
+    const y = Math.max(0, event.nativeEvent.layout.y - 24);
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y, animated: true });
+      setPendingScrollTargetId(null);
+    });
   }
 
   function toggleAlarmDay(day: number) {
@@ -272,26 +273,6 @@ export default function RoutinesScreen(): ReactElement {
       </View>
 
       <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
-        <View style={styles.introCard}>
-          <Text style={styles.introTitle}>Base diaria</Text>
-          <Text style={styles.introText}>
-            Sueño, comidas y traslados se convierten en bloques del timeline y alertas.
-          </Text>
-          <Text style={styles.introBullet}>• Evita solapes y protege tus hábitos.</Text>
-          <Text style={styles.introBullet}>• Puedes ajustar cada día sin romper la semana.</Text>
-        </View>
-      </View>
-
-      <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
-        <Pressable 
-          style={styles.syncBtnFull} 
-          onPress={() => void handleSyncNotifications()}
-        >
-          <Text style={styles.syncBtnText}>🔔 Activar y Sincronizar Alarmas</Text>
-        </Pressable>
-      </View>
-
-      <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
         <Text style={styles.sectionLabel}>Resumen del día</Text>
         <View style={styles.overviewCard}>
           <View style={styles.overviewItem}>
@@ -313,7 +294,7 @@ export default function RoutinesScreen(): ReactElement {
         </View>
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={{ padding: 16, gap: 20 }}>
+      <ScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={{ padding: 16, gap: 20 }}>
         
         {/* Horas de Sueño */}
         <View style={styles.section}>
@@ -384,7 +365,7 @@ export default function RoutinesScreen(): ReactElement {
           <Text style={styles.sectionHint}>Cada comida crea un bloque fijo y alimenta tu balance diario.</Text>
 
           {currentRoutine.meals.map((meal) => (
-            <View key={meal.id} style={styles.mealCard}>
+            <View key={meal.id} style={styles.mealCard} onLayout={(event) => handleNewRoutineLayout(meal.id, event)}>
                <View style={styles.row}>
                  <TextInput
                    style={styles.mealTypeInput}
@@ -437,7 +418,7 @@ export default function RoutinesScreen(): ReactElement {
           <Text style={styles.sectionHint}>Bloquea tiempo de traslado para evitar solapes.</Text>
 
           {currentRoutine.transits.map((transit) => (
-            <View key={transit.id} style={styles.mealCard}>
+            <View key={transit.id} style={styles.mealCard} onLayout={(event) => handleNewRoutineLayout(transit.id, event)}>
                <View style={styles.row}>
                  <TextInput
                    style={styles.mealTypeInput}
@@ -483,6 +464,17 @@ export default function RoutinesScreen(): ReactElement {
           {currentRoutine.transits.length === 0 && (
             <Text style={styles.emptyText}>No hay traslados configurados para hoy.</Text>
           )}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.introCard}>
+            <Text style={styles.introTitle}>Base diaria</Text>
+            <Text style={styles.introText}>
+              Sueño, comidas y traslados se convierten en bloques del timeline y alertas.
+            </Text>
+            <Text style={styles.introBullet}>• Evita solapes y protege tus hábitos.</Text>
+            <Text style={styles.introBullet}>• Puedes ajustar cada día sin romper la semana.</Text>
+          </View>
         </View>
 
       </ScrollView>
@@ -559,21 +551,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   introTitle: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '800' },
   introText: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18 },
   introBullet: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18 },
-  syncBtnFull: { 
-    backgroundColor: lifeTheme.colors.primary, 
-    paddingHorizontal: 16, 
-    paddingVertical: 12, 
-    borderRadius: 16, 
-    width: '100%',
-    alignItems: 'center',
-    shadowColor: lifeTheme.colors.primary, 
-    shadowOffset: { width: 0, height: 4 }, 
-    shadowOpacity: 0.3, 
-    shadowRadius: 8, 
-    elevation: 4,
-    marginBottom: 4
-  },
-  syncBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '900', fontSize: 14 },
   overviewCard: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, backgroundColor: lifeTheme.colors.surface, borderRadius: 18, padding: 14, borderWidth: 1, borderColor: lifeTheme.colors.border },
   sectionLabel: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginBottom: 6 },
   overviewItem: { flex: 1, alignItems: 'center', gap: 2 },

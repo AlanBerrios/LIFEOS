@@ -16,6 +16,7 @@ export function triggerNotificationResync(
   logContext = 'resincronizar notificaciones'
 ): void {
   const state = get();
+  const previousHabitReminderId = state.habitReminderNotificationId;
   void rescheduleAll(
     state.timeline,
     state.tasks,
@@ -25,6 +26,9 @@ export function triggerNotificationResync(
     state.notes,
     state.alarms
   )
-    .then((syncedAlarms) => set({ alarms: syncedAlarms }))
+    .then(async (syncedAlarms) => {
+      const reminderId = await scheduleRandomHabitReminder(state.habits, previousHabitReminderId);
+      set({ alarms: syncedAlarms, habitReminderNotificationId: reminderId });
+    })
     .catch((error) => console.log(`[LifeOS] Error al ${logContext}:`, error));
 }

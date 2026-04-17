@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   Modal,
@@ -12,8 +12,8 @@ import {
 import Animated, {
   FadeIn,
   FadeOut,
-  SlideInUp,
-  SlideOutDown
+  ZoomIn,
+  ZoomOut
 } from 'react-native-reanimated';
 import { useRouter, useSegments } from 'expo-router';
 import { useLifeStore } from '../store/useLifeStore';
@@ -157,10 +157,9 @@ export function TutorialOverlay(): ReactElement | null {
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const router = useRouter();
   const segments = useSegments();
-  const { settings, updateSettings } = useLifeStore((s) => ({
-    settings: s.settings,
-    updateSettings: s.updateSettings
-  }));
+  const settings = useLifeStore((s) => s.settings);
+  const updateSettings = useLifeStore((s) => s.updateSettings);
+  const [isCompact, setIsCompact] = useState(false);
 
   if (!settings.showTutorial) return null;
 
@@ -172,7 +171,8 @@ export function TutorialOverlay(): ReactElement | null {
   const progressPct = Math.round(((stepIndex + 1) / STEPS.length) * 100);
 
   function goTo(tab: TabKey) {
-    router.push(`/(tabs)/${tab}` as any);
+    const target = tab === 'index' ? '/(tabs)' : `/(tabs)/${tab}`;
+    router.push(target as any);
   }
 
   function finish() {
@@ -188,6 +188,7 @@ export function TutorialOverlay(): ReactElement | null {
     const nextTab = STEPS[nextIndex].tab;
     updateSettings({ tutorialStep: nextIndex });
     if (nextTab !== currentTab) {
+      setIsCompact(true);
       goTo(nextTab);
     }
   }
@@ -225,16 +226,59 @@ export function TutorialOverlay(): ReactElement | null {
       ? 'Finalizar'
       : 'Siguiente';
 
+  const compactNextLabel = isOnTarget ? 'Siguiente' : `Ir a ${TAB_LABELS[step.tab]}`;
+
+  function handleCompactNext() {
+    if (!isOnTarget) {
+      goTo(step.tab);
+      return;
+    }
+    setIsCompact(false);
+  }
+
+  if (isCompact) {
+    return (
+      <Modal visible transparent animationType="fade">
+        <View style={styles.containerCompact}>
+          <Animated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(120)} style={styles.compactCard}>
+            <View style={styles.compactTopRow}>
+              <Text style={styles.compactStep}>Paso {stepIndex + 1}/{STEPS.length}</Text>
+              <Pressable style={styles.compactSkipBtn} onPress={finish}>
+                <Text style={styles.compactSkipText}>Saltar</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.compactTitle} numberOfLines={1}>{step.title}</Text>
+            {!isOnTarget && (
+              <Text style={styles.compactHint}>Cambiamos de menú. Pulsa Siguiente para abrir la explicación.</Text>
+            )}
+            <View style={styles.compactActionsRow}>
+              <Pressable style={styles.compactPrimaryBtn} onPress={handleCompactNext}>
+                <Text style={styles.compactPrimaryText}>{compactNextLabel}</Text>
+              </Pressable>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
+    );
+  }
+
   return (
     <Modal visible transparent animationType="fade">
       <View style={styles.container}>
-        <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.backdrop} />
+        <Pressable style={styles.backdrop} onPress={() => setIsCompact(true)}>
+          <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.backdrop} />
+        </Pressable>
 
-        <Animated.View entering={SlideInUp.springify()} exiting={SlideOutDown} style={styles.card}>
+        <Animated.View entering={ZoomIn.springify().damping(16).stiffness(180)} exiting={ZoomOut.duration(170)} style={styles.card}>
           <View style={styles.headerRow}>
             <Text style={styles.stepIndicator}>Paso {stepIndex + 1} de {STEPS.length}</Text>
-            <View style={styles.sectionPill}>
-              <Text style={styles.sectionPillText}>{TAB_LABELS[step.tab]}</Text>
+            <View style={styles.headerActions}>
+              <View style={styles.sectionPill}>
+                <Text style={styles.sectionPillText}>{TAB_LABELS[step.tab]}</Text>
+              </View>
+              <Pressable style={styles.minimizeBtn} onPress={() => setIsCompact(true)}>
+                <Text style={styles.minimizeText}>Minimizar</Text>
+              </Pressable>
             </View>
           </View>
 
@@ -314,17 +358,26 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      padding: 24
+      padding: 16,
+      paddingBottom: 16
+    },
+    containerCompact: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 16,
+      paddingBottom: 18
     },
     backdrop: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0,0,0,0.85)'
+      backgroundColor: 'rgba(0,0,0,0.24)'
     },
     card: {
       backgroundColor: lifeTheme.colors.surface,
-      borderRadius: 28,
-      width: Math.min(520, width - 32),
-      padding: 24,
+      borderRadius: 22,
+      width: Math.min(520, width - 20),
+      maxHeight: '72%',
+      padding: 18,
       borderWidth: 1,
       borderColor: lifeTheme.colors.border,
       shadowColor: lifeTheme.colors.primary,
@@ -332,12 +385,31 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       shadowOpacity: 0.3,
       shadowRadius: 20,
       elevation: 8,
-      gap: 16
+      gap: 12
+    },
+    compactCard: {
+      width: Math.min(440, width - 20),
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: lifeTheme.colors.border,
+      backgroundColor: lifeTheme.colors.surface,
+      padding: 12,
+      gap: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.22,
+      shadowRadius: 14,
+      elevation: 6
     },
     headerRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center'
+    },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8
     },
     stepIndicator: {
       color: lifeTheme.colors.primary,
@@ -353,6 +425,19 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       paddingHorizontal: 10,
       paddingVertical: 4,
       borderRadius: 999
+    },
+    minimizeBtn: {
+      backgroundColor: lifeTheme.colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: lifeTheme.colors.border,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4
+    },
+    minimizeText: {
+      color: lifeTheme.colors.muted,
+      fontSize: 11,
+      fontWeight: '800'
     },
     sectionPillText: { color: lifeTheme.colors.text, fontSize: 11, fontWeight: '700' },
     progressTrack: {
@@ -463,6 +548,51 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       color: lifeTheme.colors.onPrimary,
       fontWeight: '800',
       fontSize: 14
+    },
+    compactTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between'
+    },
+    compactStep: {
+      color: lifeTheme.colors.primary,
+      fontSize: 11,
+      fontWeight: '800'
+    },
+    compactSkipBtn: {
+      paddingHorizontal: 8,
+      paddingVertical: 4
+    },
+    compactSkipText: {
+      color: lifeTheme.colors.muted,
+      fontSize: 11,
+      fontWeight: '700'
+    },
+    compactTitle: {
+      color: lifeTheme.colors.text,
+      fontSize: 14,
+      fontWeight: '800'
+    },
+    compactActionsRow: {
+      flexDirection: 'row',
+      gap: 8
+    },
+    compactHint: {
+      color: lifeTheme.colors.muted,
+      fontSize: 12,
+      lineHeight: 17
+    },
+    compactPrimaryBtn: {
+      width: '100%',
+      borderRadius: 10,
+      backgroundColor: lifeTheme.colors.primary,
+      alignItems: 'center',
+      paddingVertical: 8
+    },
+    compactPrimaryText: {
+      color: lifeTheme.colors.onPrimary,
+      fontSize: 12,
+      fontWeight: '800'
     }
   });
 }

@@ -3,6 +3,10 @@ import type { LifeStore } from '../lifeStore.types';
 import { getTodayStr } from '../../utils/date';
 import type { BadgeId, BadgeUnlock } from '../../types';
 
+interface BadgeDefinition extends Omit<BadgeUnlock, 'unlockedAt'> {
+  xpReward: number;
+}
+
 function dayDiff(fromISO: string, toISO: string): number {
   const from = new Date(`${fromISO}T00:00:00`);
   const to = new Date(`${toISO}T00:00:00`);
@@ -10,14 +14,14 @@ function dayDiff(fromISO: string, toISO: string): number {
   return Math.round(diffMs / (24 * 60 * 60 * 1000));
 }
 
-const BADGE_DEFS: Array<Omit<BadgeUnlock, 'unlockedAt'>> = [
-  { id: 'streak_3', title: 'Racha 3', description: '3 días de consistencia seguidos.', icon: '🔥' },
-  { id: 'streak_7', title: 'Racha 7', description: '7 días de consistencia seguidos.', icon: '⚡' },
-  { id: 'streak_14', title: 'Racha 14', description: '14 días de consistencia seguidos.', icon: '🏅' },
-  { id: 'streak_30', title: 'Racha 30', description: '30 días de consistencia seguidos.', icon: '👑' },
-  { id: 'active_10', title: 'Activo 10', description: '10 días activos acumulados.', icon: '✅' },
-  { id: 'active_30', title: 'Activo 30', description: '30 días activos acumulados.', icon: '📈' },
-  { id: 'active_60', title: 'Activo 60', description: '60 días activos acumulados.', icon: '🚀' }
+const BADGE_DEFS: BadgeDefinition[] = [
+  { id: 'streak_3', title: 'Racha 3', description: '3 días de consistencia seguidos.', icon: '🔥', xpReward: 30 },
+  { id: 'streak_7', title: 'Racha 7', description: '7 días de consistencia seguidos.', icon: '⚡', xpReward: 70 },
+  { id: 'streak_14', title: 'Racha 14', description: '14 días de consistencia seguidos.', icon: '🏅', xpReward: 140 },
+  { id: 'streak_30', title: 'Racha 30', description: '30 días de consistencia seguidos.', icon: '👑', xpReward: 300 },
+  { id: 'active_10', title: 'Activo 10', description: '10 días activos acumulados.', icon: '✅', xpReward: 50 },
+  { id: 'active_30', title: 'Activo 30', description: '30 días activos acumulados.', icon: '📈', xpReward: 120 },
+  { id: 'active_60', title: 'Activo 60', description: '60 días activos acumulados.', icon: '🚀', xpReward: 250 }
 ];
 
 function shouldUnlockBadge(id: BadgeId, currentStreak: number, totalActiveDays: number): boolean {
@@ -95,9 +99,22 @@ export const createProfileSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
           unlockedAt: new Date()
         }));
 
+      const xpFromBadges = BADGE_DEFS
+        .filter((def) => unlockedNow.some((badge) => badge.id === def.id))
+        .reduce((sum, def) => sum + def.xpReward, 0);
+
+      let nextLevel = profile.level;
+      let nextXP = profile.currentXP + xpFromBadges;
+      while (nextXP >= nextLevel * 100) {
+        nextXP -= nextLevel * 100;
+        nextLevel += 1;
+      }
+
       return {
         userProfile: {
           ...profile,
+          level: nextLevel,
+          currentXP: nextXP,
           consistency: {
             currentStreak,
             bestStreak,

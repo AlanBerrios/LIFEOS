@@ -82,8 +82,14 @@ export const useLifeStore = create<LifeStore>()(
       name: 'lifeos-storage-v4',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: partializeLifeState,
-      merge: (persistedState, currentState) =>
-        revivePersistedState(persistedState as Partial<LifeStore> | undefined, currentState as LifeStore)
+      merge: (persistedState, currentState) => {
+        try {
+          return revivePersistedState(persistedState as Partial<LifeStore> | undefined, currentState as LifeStore);
+        } catch (error) {
+          console.warn('[LifeOS] Failed to revive persisted state. Falling back to current state.', error);
+          return currentState as LifeStore;
+        }
+      }
     }
   )
 );
