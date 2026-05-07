@@ -1,847 +1,203 @@
-LIFEOS — VISIÓN, CONTEXTO, ANÁLISIS Y PLAN BASE
-===============================================
-
-Documento consolidado a partir del análisis técnico del proyecto y la visión expresada por Alan sobre cómo LIFEOS debe funcionar como producto.
-
---------------------------------------------------
-1. QUÉ ES LIFEOS
---------------------------------------------------
-
-LIFEOS no debe entenderse como una simple app de tareas ni como un calendario con extras.
-
-LIFEOS es una plataforma de organización, productividad, recordatorios y planificación del día a día, cuyo objetivo principal es ayudar al usuario a aprovechar su tiempo útil de la mejor forma posible.
-
-La idea central del producto es que el usuario no tenga que preocuparse constantemente por decidir cuándo hacer sus cosas, sino concentrarse en hacerlas, mientras LIFEOS organiza, recuerda, sugiere, estructura y reajusta su día según sus responsabilidades, eventos y decisiones.
-
-Frase resumen del producto:
-“LIFEOS organiza tu día contigo para que tú te concentres en ejecutarlo.”
-
-Otra formulación válida:
-“La app definitiva de organización, productividad, recordatorios de quehaceres y planificación del día a día.”
-
---------------------------------------------------
-2. PROBLEMA QUE LIFEOS QUIERE RESOLVER
---------------------------------------------------
-
-Las apps tradicionales de productividad suelen fallar en uno o más de estos puntos:
-
-- registran tareas, pero no acompañan su ejecución real;
-- muestran eventos, pero no ayudan a convertir huecos del día en acción útil;
-- no recuerdan lo suficiente;
-- no reorganizan cuando el día cambia;
-- no integran tareas, rutina, descanso, hábitos, foco y seguimiento en un mismo sistema.
-
-LIFEOS busca resolver eso construyendo un sistema que:
-
-- detecte el tiempo útil del usuario;
-- lo llene con un plan ejecutable;
-- recuerde constantemente lo importante;
-- ayude a mantener el foco;
-- reorganice el día cuando cambien las condiciones;
-- permita que el usuario siga siendo el piloto, con LIFEOS como copiloto estricto.
-
---------------------------------------------------
-3. VISIÓN DEL PRODUCTO
---------------------------------------------------
-
-La visión de Alan para LIFEOS es ambiciosa y deliberadamente amplia.
-
-No se busca una app simple con pocas funciones, sino una app donde múltiples sistemas convivan y se potencien entre sí:
-
-- task pool;
-- timeline diario;
-- scheduler inteligente;
-- rutinas;
-- hábitos;
-- notificaciones;
-- eventos;
-- alarmas;
-- analíticas;
-- detección de distracción;
-- geofencing;
-- tiempos de traslado;
-- sincronización y expansión futura.
-
-La meta no es tener módulos aislados, sino un ecosistema coherente donde todo funcione entre sí para maximizar productividad, organización y seguimiento del día.
-
-Idea central de diseño:
-No recortar la ambición.
-Lo importante es ordenar esa ambición y construir una integración fuerte entre funcionalidades.
-
---------------------------------------------------
-4. FILOSOFÍA DEL SISTEMA
---------------------------------------------------
-
-4.1 El usuario sigue siendo el piloto
-LIFEOS no debe imponerse de manera rígida por encima del usuario.
-
-El usuario debe poder:
-- decidir descansar;
-- mover tareas;
-- aplazar tareas;
-- ignorar recomendaciones;
-- cambiar de idea;
-- reconfigurar su día.
-
-Pero LIFEOS debe:
-- sugerir con inteligencia;
-- insistir cuando haga falta;
-- recordar tareas, bloques y compromisos;
-- reorganizar el día si cambian las condiciones;
-- defender el plan diario cuando el usuario quiere ser productivo.
-
-Resumen:
-El usuario es el piloto de su vida.
-LIFEOS es su copiloto estricto.
-
-4.2 Equilibrio entre estructura y libertad
-La app debe integrar:
-- estructura fuerte;
-- libertad de decisión;
-- adaptabilidad.
-
-La estructura la proporciona el sistema.
-La libertad la conserva el usuario.
-
-4.3 Qué significa máxima productividad en LIFEOS
-Maximizar productividad, según la visión definida, significa:
-- optimizar el tiempo disponible;
-- completar la mayor cantidad posible de tareas relevantes;
-- usar bien el tiempo útil entre eventos obligatorios;
-- incorporar descansos, comidas, sueño y contexto real;
-- reducir fricción mental;
-- mejorar el uso del día.
-
-4.4 Qué significa “organización definitiva”
-LIFEOS cumpliría su promesa cuando todas sus funcionalidades convivan de forma precisa, coherente, útil y sin errores graves, especialmente en la interacción entre:
-- tareas;
-- timeline;
-- hábitos;
-- rutinas;
-- notificaciones;
-- eventos;
-- alarmas;
-- analíticas.
-
---------------------------------------------------
-5. PERFIL DE USUARIO IDEAL
---------------------------------------------------
-
-El usuario objetivo de LIFEOS no es una sola categoría cerrada.
-
-Perfiles ideales:
-- estudiante universitario;
-- emprendedor;
-- trabajador;
-- persona con múltiples responsabilidades;
-- persona con muchas cosas en mente y dificultad para decidir cómo o cuándo empezar;
-- usuario que siente que el tiempo no le alcanza, aunque sí tenga huecos útiles mal aprovechados.
-
-Resultado ideal para el usuario:
-Que al final del día pueda ver cuánto logró realmente dentro de su tiempo útil y descubrir espacios productivos que antes sentía que no existían.
-
---------------------------------------------------
-6. DIFERENCIADOR REAL DE LIFEOS
---------------------------------------------------
-
-El valor diferencial no está solo en registrar tareas, sino en acompañar la ejecución diaria.
-
-Aspectos diferenciales:
-- recordatorio constante de tareas;
-- administración de tiempos;
-- planificación de descansos según saturación mental;
-- estructuración del día;
-- foco en convertir huecos reales en acción útil;
-- seguimiento continuo del cumplimiento;
-- reorganización ante imprevistos;
-- visión integral de productividad y vida diaria.
-
-Promesa operativa:
-No solo decirte lo que tienes que hacer.
-También ayudarte a hacerlo en el mejor momento posible.
-
---------------------------------------------------
-7. EL CONCEPTO DE “TIEMPO ÚTIL”
---------------------------------------------------
-
-Este concepto es central para el diseño del producto.
-
-Tiempo útil:
-Tiempo fuera de eventos obligatorios o estructurales del día, por ejemplo:
-- clases;
-- trabajo;
-- compromisos inamovibles;
-- eventos fijos.
-
-Ese tiempo útil debe ser:
-- detectado;
-- protegido;
-- optimizado;
-- llenado inteligentemente con tareas, hábitos, descansos y bloques relevantes.
-
-El timeline y el scheduler deben construirse alrededor de esta idea.
-
---------------------------------------------------
-8. MÓDULOS DEL SISTEMA Y PRIORIDAD
---------------------------------------------------
-
-Prioridad declarada por visión:
-
-10:
-- Scheduler inteligente
-- Pool de tareas
-- Timeline diario
-- Notificaciones
-
-8:
-- Alarmas
-
-7:
-- Calendario/eventos
-- Rutinas
-
-6:
-- Analíticas
-
-5:
-- Hábitos
-- Geofencing
-- Detección de distracción / screen time
-- Sincronización ICS/Calendar
-
-3:
-- Notas
-
-2:
-- Backups
-
-Núcleo obligatorio para que LIFEOS tenga valor:
-- Scheduler
-- Timeline
-- Pool
-- Notificaciones
-- Hábitos
-- Rutinas
-
-Módulos complementarios:
-- Geofencing
-- Backups
-- Sincronización
-
-Módulos futuros o experimentales:
-- Geofencing más avanzado
-
---------------------------------------------------
-9. DEFINICIÓN DE ENTIDADES CENTRALES
---------------------------------------------------
-
-9.1 Task
-Una Task representa una responsabilidad, quehacer o trabajo concreto.
-
-Ejemplos:
-- tarea universitaria;
-- pendiente laboral;
-- cosa por hacer;
-- responsabilidad del día;
-- compromiso personal ejecutable.
-
-Definición propuesta:
-Una unidad de trabajo o responsabilidad concreta que el usuario quiere completar, planificar o reagendar dentro de su tiempo útil.
-
-9.2 ScheduleBlock
-Definición consolidada propuesta:
-Un bloque visible del timeline que representa, ocupa, sugiere o estructura una parte del tiempo del usuario.
-
-Debe cubrir no solo tareas, sino también:
-- descanso;
-- comida;
-- sueño;
-- evento;
-- hábito;
-- traslado;
-- recuperación;
-- foco;
-- buffers.
-
-9.3 Routine
-Definición consolidada propuesta:
-Una estructura recurrente del día que ordena o influye en el timeline, normalmente de forma flexible.
-
-Las rutinas no siempre deben bloquear duro.
-A veces deben sugerir estructura o aparecer como bloques con peso, pero no completamente rígidos.
-
-9.4 Habit
-Definición consolidada:
-Una mini tarea o práctica repetitiva que idealmente se repite con frecuencia, normalmente diaria, para mejorar la calidad de vida o sostener consistencia.
-
-Ejemplos:
-- caminar;
-- no fumar;
-- tomar agua;
-- estudiar cierta cantidad;
-- ejercicio;
-- lectura.
-
-9.5 StaticEvent
-Definición consolidada:
-Un evento con horario definido e idealmente inamovible.
-Ejemplos:
-- clase;
-- reunión;
-- trabajo;
-- cita importante.
-
-9.6 DailySession
-Definición propuesta:
-Un resumen operativo del día que registra cómo fue realmente la ejecución frente a lo planificado:
-- tareas planeadas;
-- tareas completadas;
-- tiempo útil usado;
-- tiempo perdido;
-- distracciones;
-- cumplimiento general;
-- desvíos del plan.
-
-9.7 Distracción
-Definición según visión:
-Uso excesivo de redes sociales o aplicaciones distractoras en un periodo donde el usuario debería estar en productividad.
-
-Matiz importante:
-Durante descanso, esa distracción no debería castigarse igual.
-La lógica debe distinguir entre:
-- periodo productivo;
-- periodo de descanso.
-
---------------------------------------------------
-10. REGLAS DEL SCHEDULER
---------------------------------------------------
-
-10.1 Objetivo principal
-El scheduler debe optimizar de forma integral:
-- momento adecuado para ejecutar tareas;
-- prioridad;
-- urgencia;
-- deadlines;
-- duración;
-- carga cognitiva;
-- contexto del día;
-- eventos fijos;
-- descansos;
-- tiempo útil;
-- consistencia.
-
-Resumen:
-Debe decidir no solo qué hacer, sino cuándo hacerlo mejor.
-
-10.2 Factores a considerar
-Todos deberían convivir en el modelo:
-- prioridad;
-- urgencia;
-- deadline;
-- duración estimada;
-- carga cognitiva;
-- hora del día;
-- energía del usuario;
-- rutinas;
-- comidas;
-- sueño;
-- eventos fijos;
-- tiempo de traslado;
-- hábitos diarios;
-- contexto de ubicación;
-- historial de comportamiento;
-- riesgo de distracción.
-
-10.3 Qué hacer si no cabe todo en el día
-Reglas deseadas:
-- dejar fuera lo menos importante;
-- mover automáticamente tareas a otro momento;
-- permitir que el usuario decida manualmente qué posponer;
-- permitir un modo de sobrecarga;
-- interpretar si el usuario simplemente no quiere hacer algo hoy.
-
-10.4 Tareas con hora fija
-Las tareas con fixed_start / fixed_end deben ser parecidas a eventos, pero más flexibles.
-Ejemplo:
-“Llegar a casa a las 7, descansar, y estudiar a las 7:30 por una hora.”
-
-Deben poder:
-- fijarse;
-- editarse;
-- aplazarse;
-- moverse;
-- reformularse.
-
-10.5 Tareas urgentes
-Si una tarea es muy urgente, LIFEOS debe:
-- priorizarla en el timeline;
-- intentar incluirla sí o sí;
-- ubicarla lo antes posible dentro de las restricciones reales;
-- considerar incluso omitir algún descanso si el caso lo amerita.
-
-10.6 Replanificación
-El timeline debe regenerarse cuando haya cambios importantes, por ejemplo:
-- se elimina una tarea;
-- se cambia algo importante del día;
-- el usuario empieza antes un bloque;
-- llega antes a casa;
-- añade una tarea urgente;
-- cambia tiempos reales;
-- cambia eventos;
-- cambia contexto relevante;
-- hay variaciones significativas en el uso del tiempo.
-
-La replanificación no debe sentirse artificial: debe responder al día real.
-
---------------------------------------------------
-11. RELACIÓN ENTRE TAREAS, RUTINAS, HÁBITOS Y EVENTOS
---------------------------------------------------
-
-11.1 Rutinas vs tareas
-Las rutinas deben sugerir estructura.
-Pueden influir fuertemente en el timeline, pero no siempre bloquear tiempo duro.
-También podrían existir como bloques “puntuados” o de peso, donde se acepta cierta superposición conceptual.
-
-11.2 Hábitos vs tareas
-Los hábitos no deben ser exactamente iguales a las tareas, aunque compartan similitudes.
-
-Los hábitos deberían existir como:
-- bloques aparte;
-- recordatorios;
-- input analítico;
-- pequeñas unidades repetitivas con lógica propia.
-
-11.3 Eventos del calendario vs timeline
-Los eventos deberían bloquear completamente al scheduler en la mayoría de los casos, aunque podría existir una representación visual o lógica que permita convivencia conceptual sin destruir la planificación.
-
-11.4 Comidas y sueño
-Actualmente se definen como restricciones flexibles, no completamente duras.
-
-11.5 Traslados
-Se propone una función futura ligada a geofencing:
-- registrar tiempos de traslado;
-- calcular promedios;
-- sugerir alarmas según demoras reales;
-- usar el tiempo de traslado como contexto;
-- ofrecer tips, analíticas o buffers.
-
---------------------------------------------------
-12. LÓGICA DE ANTI-DISTRACCIÓN
---------------------------------------------------
-
-12.1 Cuándo intervenir
-Cuando el usuario pase, por ejemplo, 20 minutos o más en una app considerada distractora, especialmente si:
-- hay tareas pendientes;
-- está en un bloque productivo;
-- existe urgencia o prioridad activa.
-
-12.2 Cómo intervenir
-Intervención deseada:
-- notificación fuerte;
-- acción correctiva o reto;
-- sin bloquear lo que el usuario está haciendo;
-- con posibilidad futura de reorganizar si el tiempo se perdió realmente.
-
-12.3 Contexto
-La reacción debe cambiar según:
-- si el usuario está en descanso o productividad;
-- si existen tareas urgentes;
-- prioridad del bloque activo;
-- contexto general del día.
-
-12.4 Qué vigilar
-Principalmente:
-- redes sociales.
-
-12.5 Qué hacer tras detectar distracción
-Mínimo:
-- mandar alerta.
-Opcional futuro:
-- sugerir retomar tarea;
-- impactar analíticas;
-- replanificar;
-- activar temporizador.
-
---------------------------------------------------
-13. NOTIFICACIONES Y ALARMAS
---------------------------------------------------
-
-13.1 Rol central
-En LIFEOS las notificaciones no son accesorias.
-Son una pieza central del producto.
-
-13.2 Tipos importantes
-Todas las siguientes son valiosas:
-- inicio de tarea;
-- tarea próxima a iniciar;
-- tarea vencida;
-- descanso recomendado;
-- fin de descanso;
-- hábito pendiente;
-- distracción detectada;
-- evento próximo;
-- dormir / despertar;
-- salida hacia universidad/trabajo;
-- nota recordatorio;
-- alarma fuerte.
-
-13.3 Filosofía
-Se prefieren:
-- muchas notificaciones;
-- inteligentes;
-- certeras;
-- configurables;
-- adaptables al contexto.
-
-13.4 Alarmas críticas
-Deben poder ser más agresivas o saltarse silencio:
-- despertar;
-- distracción fuerte;
-- tareas críticas;
-- recordatorios realmente importantes.
-
---------------------------------------------------
-14. ANALÍTICAS Y FEEDBACK
---------------------------------------------------
-
-14.1 Qué medir
-Idealmente todo esto:
-- tareas completadas;
-- tareas planeadas vs reales;
-- tiempo profundo;
-- hábitos cumplidos;
-- interrupciones;
-- tiempo perdido por distracción;
-- cumplimiento de rutina;
-- calidad del día;
-- evolución de productividad.
-
-14.2 Qué importa más
-Las métricas que permitan ver evolución real del usuario como persona más productiva.
-
-14.3 Qué debería aprender LIFEOS del usuario
-- mejores horas de enfoque;
-- tareas que posterga;
-- duración real vs estimada;
-- patrones de distracción;
-- hábitos sostenibles;
-- comportamiento general;
-- patrones de cumplimiento.
-
-14.4 Cómo deben influir las analíticas
-Por ahora:
-- informar;
-- sugerir mejoras;
-- recomendar cambios.
-No necesariamente reprogramar automáticamente el scheduler según analíticas, al menos en la fase inicial.
-
---------------------------------------------------
-15. PERSONALIZACIÓN E INTELIGENCIA ADAPTATIVA
---------------------------------------------------
-
-LIFEOS debería adaptarse a:
-- horarios reales;
-- energía diaria;
-- contexto académico/laboral;
-- ubicación;
-- historial de cumplimiento;
-- hábitos;
-- fatiga mental;
-- tiempo real disponible.
-
-Configurables por el usuario:
-- tiempos;
-- notificaciones;
-- alarmas;
-- parámetros de seguimiento;
-- recordatorios;
-- ajustes de comportamiento.
-
-Decisiones automáticas ideales de LIFEOS:
-- organización diaria;
-- distribución óptima de tareas;
-- colocación de rutinas;
-- integración de hábitos;
-- sugerencias de descanso;
-- priorización contextual.
-
---------------------------------------------------
-16. FLUJO IDEAL DEL DÍA
---------------------------------------------------
-
-16.1 Inicio del día
-Idealmente LIFEOS:
-- detecta cuándo el usuario despierta;
-- reconoce si hay o no tareas;
-- sugiere agregar tareas si faltan;
-- prepara un flujo tranquilo si el usuario no tiene planificación fuerte.
-
-16.2 Durante el día
-LIFEOS:
-- observa en qué periodo está el usuario;
-- sigue el avance;
-- avisa si tareas no se completan;
-- recuerda eventos;
-- acompaña el cumplimiento diario.
-
-16.3 Cambios imprevistos
-Si el día se rompe:
-- el usuario debe poder reflejar ese cambio en la app;
-- la app debe reorganizarse;
-- el timeline debe ajustarse a la nueva realidad.
-
-Ejemplos:
-- se elimina un evento;
-- una tarea tarda más;
-- aparece una urgencia;
-- un bloque queda libre;
-- el usuario no hizo una tarea.
-
-16.4 Cierre del día
-Idealmente:
-- el usuario termina sus tareas;
-- si no, LIFEOS propone reagendarlas;
-- el sistema evalúa cuándo conviene más moverlas;
-- el cierre deja claridad de lo que se hizo y lo que queda.
-
---------------------------------------------------
-17. CASOS EXTREMOS Y DECISIONES DIFÍCILES
---------------------------------------------------
-
-17.1 Más tareas que tiempo
-Posibles respuestas:
-- optimizar lo más importante;
-- avisar al usuario que hay sobrecarga;
-- permitir encuesta rápida para decidir qué se hace;
-- posponer automáticamente lo menos relevante.
-
-17.2 Usuario ignora el sistema
-LIFEOS debe seguir recordando, pero sin caer en una lógica imposible.
-Si el usuario no quiere usarla, el sistema no puede forzar más allá del seguimiento.
-
-17.3 Rutina choca con evento importante
-Opciones:
-- priorizar evento;
-- pedir al usuario elegir;
-- editar uno de los dos;
-- permitir solape conceptual si tiene sentido.
-
-17.4 Tarea prioritaria no se completa
-Posible lógica:
-- preguntar al usuario;
-- detectar si alcanzó a terminar;
-- ofrecer reagendar;
-- mover automáticamente según respuesta;
-- ajustar duración estimada futura.
-
-17.5 Usuario cansado o con baja energía
-Debería existir una futura lógica para declarar energía o cansancio y adaptar tareas o sugerencias.
-
-17.6 Demasiadas notificaciones
-El sistema puede ser muy activo, pero el usuario debe poder configurar todas las notificaciones.
-
---------------------------------------------------
-18. CONTRATOS TÉCNICOS PROPUESTOS
---------------------------------------------------
-
-18.1 Campos obligatorios de Task
-Propuesta:
-- id
-- title
-- eta_minutes
-- priority
-- urgency
-- status
-- created_at
-
-18.2 Campos opcionales de Task
-- description
-- deadline
-- fixed_start
-- fixed_end
-- cognitive_load
-- energy_required
-- tags
-- estimated_focus_level
-- preferred_time_window
-- notes
-
-18.3 Estados propuestos de Task
-- pool
-- scheduled
-- in_progress
-- completed
-- skipped
-- postponed
-- blocked
-- cancelled
-
-18.4 Tipos propuestos de ScheduleBlock
-- task
-- rest
-- meal
-- sleep
-- event
-- habit
-- travel
-- recovery
-- buffer
-- focus
-
-18.5 Reglas duras vs blandas
-Duras:
-- eventos inamovibles;
-- deadlines críticos;
-- restricciones verdaderamente fijas.
-
-Blandas:
-- rutinas;
-- hábitos;
-- descanso normal;
-- comidas;
-- sueño;
-- tareas sugeridas;
-- bloques flexibles o puntuados.
-
-18.6 Fuente de verdad principal
-La visión actual favorece una solución offline o local-first:
-- frontend local fuerte;
-- motor local fuerte;
-- posibilidad de backend local encapsulado;
-- no depender obligatoriamente de backend online.
-
---------------------------------------------------
-19. ESTADO DEL PROYECTO SEGÚN ANÁLISIS
---------------------------------------------------
-
-Fortalezas observadas en el proyecto:
-- visión diferenciada;
-- stack moderno;
-- arquitectura con intención seria;
-- uso de TypeScript, Zustand, Expo Router;
-- existencia de scheduler backend y fallback local;
-- enfoque real en daily orchestration;
-- persistencia local;
-- módulos suficientes para construir un ecosistema potente.
-
-Riesgos actuales:
-- falta de definiciones unificadas entre módulos;
-- posible desalineación entre frontend, store y scheduler;
-- necesidad de centralizar mejor reglas del dominio;
-- exceso de lógica dispersa si no se ordena pronto;
-- integración todavía no plenamente formalizada.
-
-Comentario importante:
-El problema principal no es que el scope sea muy grande.
-El problema sería que las piezas no hablen entre sí con reglas claras.
-
---------------------------------------------------
-20. MEJORAS RECOMENDADAS
---------------------------------------------------
-
-20.1 A nivel de producto
-- Consolidar un documento maestro de reglas.
-- Formalizar qué significa productividad en el sistema.
-- Definir reglas de replanificación.
-- Definir prioridad real entre eventos, tareas, hábitos y rutinas.
-- Diseñar claramente el papel del timeline como centro operativo.
-- Diseñar encuestas rápidas para cuando el plan falle.
-
-20.2 A nivel técnico
-- Unificar contratos de Task, ScheduleBlock, Routine, Habit, StaticEvent y DailySession.
-- Expandir estados de Task.
-- Expandir tipos de bloque del timeline.
-- Alinear frontend local y scheduler.
-- Encapsular mejor lógica del dominio.
-- Separar reglas duras y blandas.
-- Diseñar disparadores formales de replanificación.
-- Fortalecer integración entre task pool, timeline y notificaciones.
-
-20.3 A nivel funcional
-Implementar primero:
-1. tareas + calendario
-2. tareas + rutinas
-3. scheduler + timeline
-4. notificaciones + seguimiento diario
-5. hábitos + timeline/recordatorios
-6. scheduler + distracción
-7. analíticas como feedback
-
---------------------------------------------------
-21. ROADMAP BASE PROPUESTO
---------------------------------------------------
-
-FASE 1 — Núcleo de dominio
-- cerrar definiciones;
-- unificar entidades;
-- definir reglas de scheduler;
-- definir eventos duros y bloques blandos;
-- formalizar replanificación.
-
-FASE 2 — Flujo diario central
-- task pool sólido;
-- timeline sólido;
-- scheduler consistente;
-- eventos integrados;
-- rutinas integradas;
-- hábitos integrados;
-- notificaciones útiles.
-
-FASE 3 — Seguimiento activo
-- recordatorios insistentes;
-- detección de tarea no realizada;
-- estados in_progress / skipped / postponed;
-- reacciones del sistema ante fallos de ejecución;
-- reprogramación basada en feedback.
-
-FASE 4 — Inteligencia contextual
-- analíticas;
-- historial de cumplimiento;
-- sugerencias;
-- energía;
-- distracción contextual;
-- adaptación al comportamiento.
-
-FASE 5 — Expansión de entorno
-- geofencing;
-- traslado;
-- alarmas predictivas;
-- sincronización avanzada;
-- backups;
-- capacidades adicionales.
-
---------------------------------------------------
-22. PRINCIPIOS DE DISEÑO QUE DEBEN RESPETARSE
---------------------------------------------------
-
-1. La task pool debe seguir existiendo como pieza central.
-2. El timeline debe ser el centro operativo visible del día.
-3. Todas las funcionalidades actuales deben tener sentido dentro del ecosistema, no ser eliminadas arbitrariamente.
-4. El usuario conserva el control final.
-5. LIFEOS debe ser activo, no pasivo.
-6. Las notificaciones forman parte del producto, no son un extra.
-7. La replanificación debe responder a la realidad del día.
-8. La productividad debe construirse con contexto real, no con rigidez artificial.
-9. El sistema debe ayudar a ejecutar, no solo a registrar.
-10. La ambición del producto debe mantenerse, pero con integración y coherencia.
-
---------------------------------------------------
-23. RESUMEN EJECUTIVO FINAL
---------------------------------------------------
-
-LIFEOS es una plataforma que busca maximizar la productividad y organización del usuario integrando tareas, timeline, notificaciones, hábitos, rutinas, eventos y seguimiento diario en un solo ecosistema.
-
-Su diferencial principal está en acompañar la ejecución real del día, no solo en registrar pendientes.
-
-La visión del proyecto no debe reducirse; debe estructurarse.
-El éxito de LIFEOS no depende de tener menos funciones, sino de hacer que todas las funciones hablen entre sí de forma coherente.
-
-La dirección correcta del proyecto consiste en convertir todo lo que ya existe en un mismo cerebro operativo:
-- que entiende el tiempo útil;
-- organiza el día;
-- recuerda;
-- reacciona;
-- se adapta;
-- y ayuda al usuario a hacer más con mejor estructura, sin quitarle el control de su vida.
-
-FIN DEL DOCUMENTO
+LIFEOS - VISION Y CONTEXTO
+Actualizado: 2026-05-07
+
+Este es el documento de vision. No es backlog ni changelog.
+Su objetivo es fijar que es LIFEOS, que promete y que principios no se deben romper.
+
+============================================================
+1. QUE ES LIFEOS
+============================================================
+
+LIFEOS no es una web ni una landing. Es una app Android construida con Expo/React Native.
+
+LIFEOS tampoco debe entenderse como una simple app de tareas. Es un sistema operativo personal para organizar el dia, proteger el tiempo util y acompanar la ejecucion real.
+
+Frase guia:
+LIFEOS organiza tu dia contigo para que tu te concentres en ejecutarlo.
+
+Otra forma de decirlo:
+Un copiloto estricto para tareas, rutinas, eventos, habitos, recordatorios, alarmas y metricas de vida diaria.
+
+============================================================
+2. PROBLEMA QUE RESUELVE
+============================================================
+
+Las apps tradicionales de productividad suelen fallar porque:
+
+- registran pendientes, pero no ayudan a decidir cuando hacerlos;
+- muestran eventos, pero no convierten huecos reales en accion util;
+- no reorganizan bien cuando el dia cambia;
+- no separan descanso sano de tiempo perdido;
+- no integran tareas, rutina, sueno, habitos, transito, alarmas y metricas en un mismo sistema;
+- muestran muchas cosas, pero explican poco.
+
+LIFEOS debe resolver eso con un ciclo continuo:
+
+1. Capturar lo que importa.
+2. Detectar tiempo util.
+3. Generar un plan ejecutable.
+4. Acompanarte mientras lo ejecutas.
+5. Registrar lo que paso.
+6. Aprender para mejorar el siguiente plan.
+
+============================================================
+3. PROMESA OPERATIVA
+============================================================
+
+LIFEOS promete cinco cosas:
+
+1. Detectar y proteger el tiempo util.
+2. Convertir ese tiempo en un plan diario realista.
+3. Recordar, insistir y asistir durante la ejecucion.
+4. Reorganizar el dia cuando el contexto cambia.
+5. Mantener al usuario como piloto, con LIFEOS como copiloto estricto.
+
+El usuario siempre decide. La app propone, ordena, insiste, explica y recuerda.
+
+============================================================
+4. PRINCIPIOS DE PRODUCTO
+============================================================
+
+1. Android primero.
+La experiencia debe sentirse nativa en telefono: teclado, permisos, notificaciones, alarmas, safe areas y gestos tienen prioridad sobre cualquier idea de web.
+
+2. Ejecucion antes que decoracion.
+La app debe abrir directo a la experiencia util: timeline, tareas, hoy, accion. Nada de pantallas tipo marketing.
+
+3. El timeline es el centro operativo.
+Todo lo importante del dia debe poder explicarse desde el timeline: tareas, eventos, rutinas, sueno, comidas, transito, descanso y huecos libres.
+
+4. La task pool es el origen del trabajo flexible.
+Las tareas no son solo una lista. Son materia prima para el scheduler.
+
+5. Las rutinas estructuran, pero no deben romper el dia.
+Sueno, comidas y transitos pueden ser bloques duros o semiduros segun configuracion, pero sus cambios diarios no deben mutar la rutina semanal base salvo que el usuario lo pida claramente.
+
+6. Eventos fijos son sagrados.
+Un evento fijo no debe moverse por una tarea flexible.
+
+7. Lo completado no desaparece sin contexto.
+El usuario necesita ver que hizo, cuando lo hizo y que hueco quedo disponible.
+
+8. Los huecos libres deben tener sentido.
+"Libre" no debe ser basura visual ni una caja peligrosa que al editarla rompa toda la organizacion.
+
+9. La app debe explicar sus decisiones.
+Si replanifica, recomienda o alerta, debe poder decir por que.
+
+10. Las metricas deben servir para actuar.
+Stats no debe ser un museo de numeros. Debe responder: que paso, que conviene cambiar y que patron se esta formando.
+
+============================================================
+5. MODULOS CENTRALES
+============================================================
+
+Prioridad maxima:
+
+- Scheduler local.
+- Timeline diario.
+- Task pool.
+- Notificaciones y recordatorios.
+- Ejecucion de tareas con registro real.
+
+Prioridad alta:
+
+- Rutinas.
+- Sueno.
+- Comidas.
+- Transito.
+- Eventos/calendario.
+- Alarmas reales.
+
+Prioridad media:
+
+- Habitos.
+- Notas.
+- Logros.
+- Atributos/habilidades.
+- Metricas y analiticas.
+
+Prioridad futura:
+
+- Geofencing confiable.
+- Anti-distraccion contextual.
+- Interpretacion por audio.
+- Prediccion de salida y hora de levantarse basada en historial real.
+
+============================================================
+6. DEFINICIONES DE DOMINIO
+============================================================
+
+Tarea:
+Trabajo flexible o semiflexible que puede planificarse en el dia. Tiene duracion estimada, prioridad, urgencia y carga cognitiva.
+
+Evento:
+Bloque fijo externo. Normalmente no debe moverse ni ser invadido por tareas.
+
+Rutina:
+Estructura recurrente del dia. Incluye sueno, comidas y transitos. Debe aceptar overrides diarios sin destruir la configuracion base.
+
+Habito:
+Accion repetitiva. Puede aparecer como recordatorio, bloque blando o senal analitica, pero necesita reglas claras para no competir de forma confusa con tareas.
+
+Bloque libre:
+Tiempo disponible entre bloques. Puede quedarse libre, convertirse en descanso o alojar avance parcial de una tarea. No debe actuar como bloque editable peligroso.
+
+Bloque fantasma:
+Representacion visual de una tarea completada antes de su fin planificado. Sirve para conservar memoria del plan y permitir liberar ese hueco.
+
+Transito observado:
+Registro de si el usuario llego bien o tarde. No debe modificar automaticamente la rutina base; debe alimentar predicciones.
+
+Energia:
+Entrada subjetiva del usuario para ajustar sugerencias. Si no se puede explicar de forma intuitiva, debe simplificarse o retirarse de la UI principal.
+
+============================================================
+7. REGLAS NO NEGOCIABLES
+============================================================
+
+1. La planificacion del dia no debe pasar al dia siguiente salvo decision explicita.
+2. El scheduler debe respetar la rutina de dormir.
+3. Reorganizar no debe borrar lo que ya paso en el dia.
+4. Completar antes de tiempo debe dejar una forma clara de liberar el hueco.
+5. Los cambios de transito deben registrarse como observaciones, no mutar la rutina base.
+6. Las alarmas deben comportarse como alarmas de telefono si se presentan como alarmas.
+7. El teclado no debe tapar campos de texto o numeros.
+8. Las notificaciones importantes deben tener acciones utiles sin obligar a abrir la app.
+9. Todo flujo destructivo debe ser reversible o confirmado.
+10. Todo texto visible debe aportar accion o claridad.
+
+============================================================
+8. DIRECCION TECNICA
+============================================================
+
+La app debe ser local-first:
+
+- El runtime principal vive en la app Android.
+- El scheduler principal es TypeScript local.
+- El backend Python queda como apoyo, paridad, validacion o benchmark, no como dependencia obligatoria del dia a dia.
+
+La arquitectura debe favorecer:
+
+- store persistente y modular;
+- tipos de dominio claros;
+- side effects separados;
+- tests de invariantes;
+- QA real en dispositivo Android.
+
+============================================================
+9. CRITERIO DE EXITO
+============================================================
+
+LIFEOS cumple su vision cuando el usuario puede abrir la app y entender:
+
+- que toca ahora;
+- que viene despues;
+- que ya paso;
+- que huecos libres existen;
+- que tareas conviene hacer;
+- por que el plan cambio;
+- que rutinas y eventos estan protegidos;
+- que patron se esta formando en su vida diaria.
+
+La app no debe sentirse como una coleccion de modulos. Debe sentirse como un solo sistema operativo personal.

@@ -3,12 +3,12 @@
     "name": "LifeOS",
     "slug": "lifeos",
     "scheme": "lifeos",
-    "version": "4.0.0",
-    "icon": "./assets/branding/icon-v3.png",
+    "version": "4.1.0",
+    "icon": "./assets/branding/icon-v4.png",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/branding/splash-icon-v3.png",
+      "image": "./assets/branding/splash-icon-v4.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -27,20 +27,20 @@
     },
     "android": {
       "package": "com.alan.lifeos",
-      "versionCode": 4,
+      "versionCode": 6,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/branding/adaptive-icon-v3.png",
+        "foregroundImage": "./assets/branding/adaptive-icon-v4.png",
         "backgroundColor": "#000000"
       }
     },
     "web": {
-      "favicon": "./assets/branding/favicon-v3.png"
+      "favicon": "./assets/branding/favicon-v4.png"
     },
     "extra": {
       "router": {},
       "buildMetadata": {
-        "commitHash": "4e4c57b",
-        "buildTimestamp": "2026-04-14T05:38:44Z"
+        "commitHash": "pending-commit",
+        "buildTimestamp": "2026-05-07T16:26:47-04:00"
       },
       "eas": {
         "projectId": "9b0d0b38-a4e3-4343-a007-fb2edd693a19"

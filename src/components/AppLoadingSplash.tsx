@@ -3,10 +3,12 @@ import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useRef } from 'react';
 import { useAppTheme } from '../theme';
 import { AppIconSVG } from './AppIconSVG';
+import { getBuildMetadata } from '../config/buildInfo';
 
 export function AppLoadingSplash(): ReactElement {
   const theme = useAppTheme();
   const styles = createStyles(theme);
+  const buildInfo = getBuildMetadata();
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const logoScale = useRef(new Animated.Value(0.94)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
@@ -43,7 +45,7 @@ export function AppLoadingSplash(): ReactElement {
       </Animated.View>
       <Animated.View style={{ opacity: textOpacity }}>
         <Text style={styles.wordmark}>LIFEOS</Text>
-        <Text style={styles.version}>v3.0 Nexus</Text>
+        <Text style={styles.version}>v{buildInfo.appVersion} Consolidation</Text>
       </Animated.View>
     </View>
   );

@@ -21,6 +21,7 @@ import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 
 const DAYS_SHORT = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+type RoutineDraftKind = 'meal' | 'transit';
 
 // ─── Safe Time Picker ─────────────────────────────────────────────────────────
 
@@ -87,9 +88,18 @@ export default function RoutinesScreen(): ReactElement {
   
   const [selectedDay, setSelectedDay] = useState<number>(new Date().getDay());
   const [isAlarmModalVisible, setIsAlarmModalVisible] = useState(false);
+  const [isRoutineModalVisible, setIsRoutineModalVisible] = useState(false);
+  const [routineDraftKind, setRoutineDraftKind] = useState<RoutineDraftKind>('meal');
   const [newAlarmLabel, setNewAlarmLabel] = useState('Alarma');
   const [newAlarmTime, setNewAlarmTime] = useState('07:00');
   const [newAlarmDays, setNewAlarmDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [newMealType, setNewMealType] = useState('Nueva Comida');
+  const [newMealTime, setNewMealTime] = useState('14:00');
+  const [newMealDuration, setNewMealDuration] = useState('45');
+  const [newTransitLabel, setNewTransitLabel] = useState('Traslado');
+  const [newTransitTime, setNewTransitTime] = useState('07:30');
+  const [newTransitArrivalTime, setNewTransitArrivalTime] = useState('08:00');
+  const [newTransitDuration, setNewTransitDuration] = useState('30');
   const [pendingScrollTargetId, setPendingScrollTargetId] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView | null>(null);
   const { alertState, showAlert, hideAlert } = useCustomAlert();
@@ -127,27 +137,46 @@ export default function RoutinesScreen(): ReactElement {
   }
 
   function handleAddMeal() {
-    const newMeal: MealRoutine = {
-      id: createId('meal'),
-      type: 'Nueva Comida',
-      time: '14:00',
-      durationMinutes: 45
-    };
-    setPendingScrollTargetId(newMeal.id);
-    updateRoutine(selectedDay, { meals: [...(currentRoutine?.meals || []), newMeal] });
-    showAlert('Comida añadida', 'Te llevé a la nueva comida para que ajustes nombre, hora y duración.');
+    setRoutineDraftKind('meal');
+    setNewMealType('Nueva Comida');
+    setNewMealTime('14:00');
+    setNewMealDuration('45');
+    setIsRoutineModalVisible(true);
   }
 
   function handleAddTransit() {
+    setRoutineDraftKind('transit');
+    setNewTransitLabel('Traslado');
+    setNewTransitTime('07:30');
+    setNewTransitArrivalTime('08:00');
+    setNewTransitDuration('30');
+    setIsRoutineModalVisible(true);
+  }
+
+  function handleCreateMeal() {
+    const newMeal: MealRoutine = {
+      id: createId('meal'),
+      type: newMealType.trim() || 'Nueva Comida',
+      time: newMealTime,
+      durationMinutes: Math.max(1, Number(newMealDuration) || 45)
+    };
+    setPendingScrollTargetId(newMeal.id);
+    updateRoutine(selectedDay, { meals: [...(currentRoutine?.meals || []), newMeal] });
+    setIsRoutineModalVisible(false);
+    showAlert('Comida añadida', 'Te llevé a la nueva comida para que ajustes nombre, hora y duración.');
+  }
+
+  function handleCreateTransit() {
     const newTransit: TransitRoutine = {
       id: createId('transit'),
-      label: 'Traslado',
-      time: '07:30',
-      durationMinutes: 30,
-      arrivalTime: '08:00'
+      label: newTransitLabel.trim() || 'Traslado',
+      time: newTransitTime,
+      durationMinutes: Math.max(1, Number(newTransitDuration) || 30),
+      arrivalTime: newTransitArrivalTime
     };
     setPendingScrollTargetId(newTransit.id);
     updateRoutine(selectedDay, { transits: [...(currentRoutine?.transits || []), newTransit] });
+    setIsRoutineModalVisible(false);
     showAlert('Traslado añadido', 'Te llevé al nuevo traslado para que configures salida, llegada y duración.');
   }
 
@@ -249,6 +278,20 @@ export default function RoutinesScreen(): ReactElement {
     } catch {
       showAlert('Error', 'No se pudo eliminar la alarma.');
     }
+  }
+
+  function closeRoutineModal() {
+    setIsRoutineModalVisible(false);
+  }
+
+  function getRoutineModalTitle(): string {
+    return routineDraftKind === 'meal' ? 'Nueva comida' : 'Nuevo traslado';
+  }
+
+  function getRoutineModalHint(): string {
+    return routineDraftKind === 'meal'
+      ? 'Crea una comida con hora y duración inicial para luego ajustarla en la lista.'
+      : 'Crea un traslado con salida, llegada y duración inicial para luego ajustarlo en la lista.';
   }
 
 
@@ -523,6 +566,82 @@ export default function RoutinesScreen(): ReactElement {
         </View>
       </Modal>
 
+      <Modal visible={isRoutineModalVisible} transparent animationType="slide" onRequestClose={closeRoutineModal}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCardAlarm}>
+            <Text style={styles.sectionTitle}>{getRoutineModalTitle()}</Text>
+            <Text style={styles.sectionHint}>{getRoutineModalHint()}</Text>
+
+            {routineDraftKind === 'meal' ? (
+              <>
+                <Text style={styles.label}>Nombre</Text>
+                <TextInput
+                  style={styles.alarmInput}
+                  value={newMealType}
+                  onChangeText={setNewMealType}
+                  placeholder="Ej: Desayuno"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                />
+
+                <SafeTimePicker label="Hora" value={newMealTime} onConfirm={setNewMealTime} />
+
+                <Text style={styles.label}>Duración (min)</Text>
+                <TextInput
+                  style={styles.alarmInput}
+                  value={newMealDuration}
+                  onChangeText={setNewMealDuration}
+                  keyboardType="numeric"
+                  placeholder="45"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                />
+              </>
+            ) : (
+              <>
+                <Text style={styles.label}>Nombre</Text>
+                <TextInput
+                  style={styles.alarmInput}
+                  value={newTransitLabel}
+                  onChangeText={setNewTransitLabel}
+                  placeholder="Ej: Camino al trabajo"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                />
+
+                <SafeTimePicker label="Salida" value={newTransitTime} onConfirm={setNewTransitTime} />
+                <SafeTimePicker label="Llegada" value={newTransitArrivalTime} onConfirm={setNewTransitArrivalTime} />
+
+                <Text style={styles.label}>Duración (min)</Text>
+                <TextInput
+                  style={styles.alarmInput}
+                  value={newTransitDuration}
+                  onChangeText={setNewTransitDuration}
+                  keyboardType="numeric"
+                  placeholder="30"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                />
+              </>
+            )}
+
+            <View style={styles.row}>
+              <Pressable style={styles.cancelBtnModal} onPress={closeRoutineModal}>
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                style={styles.addBtnModal}
+                onPress={() => {
+                  if (routineDraftKind === 'meal') {
+                    handleCreateMeal();
+                  } else {
+                    handleCreateTransit();
+                  }
+                }}
+              >
+                <Text style={styles.addBtnText}>Guardar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <CustomAlertDialog
         visible={alertState.visible}
         title={alertState.title}
@@ -551,16 +670,16 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   introTitle: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '800' },
   introText: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18 },
   introBullet: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18 },
-  overviewCard: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, backgroundColor: lifeTheme.colors.surface, borderRadius: 18, padding: 14, borderWidth: 1, borderColor: lifeTheme.colors.border },
+  overviewCard: { flexDirection: 'row', justifyContent: 'space-between', gap: 6, backgroundColor: lifeTheme.colors.surface, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 9, borderWidth: 1, borderColor: lifeTheme.colors.border },
   sectionLabel: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginBottom: 6 },
-  overviewItem: { flex: 1, alignItems: 'center', gap: 2 },
-  overviewValue: { color: lifeTheme.colors.text, fontSize: 18, fontWeight: '900' },
-  overviewLabel: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '700' },
+  overviewItem: { flex: 1, alignItems: 'center', gap: 1 },
+  overviewValue: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '900' },
+  overviewLabel: { color: lifeTheme.colors.muted, fontSize: 10, fontWeight: '700' },
   
-  daySelectorStatic: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 20 },
-  dayCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: lifeTheme.colors.surfaceAlt, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
+  daySelectorStatic: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 22, marginBottom: 14 },
+  dayCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: lifeTheme.colors.surfaceAlt, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
   dayCircleActive: { backgroundColor: lifeTheme.colors.primary, borderColor: lifeTheme.colors.primary },
-  dayCircleText: { color: lifeTheme.colors.muted, fontWeight: '800', fontSize: 16 },
+  dayCircleText: { color: lifeTheme.colors.muted, fontWeight: '800', fontSize: 14 },
   dayCircleTextActive: { color: lifeTheme.colors.onPrimary },
   
   scroll: { flex: 1 },

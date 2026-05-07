@@ -1,0 +1,339 @@
+LIFEOS - DOCUMENTACION COMPLETA
+Actualizado: 2026-05-07
+
+Este documento describe el estado actual del proyecto y reemplaza la documentacion raiz historica que estaba mezclada entre auditorias, changelogs y backlog.
+
+Documentos canonicos en raiz:
+
+1. LIFEOS_VISION_Y_CONTEXTO.txt
+2. DOCUMENTACION_COMPLETA.txt
+3. PROXIMOS_PASOS_UNIFICADOS.txt
+
+El README queda como guia tecnica rapida del repositorio, no como fuente narrativa principal.
+
+============================================================
+1. ESTADO EJECUTIVO
+============================================================
+
+LIFEOS es una app Android local-first hecha con Expo, React Native, TypeScript y Zustand.
+
+Estado validado en esta revision:
+
+- TypeScript: npm run typecheck OK.
+- Tests unitarios: npm test OK, 3 archivos, 44 tests.
+- Runtime principal: app local con scheduler TypeScript.
+- Backend Python: soporte de paridad, validacion y benchmark; no runtime principal.
+- Version visible unificada: 4.1.0 en package.json, package-lock.json, app.json, Android versionName, splash y Settings.
+
+Veredicto:
+El proyecto tiene una vision coherente y un nucleo funcional real, pero todavia necesita consolidacion de UX Android, reglas del scheduler y documentacion operativa.
+
+============================================================
+2. STACK Y ESTRUCTURA ACTUAL
+============================================================
+
+Stack:
+
+- Expo SDK 54.
+- React Native 0.81.
+- React 19.
+- TypeScript.
+- Zustand con persistencia.
+- Expo Router.
+- React Native Reanimated.
+- React Native Gesture Handler.
+- Expo Notifications.
+- Backend FastAPI/Python para scheduler remoto/paridad.
+
+Rutas principales Android:
+
+- app/(tabs)/index.tsx: Home/timeline diario.
+- app/(tabs)/pool.tsx: task pool.
+- app/(tabs)/calendar.tsx: calendario mensual/semanal/diario.
+- app/(tabs)/habits.tsx: habitos.
+- app/(tabs)/routines.tsx: rutinas y alarmas.
+- app/(tabs)/notes.tsx: notas.
+- app/(tabs)/stats.tsx: estadisticas.
+- app/(tabs)/settings.tsx: configuracion.
+- app/achievements.tsx: logros.
+- app/advanced-metrics.tsx: metricas avanzadas.
+- app/alarms.tsx: tablero de alarmas.
+- app/analytics.tsx: analiticas.
+
+Dominio:
+
+- src/types/tasks.ts
+- src/types/timeline.ts
+- src/types/routines.ts
+- src/types/execution.ts
+- src/types/energy.ts
+- src/types/analytics.ts
+- src/types/profile.ts
+- src/types/settings.ts
+
+Store:
+
+- src/store/useLifeStore.ts: composicion principal.
+- src/store/slices/taskSlice.ts
+- src/store/slices/habitSlice.ts
+- src/store/slices/contentSlice.ts
+- src/store/slices/executionSlice.ts
+- src/store/slices/settingsSlice.ts
+- src/store/slices/profileSlice.ts
+- src/store/slices/restDaySlice.ts
+- src/store/lifeStore.persistence.ts
+
+Scheduler:
+
+- src/core/scheduler.ts: planificador local principal.
+- src/core/schedulerParity.ts: comparacion local/remoto.
+- backend/scheduler.py: scheduler Python de soporte.
+
+============================================================
+3. COHERENCIA DE DOCUMENTACION RAIZ
+============================================================
+
+Problema encontrado:
+La raiz tenia demasiados documentos con responsabilidades mezcladas:
+
+- vision;
+- auditoria tecnica;
+- backlog;
+- changelog;
+- notas de backend;
+- referencia rapida;
+- documentacion de componentes;
+- estado historico de fases.
+
+Eso generaba contradicciones:
+
+- Fases marcadas como completadas y pendientes en distintas secciones.
+- README/package/app/Android ahora comparten version 4.1.0.
+- Algunos textos seguian diciendo que el transito ajustaba automaticamente la rutina base, comportamiento que ya no debe ser vigente.
+- Se mezclaba backend como runtime posible con la decision actual local-first.
+- Algunas auditorias antiguas hablaban de errores que ya no estan vigentes o de limitaciones de herramientas de otra sesion.
+- Habia archivos con codificacion rota, dificultando lectura y mantenimiento.
+
+Decision tomada:
+La informacion util se consolida en tres documentos:
+
+- Vision y contexto: producto y principios.
+- Documentacion completa: estado tecnico y coherencia actual.
+- Proximos pasos: backlog por impacto, con criterios de salida.
+
+============================================================
+4. ESTADO FUNCIONAL POR MODULO
+============================================================
+
+4.1 Timeline y scheduler
+
+Estado:
+
+- El timeline es el centro operativo del dia.
+- El scheduler local planifica tareas segun prioridad, urgencia, duracion, carga cognitiva, eventos y rutinas.
+- Se consideran tareas pool, scheduled e in_progress.
+- Se insertan descansos configurables.
+- Se respeta el inicio de sueno como limite de planificacion.
+- La planificacion ya no debe extender tareas flexibles al dia siguiente.
+- Reorganizar preserva bloques pasados relevantes del mismo dia.
+
+Riesgos:
+
+- La logica de huecos libres todavia necesita una politica de producto mas fina.
+- Falta flujo de decision para usar huecos libres como avance parcial de tarea.
+- Falta explicabilidad visible del scheduler en Home.
+
+4.2 Tareas y ejecucion
+
+Estado:
+
+- Task pool existe y alimenta el scheduler.
+- Hay estados: pool, scheduled, in_progress, completed, skipped, postponed.
+- Hay ExecutionRecord para trazabilidad.
+- Completion check permite completado, parcial, skip y postpone.
+- Los bloques completados antes de tiempo pueden preservarse como fantasma.
+- Existe accion para convertir bloque fantasma en Libre.
+- El swipe del task pool fue suavizado y ahora hay botones explicitos.
+
+Riesgos:
+
+- Algunas acciones simples antiguas pueden seguir evitando el flujo completo de ExecutionRecord.
+- La UI debe reforzar que completar antes de tiempo libera una decision sobre el hueco.
+
+4.3 Rutinas, sueno, comidas y transito
+
+Estado:
+
+- Rutinas diarias incluyen sueno, comidas y transitos.
+- Los bloques rutinarios pueden generar overrides diarios.
+- Sueno aparece como bloque rutinario cuando corresponde.
+- Transito registra si se llego a tiempo o tarde.
+- La observacion de transito ya no debe mutar la rutina base.
+
+Riesgos:
+
+- UI de rutinas sigue siendo una zona grande de deuda.
+- Formularios/popup pueden quedar bajo botones del sistema o teclado.
+- Minutos entre hora inicio/fin no siempre se recalculan de forma clara.
+- Falta soporte pulido para rutinas personalizadas.
+
+4.4 Habitos
+
+Estado:
+
+- Habitos tienen logs, streak y XP.
+- Pueden aparecer en UI y recordatorios.
+- Existe recordatorio aleatorio de habitos.
+
+Riesgos:
+
+- Aun falta una regla canonica: bloque, recordatorio, senal analitica o todo lo anterior.
+- Notificaciones de habitos deben aceptar "completado/no completado" sin abrir la app.
+- Mantener + o - deberia incrementar/decrementar de forma continua y controlada.
+
+4.5 Alarmas y notificaciones
+
+Estado:
+
+- Expo Notifications esta integrado.
+- Hay canales Android con importancia alta.
+- Hay alarmas guardadas y sincronizacion de notificaciones.
+- Recordatorio de pendientes queda activo por default cada 60 minutos.
+
+Riesgos Android:
+
+- El AndroidManifest revisado no muestra POST_NOTIFICATIONS.
+- Hay permisos heredados/sensibles como READ/WRITE_EXTERNAL_STORAGE y SYSTEM_ALERT_WINDOW que deben justificarse o retirarse.
+- Las alarmas no son todavia equivalentes a una alarma nativa de telefono con AlarmManager/full-screen intent.
+- Falta QA real en dispositivo para foreground, background, cold start, permisos, Do Not Disturb y fabricantes Android.
+
+4.6 Calendario y eventos
+
+Estado:
+
+- Hay vistas calendario y timeline.
+- Eventos fijos existen y deben actuar como bloques duros.
+- Importacion ICS tiene trabajo previo de dedupe/IDs, pero debe validarse con calendario real.
+
+Riesgos:
+
+- Timezones ICS y resincronizacion deben probarse con fixtures reales.
+- Eventos importados no deben duplicarse ni moverse por tareas.
+
+4.7 Notas
+
+Estado:
+
+- Notas existen con recordatorios.
+- Se agregaron campos visuales como emoji/color en persistencia.
+
+Riesgos:
+
+- El teclado puede tapar texto o controles.
+- El modulo es menos critico que timeline/scheduler/notificaciones.
+
+4.8 Stats, logros y metricas
+
+Estado:
+
+- Stats muestra resumen, energia, logros y metricas.
+- Hay pagina achievements con catalogo y logros secretos.
+- Hay pagina advanced-metrics.
+- Atributos/habilidades existen dentro del perfil.
+
+Riesgos:
+
+- El usuario reporto que energia cognitiva no es intuitiva.
+- Estado del pool en metricas es redundante.
+- Atributos/habilidades necesitan explicacion y progresion propia.
+- Logros secretos necesitan pistas.
+- Logros deben verse en cuadricula compacta y mostrar conteo inicial.
+- Metricas avanzadas deben medir uso real de la app, no solo paridad o datos tecnicos.
+
+============================================================
+5. CAMBIOS RECIENTES RELEVANTES
+============================================================
+
+En la ultima tanda se implemento:
+
+- Observaciones de transito sin mutar rutina base.
+- observedDurationMinutes en TransitArrivalRecord.
+- Limite de planificacion por sueno y fin de dia local.
+- Preservacion de bloques pasados del dia al regenerar.
+- Preservacion de completedGhostBlocks del mismo dia.
+- Accion convertCompletedGhostToFree.
+- Proteccion de bloques Libre generados.
+- Recordatorio de pendientes activo por default.
+- Swipe del task pool menos sensible.
+- Botones explicitos en cards del task pool.
+- Tests nuevos para scheduler y store.
+
+============================================================
+6. INVARIANTES ACTUALES QUE DEBEN MANTENERSE
+============================================================
+
+Timeline:
+
+- start_time debe ser menor que end_time.
+- Eventos fijos y bloques rutinarios protegidos no deben moverse por tareas.
+- El scheduler no debe planificar tareas flexibles despues del inicio de sueno.
+- El scheduler no debe empujar trabajo flexible al dia siguiente.
+- Reorganizar no debe borrar historia relevante ya ocurrida en el dia.
+
+Tareas:
+
+- Una tarea completada no debe volver al plan sin accion explicita.
+- Skip/postpone deben registrar causa.
+- Completion parcial debe dejar informacion suficiente para replanificar.
+
+Rutinas:
+
+- Cambios diarios van a overrides.
+- Rutina base no debe mutar por observaciones casuales.
+
+Transito:
+
+- Llegar tarde crea evidencia.
+- La prediccion futura debe usar evidencia agregada, no editar silenciosamente la rutina.
+
+Notificaciones:
+
+- Acciones desde notificacion deben afectar el store de forma idempotente.
+- Si se resincroniza, no deben quedar alarmas huerfanas.
+
+============================================================
+7. VALIDACION ACTUAL
+============================================================
+
+Validado en esta revision:
+
+- npm run typecheck: OK.
+- npm test: OK.
+- Vitest: 3 test files, 44 tests.
+
+Validacion pendiente:
+
+- Build release Android actual.
+- Instalacion en dispositivo real.
+- Pruebas E2E de notificaciones.
+- Pruebas de alarmas reales.
+- Pruebas de teclado/safe area en formularios.
+- Pruebas ICS con calendario real.
+- Pruebas de rutinas personalizadas.
+
+============================================================
+8. VEREDICTO DE COHERENCIA
+============================================================
+
+LIFEOS es coherente a nivel de vision y arquitectura general.
+
+La incoherencia principal ya no es conceptual, sino operacional:
+
+- docs viejas prometian comportamientos que estaban parciales;
+- algunas pantallas existen pero aun necesitan pulido Android;
+- ciertos modulos estan implementados, pero no explicados al usuario;
+- notificaciones y alarmas requieren validacion nativa real;
+- el scheduler ya mejoro, pero todavia necesita reglas de huecos libres y avance parcial.
+
+Conclusion:
+La direccion es correcta. La prioridad ahora es consolidar la experiencia diaria antes de sumar inteligencia nueva.

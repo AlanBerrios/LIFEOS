@@ -73,12 +73,61 @@ function clearMealTimeout(): void {
   }
 }
 
+function localDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDateKey(new Date());
 }
 
 function dateISO(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return localDateKey(date);
+}
+
+function isSameLocalDay(a: Date, b: Date): boolean {
+  return dateISO(a) === dateISO(b);
+}
+
+function dedupeScheduleBlocks(blocks: ScheduleBlock[]): ScheduleBlock[] {
+  const seen = new Set<string>();
+  const unique: ScheduleBlock[] = [];
+
+  for (const block of blocks) {
+    const key = `${block.id}|${block.start_time.getTime()}|${block.end_time.getTime()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(block);
+  }
+
+  return unique.sort((a, b) => a.start_time.getTime() - b.start_time.getTime());
+}
+
+function getSameDayGhostBlocks(blocks: ScheduleBlock[], startTime: Date): ScheduleBlock[] {
+  return dedupeScheduleBlocks(
+    blocks.filter((block) => isSameLocalDay(block.start_time, startTime))
+  );
+}
+
+function shouldPreserveDayHistoryBlock(block: ScheduleBlock, startTime: Date, tasks: Task[]): boolean {
+  if (!isSameLocalDay(block.start_time, startTime)) return false;
+  if (block.end_time.getTime() > startTime.getTime()) return false;
+  if (block.type === 'rest') return false;
+  if (block.isCompletedGhost || block.isStaticEvent || block.isRoutineBlock) return true;
+
+  if (block.task_id) {
+    const task = tasks.find((item) => item.id === block.task_id);
+    return task?.status === 'completed';
+  }
+
+  return false;
+}
+
+function getDayHistoryBlocks(state: LifeStore, startTime: Date, tasks: Task[]): ScheduleBlock[] {
+  return state.timeline.filter((block) => shouldPreserveDayHistoryBlock(block, startTime, tasks));
 }
 
 function findDueTransitArrivalPrompt(state: LifeStore, now: Date): LifeStore['pending_transit_arrival_prompt'] | undefined {
@@ -634,6 +683,7 @@ async function evaluateSchedulerParity(
 
 export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
   'generateTimeline' | 'setTimeline' | 'moveBlock' | 'updateBreakDuration' | 'deleteBlock' |
+  'convertCompletedGhostToFree' |
   'moveBlockToIndex' |
   'startMealTimer' | 'stopTimer' | 'restoreMealTimer' |
   'startTaskExecution' | 'pauseTaskExecution' | 'resumeTaskExecution' | 
@@ -672,11 +722,15 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       
       set((state) => {
         const today = todayISO();
-        const session = buildSession(state, state.tasks, restDayBlocks);
+        const historyBlocks = getDayHistoryBlocks(state, startTime, state.tasks);
+        const dayGhostBlocks = getSameDayGhostBlocks(state.completedGhostBlocks, startTime);
+        const timelineWithHistory = dedupeScheduleBlocks([...historyBlocks, ...restDayBlocks]);
+        const session = buildSession(state, state.tasks, [...timelineWithHistory, ...dayGhostBlocks]);
         const otherSessions = state.sessions.filter((sessionItem) => sessionItem.date !== today);
 
         return {
-          timeline: restDayBlocks,
+          timeline: timelineWithHistory,
+          completedGhostBlocks: dayGhostBlocks,
           sessions: [...otherSessions, session],
           lastEngine: 'local-ts',
           lastSolverStatus: 'REST_DAY',
@@ -716,24 +770,19 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       );
 
       // Preservar bloques completados (ghost blocks) durante reorganización
-      const now = new Date();
-      const activeGhostBlocks = state.completedGhostBlocks.filter(
-        (block) => block.end_time.getTime() > now.getTime()
-      );
+      const historyBlocks = getDayHistoryBlocks(state, startTime, updatedTasks);
+      const dayGhostBlocks = getSameDayGhostBlocks(state.completedGhostBlocks, startTime);
       
       // Combinar timeline nuevo con ghost blocks preservados
-      const timelineWithGhosts = [
-        ...newBlocks,
-        ...activeGhostBlocks
-      ].sort((a, b) => a.start_time.getTime() - b.start_time.getTime());
+      const timelineWithGhosts = dedupeScheduleBlocks([...historyBlocks, ...newBlocks, ...dayGhostBlocks]);
 
       const session = buildSession(state, updatedTasks, timelineWithGhosts);
       const otherSessions = state.sessions.filter((sessionItem) => sessionItem.date !== today);
 
       return {
         tasks: updatedTasks,
-        timeline: newBlocks,
-        completedGhostBlocks: activeGhostBlocks,
+        timeline: dedupeScheduleBlocks([...historyBlocks, ...newBlocks]),
+        completedGhostBlocks: dayGhostBlocks,
         sessions: [...otherSessions, session],
         lastEngine: engine,
         lastSolverStatus: parityResult.solverStatus,
@@ -778,6 +827,9 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
 
   updateBreakDuration: (blockId: string, newMinutes: number) => {
     const target = get().timeline.find((block) => block.id === blockId);
+    if (target?.type === 'rest' && target.title === 'Libre') {
+      return;
+    }
     if (target?.isRoutineBlock && target.routineBlockKey) {
       const date = todayISO();
       const nextStart = target.start_time;
@@ -809,13 +861,18 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       const blocks = [...state.timeline];
       const block = blocks[index];
       if (block.type !== 'rest' && block.type !== 'meal') return state;
+      if (block.type === 'rest' && block.title === 'Libre') return state;
       const oldDuration = block.end_time.getTime() - block.start_time.getTime();
       const newDuration = newMinutes * 60_000;
       const delta = newDuration - oldDuration;
       const newEnd = new Date(block.end_time.getTime() + delta);
+      const nextLockedIndex = blocks.findIndex((candidate, candidateIndex) => candidateIndex > index && isLockedForReorder(candidate));
+      const shiftEndIndex = nextLockedIndex >= 0 ? nextLockedIndex : blocks.length;
+      const lockedLimitMs = nextLockedIndex >= 0 ? blocks[nextLockedIndex].start_time.getTime() : Number.POSITIVE_INFINITY;
+      if (newEnd.getTime() > lockedLimitMs) return state;
       blocks[index] = { ...block, end_time: newEnd };
 
-      for (let cursor = index + 1; cursor < blocks.length; cursor++) {
+      for (let cursor = index + 1; cursor < shiftEndIndex; cursor++) {
         blocks[cursor] = {
           ...blocks[cursor],
           start_time: new Date(blocks[cursor].start_time.getTime() + delta),
@@ -829,6 +886,9 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
 
   deleteBlock: (blockId: string) => {
     const target = get().timeline.find((block) => block.id === blockId);
+    if (target?.type === 'rest' && target.title === 'Libre') {
+      return;
+    }
     if (target?.isRoutineBlock && target.routineBlockKey) {
       const date = todayISO();
       set((state) => {
@@ -851,6 +911,8 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       if (index < 0) return state;
       const blocks = [...state.timeline];
       const block = blocks[index];
+      if (block.type === 'rest' && block.title === 'Libre') return state;
+      if (isLockedForReorder(block)) return state;
       const duration = block.end_time.getTime() - block.start_time.getTime();
       blocks.splice(index, 1);
 
@@ -863,7 +925,10 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
             )
           : state.tasks;
 
-      for (let cursor = index; cursor < blocks.length; cursor++) {
+      const nextLockedIndex = blocks.findIndex((candidate, candidateIndex) => candidateIndex >= index && isLockedForReorder(candidate));
+      const shiftEndIndex = nextLockedIndex >= 0 ? nextLockedIndex : blocks.length;
+
+      for (let cursor = index; cursor < shiftEndIndex; cursor++) {
         blocks[cursor] = {
           ...blocks[cursor],
           start_time: new Date(blocks[cursor].start_time.getTime() - duration),
@@ -875,6 +940,27 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
     });
 
     triggerNotificationResync(get, set, 'resincronizar notificaciones tras eliminar bloque');
+  },
+
+  convertCompletedGhostToFree: (blockId: string) => {
+    set((state) => {
+      const ghost = state.completedGhostBlocks.find((block) => block.id === blockId);
+      if (!ghost) return state;
+
+      const freeBlock: ScheduleBlock = {
+        id: createId('rest'),
+        type: 'rest',
+        title: 'Libre',
+        start_time: new Date(ghost.start_time),
+        end_time: new Date(ghost.end_time),
+        pinned: false
+      };
+
+      return {
+        completedGhostBlocks: state.completedGhostBlocks.filter((block) => block.id !== blockId),
+        timeline: dedupeScheduleBlocks([...state.timeline, freeBlock])
+      };
+    });
   },
 
   startMealTimer: async (durationMinutes?: number) => {
@@ -957,11 +1043,11 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       const keepGhost = Boolean(
         state.settings.keepCompletedGhostBlock &&
         targetBlock &&
-        targetBlock.end_time.getTime() > now.getTime()
+        isSameLocalDay(targetBlock.start_time, now)
       );
       const nextGhostBlocks = state.completedGhostBlocks
         .filter((block) => block.task_id !== task_id)
-        .filter((block) => block.end_time.getTime() > now.getTime());
+        .filter((block) => isSameLocalDay(block.start_time, now));
 
       const completionRecord: ExecutionRecord = {
         id: createId('execution'),
@@ -1067,14 +1153,20 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
 
     const parityResult = await evaluateSchedulerParity(blocks, pendingTasks, replanStart);
 
-    set({
-      timeline: blocks,
-      is_replanning: false,
-      replan_error: undefined,
-      lastEngine: 'local-ts',
-      lastSolverStatus: parityResult.solverStatus,
-      last_scheduler_parity: parityResult.parity,
-      pending_transit_arrival_prompt: undefined
+    set((state) => {
+      const historyBlocks = getDayHistoryBlocks(state, replanStart, state.tasks);
+      const dayGhostBlocks = getSameDayGhostBlocks(state.completedGhostBlocks, replanStart);
+
+      return {
+        timeline: dedupeScheduleBlocks([...historyBlocks, ...blocks]),
+        completedGhostBlocks: dayGhostBlocks,
+        is_replanning: false,
+        replan_error: undefined,
+        lastEngine: 'local-ts',
+        lastSolverStatus: parityResult.solverStatus,
+        last_scheduler_parity: parityResult.parity,
+        pending_transit_arrival_prompt: undefined
+      };
     });
 
     triggerNotificationResync(get, set, 'resincronizar notificaciones tras replanificación');
@@ -1167,38 +1259,14 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
         plannedEnd: prompt.plannedEnd,
         actualArrivalTime: actualArrival,
         delayMinutes,
+        observedDurationMinutes: observedDuration,
         response: arrivedOnTime ? ('on_time' as const) : ('late' as const)
       };
-
-      const updatedRoutines = !arrivedOnTime
-        ? state.routines.map((routine) => ({
-            ...routine,
-            transits: routine.transits.map((transit) => (
-              transit.id === prompt.transitRoutineId
-                ? {
-                    ...transit,
-                    ...(() => {
-                      const [hour, minute] = transit.time.split(':').map(Number);
-                      const baseMinutes = (Number.isNaN(hour) ? 0 : hour * 60) + (Number.isNaN(minute) ? 0 : minute);
-                      const arrivalMinutes = (baseMinutes + observedDuration) % (24 * 60);
-                      const arrivalHour = Math.floor(arrivalMinutes / 60);
-                      const arrivalMin = arrivalMinutes % 60;
-                      return {
-                        arrivalTime: `${String(arrivalHour).padStart(2, '0')}:${String(arrivalMin).padStart(2, '0')}`
-                      };
-                    })(),
-                    durationMinutes: observedDuration
-                  }
-                : transit
-            ))
-          }))
-        : state.routines;
 
       const nextRecords = [...state.transit_arrival_records, record].slice(-180);
       return {
         transit_arrival_records: nextRecords,
-        pending_transit_arrival_prompt: undefined,
-        routines: updatedRoutines
+        pending_transit_arrival_prompt: undefined
       };
     });
   },
@@ -1217,6 +1285,7 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
         plannedEnd: prompt.plannedEnd,
         actualArrivalTime: prompt.plannedEnd,
         delayMinutes: 0,
+        observedDurationMinutes: Math.max(1, Math.round((prompt.plannedEnd.getTime() - prompt.plannedStart.getTime()) / MINUTE_MS)),
         response: 'dismissed' as const
       };
 
@@ -1334,8 +1403,11 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
     );
 
     set((state) => {
-      const today = new Date().toISOString().slice(0, 10);
-      const activeGhostBlocks = state.completedGhostBlocks.filter((block) => block.end_time.getTime() > Date.now());
+      const now = new Date();
+      const today = dateISO(now);
+      const historyBlocks = getDayHistoryBlocks(state, now, state.tasks);
+      const dayGhostBlocks = getSameDayGhostBlocks(state.completedGhostBlocks, now);
+      const updatedTimeline = dedupeScheduleBlocks([...historyBlocks, ...new_schedule]);
       
       // Actualizar timeline con nuevo plan
       const updatedSessions = state.sessions.map((session) =>
@@ -1357,7 +1429,8 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       );
 
       return {
-        timeline: [...new_schedule, ...activeGhostBlocks].sort((a, b) => a.start_time.getTime() - b.start_time.getTime()),
+        timeline: updatedTimeline,
+        completedGhostBlocks: dayGhostBlocks,
         sessions: updatedSessions,
         is_replanning: false,
         replan_error: undefined,

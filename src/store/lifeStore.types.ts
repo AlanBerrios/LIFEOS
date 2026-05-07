@@ -113,6 +113,7 @@ export interface TransitArrivalRecord {
   plannedEnd: Date;
   actualArrivalTime: Date;
   delayMinutes: number;
+  observedDurationMinutes?: number;
   response: 'on_time' | 'late' | 'dismissed';
 }
 
@@ -192,6 +193,7 @@ export interface LifeStoreActions {
   moveBlockToIndex: (blockId: string, targetIndex: number) => MoveBlockResult;
   updateBreakDuration: (blockId: string, newMinutes: number) => void;
   deleteBlock: (blockId: string) => void;
+  convertCompletedGhostToFree: (blockId: string) => void;
 
   startMealTimer: (durationMinutes?: number) => Promise<void>;
   stopTimer: () => Promise<void>;
@@ -201,7 +203,7 @@ export interface LifeStoreActions {
   clearOldSessions: () => void;
   clearAllData: () => void;
 
-  addNote: (note: { title: string; content: string; reminderIntervalMinutes?: number; reminderAt?: string }) => void;
+  addNote: (note: { title: string; content: string; emoji?: string; color?: string; reminderIntervalMinutes?: number; reminderAt?: string }) => void;
   updateNote: (id: string, updates: Partial<QuickNote>) => void;
   deleteNote: (id: string) => void;
 

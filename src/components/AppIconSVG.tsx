@@ -6,7 +6,7 @@ type AppIconSVGProps = {
   style?: StyleProp<ImageStyle>;
 };
 
-const iconSource = require('../../assets/branding/icon-v3.png');
+const iconSource = require('../../assets/branding/icon-v4.png');
 
 export function AppIconSVG({ size = 100, style }: AppIconSVGProps): ReactElement {
   return (

@@ -166,7 +166,8 @@ export function TutorialOverlay(): ReactElement | null {
   const stepIndex = Math.min(Math.max(settings.tutorialStep ?? 0, 0), STEPS.length - 1);
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
-  const currentTab = getSafeTab(segments?.[1]);
+  const segmentList = segments as readonly string[];
+  const currentTab = getSafeTab(segmentList[1] ?? segmentList[0]);
   const isOnTarget = currentTab === step.tab;
   const progressPct = Math.round(((stepIndex + 1) / STEPS.length) * 100);
 

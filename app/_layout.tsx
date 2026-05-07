@@ -43,6 +43,14 @@ export default function RootLayout(): ReactElement {
   const globalAlert = useLifeStore((s) => s.global_alert);
   const dismissGlobalAlert = useLifeStore((s) => s.dismissGlobalAlert);
 
+  // Matriz de precedencia global para evitar overlays simultáneos:
+  // 1) Alert global > 2) Overflow > 3) Rest day > 4) Daily start.
+  const isGlobalAlertVisible = globalAlert?.visible ?? false;
+  const isOverflowVisible = (overflowPrompt?.visible ?? false) && !isGlobalAlertVisible;
+  const isRestPromptVisible = showRestDayPrompt && !isGlobalAlertVisible && !isOverflowVisible;
+  const isDailyPromptVisible =
+    showDailyPrompt && !isGlobalAlertVisible && !isOverflowVisible && !isRestPromptVisible;
+
   useEffect(() => {
     let mounted = true;
     const processedActionKeys = new Set<string>();
@@ -238,19 +246,19 @@ export default function RootLayout(): ReactElement {
         <StatusBar style={uiThemeMode === 'dark' ? 'light' : 'dark'} backgroundColor="transparent" translucent />
         <Stack screenOptions={{ headerShown: false }} />
         <DailyStartPrompt
-          visible={showDailyPrompt}
+          visible={isDailyPromptVisible}
           onDismiss={() => setShowDailyPrompt(false)}
           onStartDay={handleStartDay}
           onCaptureQuick={handleCaptureQuick}
           onRestDay={handleRestDay}
         />
         <RestDayPrompt
-          visible={showRestDayPrompt}
+          visible={isRestPromptVisible}
           onConfirm={handleConfirmRestDay}
           onCancel={() => setShowRestDayPrompt(false)}
         />
         <ScheduleOverflowPrompt
-          visible={overflowPrompt?.visible ?? false}
+          visible={isOverflowVisible}
           candidateTasks={overflowPrompt?.candidateTasks ?? []}
           recommendedTaskIds={overflowPrompt?.recommendedTaskIds ?? []}
           maxSelections={overflowPrompt?.maxSelections ?? 0}
@@ -267,7 +275,7 @@ export default function RootLayout(): ReactElement {
           }}
         />
         <CustomAlertDialog
-          visible={globalAlert?.visible ?? false}
+          visible={isGlobalAlertVisible}
           title={globalAlert?.title ?? ''}
           message={globalAlert?.message}
           buttons={globalAlert?.buttons}

@@ -1,0 +1,477 @@
+LIFEOS - PROXIMOS PASOS UNIFICADOS
+Actualizado: 2026-05-07
+
+Este archivo reemplaza To_do_ideas, ANALISIS ACTUAL, AUDITORIA_Y_PLAN_LIFEOS y el reporte suelto de backend.
+Es el backlog operativo unico por impacto.
+
+============================================================
+0. RESUMEN
+============================================================
+
+Prioridad estrategica:
+Consolidar la experiencia diaria Android antes de abrir features grandes.
+
+Orden recomendado:
+
+1. Confiabilidad Android y permisos.
+2. Coherencia del timeline/scheduler.
+3. Rutinas y formularios sin friccion.
+4. Notificaciones y alarmas realmente accionables.
+5. Metricas/logros/atributos mas utiles.
+6. Inteligencia contextual y audio.
+
+============================================================
+1. HECHO EN LA ULTIMA TANDA
+============================================================
+
+Estos puntos de la lista del usuario ya tienen primera solucion:
+
+- El prompt de transito ya no cambia la rutina base.
+- Se guarda observedDurationMinutes para prediccion futura.
+- El scheduler corta en sueno o fin de dia.
+- Reorganizar conserva bloques pasados relevantes y fantasmas del dia.
+- Los bloques Libre generados quedan protegidos para no romper el plan.
+- Los fantasmas completados se pueden convertir a Libre.
+- Recordatorio de pendientes activo por default.
+- Swipe del task pool menos sensible.
+- Botones explicitos en tareas del pool.
+- Tests agregados: 44 pasando.
+
+Pendiente:
+Validar en build Android instalada, no solo en tests.
+
+============================================================
+2. P0 - CONFIABILIDAD ANDROID
+============================================================
+
+P0.1 Permisos Android de notificaciones
+
+Problema:
+AndroidManifest no muestra POST_NOTIFICATIONS, y en Android moderno puede impedir notificaciones reales si Expo/prebuild no lo agrega correctamente.
+
+Accion:
+- Revisar app.json/plugins/permisos Expo.
+- Asegurar POST_NOTIFICATIONS para Android 13+.
+- Revisar exact alarms si se decide implementar alarma nativa.
+- Retirar permisos heredados no justificados: READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, SYSTEM_ALERT_WINDOW.
+
+Criterio de salida:
+- Permisos minimos y justificados.
+- Notificaciones probadas en Android real.
+- Settings muestra permiso concedido/denegado de forma clara.
+
+P0.2 Build release real y version visible
+
+Problema:
+Antes habia desalineacion: docs v4.1, package.json 4.0.0 y textos internos historicos v3/v4. La base quedo unificada en v4.1.0.
+
+Accion:
+- Mantener version actual unica en cada release.
+- Mostrar version, fecha de build y canal en Settings.
+- Actualizar app.json/package.json/documentos juntos.
+
+Criterio de salida:
+- Usuario puede confirmar que la APK instalada corresponde al codigo actual.
+
+P0.3 QA E2E de notificaciones
+
+Casos obligatorios:
+- App abierta.
+- App en background.
+- App cerrada/cold start.
+- Acciones de completar/saltar/postponer.
+- Recordatorio de pendientes.
+- Recordatorio de habito.
+- Nota con recordatorio.
+- Alarma.
+
+Criterio de salida:
+- Reporte con hora, dispositivo, Android version y resultado.
+
+============================================================
+3. P1 - SCHEDULER Y TIMELINE
+============================================================
+
+P1.1 Politica canonica para bloques Libre
+
+Problema:
+Los bloques Libre largos pueden ser utiles, pero hoy se sienten como ruido o como bloques peligrosos.
+
+Accion:
+- Definir tipos visuales:
+  - Libre corto: buffer.
+  - Libre largo: oportunidad.
+  - Descanso: recuperacion sugerida.
+  - Avance: bloque parcial de tarea.
+- No permitir edicion destructiva directa en bloques Libre generados.
+- Agregar acciones:
+  - Dejar libre.
+  - Tomar descanso.
+  - Usar para avance de tarea.
+
+Criterio de salida:
+- Editar o tocar Libre nunca rompe eventos/rutinas.
+- El usuario entiende por que existe ese hueco.
+
+P1.2 Avances de tarea en huecos libres
+
+Caso:
+Transito termina 18:40 y once empieza 20:00. Hay 80 minutos libres.
+
+Accion:
+- Configurar buffers de descanso al inicio y final del hueco.
+- Si queda tiempo productivo, preguntar al organizar el dia:
+  - quieres hacer un avance de una tarea?
+  - quieres dejarlo libre?
+- Permitir elegir una tarea y crear bloque parcial.
+
+Criterio de salida:
+- El bloque parcial no marca la tarea completa.
+- Registra ExecutionRecord parcial.
+- Replanifica el saldo pendiente.
+
+P1.3 Reorganizacion que no borre historia
+
+Estado:
+Primera solucion implementada.
+
+Accion pendiente:
+- Validar casos de:
+  - evento pasado;
+  - rutina pasada;
+  - tarea completada;
+  - bloque fantasma convertido a Libre;
+  - replan despues de skip/postpone.
+
+Criterio de salida:
+- Reorganizar nunca hace sentir que el dia "se borro".
+
+P1.4 Explicabilidad del plan
+
+Accion:
+- En cada bloque, mostrar informacion breve:
+  - por que esta aqui;
+  - que lo bloquea;
+  - si viene de rutina, evento, tarea, sugerencia o hueco libre.
+- En replan, mostrar resumen:
+  - que cambio;
+  - por que;
+  - que quedo protegido.
+
+Criterio de salida:
+- El usuario puede auditar el plan sin leer logs.
+
+============================================================
+4. P2 - RUTINAS Y FORMULARIOS ANDROID
+============================================================
+
+P2.1 Redisenar UI de rutinas
+
+Problemas:
+- Bloques demasiado grandes.
+- Popup de crear rutina se mete bajo botones inferiores.
+- Minutos no se actualizan bien al cambiar inicio/fin.
+- Teclado tapa campos.
+- Falta opcion clara de rutinas personalizadas.
+
+Accion:
+- Usar bottom sheets con safe area y KeyboardAvoidingView.
+- Crear editor compacto por secciones: sueno, comidas, transitos, personalizados.
+- Recalcular duracion automaticamente al editar hora inicio/fin.
+- Permitir bloque personalizado con tipo, hora, duracion y dureza.
+
+Criterio de salida:
+- Crear/editar rutina completa con teclado abierto sin campos tapados.
+- Los minutos reflejan hora inicio/fin.
+
+P2.2 Corregir teclado en toda la app
+
+Pantallas a revisar:
+- Home quick task/event.
+- Pool task form.
+- Notes.
+- Routines.
+- Alarms.
+- Settings inputs numericos.
+- Dialogos de completion/partial.
+
+Accion:
+- Estandarizar contenedores con safe area, scroll y keyboardShouldPersistTaps.
+- Evitar modales centrados no scrolleables para formularios largos.
+
+Criterio de salida:
+- Ningun input queda tapado por teclado o nav bar Android.
+
+============================================================
+5. P3 - ALARMAS Y NOTIFICACIONES ACCIONABLES
+============================================================
+
+P3.1 Alarmas tipo telefono
+
+Problema:
+Expo Notifications no equivale automaticamente a una alarma nativa de telefono.
+
+Accion:
+- Decidir alcance:
+  A) seguir con notificaciones altas y decir "recordatorios";
+  B) implementar modulo nativo Android con AlarmManager, exact alarm, full-screen intent y canal alarm.
+
+Recomendacion:
+Si se llama "alarma", ir por B o cambiar el texto a "recordatorio".
+
+Criterio de salida:
+- Suena como alarma real o la UI no promete eso.
+
+P3.2 Habitos desde notificacion
+
+Accion:
+- Categoria de notificacion de habito con acciones:
+  - Completado.
+  - No completado.
+  - Recordar despues.
+- Procesar accion en app/_layout.tsx sin abrir UI.
+
+Criterio de salida:
+- El usuario responde desde la notificacion y el habit log cambia correctamente.
+
+P3.3 Pendientes por default
+
+Estado:
+Default activado en 60 min.
+
+Accion pendiente:
+- En onboarding/settings, explicar frecuencia y permitir ajustar facilmente.
+
+============================================================
+6. P4 - HABITOS
+============================================================
+
+P4.1 Mantener + o - para ajustar cantidad
+
+Accion:
+- Implementar press-and-hold con intervalo progresivo lento.
+- Aceleracion suave, con limite para evitar saltos absurdos.
+- Feedback visual del valor actual.
+
+Criterio de salida:
+- Tap suma/resta 1.
+- Mantener incrementa continuamente sin sentirse descontrolado.
+
+P4.2 Definir comportamiento funcional
+
+Decision necesaria:
+Un habito puede ser:
+
+- recordatorio;
+- bloque blando;
+- metrica;
+- objetivo diario;
+- todo lo anterior, pero con reglas claras.
+
+Criterio de salida:
+- Documentar y aplicar una tabla de reglas.
+
+============================================================
+7. P5 - METRICAS, LOGROS, ATRIBUTOS Y ENERGIA
+============================================================
+
+P5.1 Energia cognitiva
+
+Problema:
+El usuario no entiende que es ni para que sirve.
+
+Opciones:
+A) Simplificarla como "energia de hoy" y ocultar tecnicismos.
+B) Sacarla de UI principal y dejarla como metrica avanzada.
+C) Mantenerla solo si cada recomendacion explica su efecto.
+
+Recomendacion:
+B en corto plazo, C a mediano plazo.
+
+P5.2 Stats sin redundancia
+
+Accion:
+- Eliminar "estado del pool" si no aporta decision.
+- Priorizar metricas de uso:
+  - tareas completadas por hora;
+  - tareas movidas;
+  - replans aceptados/rechazados;
+  - tiempo libre usado vs desperdiciado;
+  - precision ETA;
+  - transitos tarde/a tiempo;
+  - cumplimiento de rutinas;
+  - tasa de completion desde notificacion.
+
+Criterio de salida:
+- Cada metrica responde una pregunta accionable.
+
+P5.3 Logros
+
+Accion:
+- Grid compacto.
+- Header con desbloqueados/total/secretos.
+- Logros secretos con pista, no condicion totalmente oculta.
+- Mantener detalle en modal.
+
+Criterio de salida:
+- La pagina se puede escanear rapido y motiva sin ocupar scroll excesivo.
+
+P5.4 Atributos y habilidades
+
+Accion:
+- Al tocar atributo/habilidad, explicar:
+  - que significa;
+  - como se sube;
+  - que acciones dan EXP;
+  - nivel actual y progreso.
+- Cada atributo/habilidad debe tener nivel propio.
+- Completar nivel debe dar XP o recompensa clara.
+
+Criterio de salida:
+- El usuario entiende el RPG sin documento externo.
+
+============================================================
+8. P6 - TASK POOL Y UX DE EJECUCION
+============================================================
+
+P6.1 Swipe del pool
+
+Estado:
+Primera mejora implementada.
+
+Accion pendiente:
+- Probar con dedo en Android real.
+- Ajustar thresholds si aun roba scroll vertical.
+
+P6.2 Acciones explicitas por task
+
+Estado:
+Botones agregados.
+
+Accion pendiente:
+- Evaluar si deben ser iconos compactos para ahorrar espacio.
+- Agregar menu secundario para skip/postpone si aplica.
+
+============================================================
+9. P7 - AUDIO A PLANIFICACION
+============================================================
+
+Objetivo futuro:
+Mandar audio y que LIFEOS lo interprete para agregar tareas, eventos, notas o cambios de rutina.
+
+Fases:
+
+1. Capturar audio.
+2. Transcribir.
+3. Extraer intencion:
+   - tarea;
+   - evento;
+   - nota;
+   - alarma;
+   - rutina;
+   - replan.
+4. Mostrar confirmacion editable.
+5. Guardar y replanificar si corresponde.
+
+Regla:
+Nunca agregar silenciosamente algo ambiguo. Siempre confirmar.
+
+Criterio de salida futuro:
+- "Manana a las 8 tengo prueba de calculo, recuerdame estudiar hoy 40 minutos" crea evento/tarea sugerida con confirmacion.
+
+============================================================
+10. RESCATE DE LA AUDITORIA ANTIGUA
+============================================================
+
+La auditoria antigua tenia valor en estos puntos:
+
+- La promesa fuerte de LIFEOS sigue vigente.
+- El riesgo principal es crecer sin consolidar.
+- El usuario debe seguir siendo piloto.
+- El scheduler/timeline es el nucleo.
+- El backend no debe dominar el runtime diario.
+- Se necesitan invariantes y tests.
+- Se necesita modularidad y side effects separados.
+
+Estado actual de esos puntos:
+
+- Typecheck y tests estan verdes.
+- El store ya esta parcialmente modularizado en slices.
+- ExecutionRecord y replan history existen.
+- Scheduler local es runtime principal.
+- Paridad backend queda como soporte.
+- Falta cerrar UX Android y QA real.
+
+============================================================
+11. ORDEN RECOMENDADO DE EJECUCION
+============================================================
+
+Sprint 1:
+- P0.1 permisos Android.
+- P0.2 version visible.
+- P0.3 QA E2E notificaciones.
+- P2.2 teclado en formularios principales.
+
+Sprint 2:
+- P1.1 politica Libre.
+- P1.2 avances en huecos.
+- P1.4 explicabilidad del plan.
+- P2.1 rutinas UI.
+
+Sprint 3:
+- P3.1 decision alarmas nativas.
+- P3.2 habitos desde notificacion.
+- P4.1 hold + / - en habitos.
+- P5.1 energia simplificada.
+
+Sprint 4:
+- P5.2 metricas de uso.
+- P5.3 logros compactos con pistas.
+- P5.4 atributos/habilidades con niveles.
+- P7 diseno tecnico de audio.
+- P8 diseno tecnico de integracion Google Calendar/ICS.
+
+============================================================
+12. NO PRIORIZAR TODAVIA
+============================================================
+
+No abrir aun:
+
+- IA compleja sin confirmacion.
+- Geofencing permanente.
+- Anti-distraccion agresivo.
+- Sincronizacion cloud.
+- Backend como runtime obligatorio.
+- Refactors grandes de UI si antes no hay criterios Android claros.
+
+Motivo:
+La app necesita sentirse confiable en el dia real antes de volverse mas inteligente.
+
+============================================================
+13. P8 - CALENDARIOS EXTERNOS
+============================================================
+
+Objetivo futuro:
+Vincular LIFEOS con calendarios externos sin ensuciar el runtime principal.
+
+Alcances posibles:
+
+1. Importar ICS de solo lectura.
+2. Vincular Google Calendar con OAuth.
+3. Exportar bloques planificados a un calendario externo.
+4. Sincronizar eventos externos como bloques fijos.
+
+Decision actual:
+No mantener stubs de Google Calendar en codigo productivo si no estan conectados a UI, credenciales, permisos y flujo real.
+
+Cuando se implemente:
+
+- reinstalar `expo-auth-session` y `expo-web-browser` si el flujo OAuth los necesita;
+- mover credenciales a configuracion segura;
+- crear pantalla de conexion/desconexion;
+- deduplicar eventos por UID/fecha;
+- manejar timezones correctamente;
+- pedir confirmacion antes de exportar bloques generados por LIFEOS.
+
+Criterio de salida:
+El usuario puede conectar, importar y desconectar calendario sin duplicados ni eventos fantasma.

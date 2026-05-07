@@ -247,6 +247,25 @@ function buildRoutineBlocks(routines: DailyRoutine[], now: Date, routineOverride
   return blocks;
 }
 
+function endOfLocalDay(date: Date): Date {
+  const end = new Date(date);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}
+
+function getPlanningEnd(hardBlocks: ScheduleBlock[], now: Date): Date {
+  const dayEnd = endOfLocalDay(now);
+  const nextSleepStart = hardBlocks
+    .filter((block) => block.type === 'sleep' && block.start_time.getTime() >= now.getTime())
+    .sort((a, b) => a.start_time.getTime() - b.start_time.getTime())[0]?.start_time;
+
+  if (nextSleepStart && nextSleepStart.getTime() < dayEnd.getTime()) {
+    return new Date(nextSleepStart);
+  }
+
+  return dayEnd;
+}
+
 function buildEventBlocks(events: StaticEvent[], now: Date): ScheduleBlock[] {
   return getEventsForDate(events, now)
     .filter((event) => event.endTime > now)
@@ -301,9 +320,11 @@ export function generateTimeline(
   options: { preferredTaskIds?: string[] } = {},
   habits: Habit[] = []
 ): ScheduleBlock[] {
-  const schedulableTasks = tasks.filter((t) => t.status === 'pool' || t.status === 'scheduled');
+  const schedulableTasks = tasks.filter((t) => t.status === 'pool' || t.status === 'scheduled' || t.status === 'in_progress');
   const cognitiveBudget = 600;
   const breakMin = _settings?.breakDurationMinutes ?? 10;
+  const workStreakLimit = _settings?.workStreakLimitMinutes ?? 90;
+  const longBreakMin = _settings?.longBreakDurationMinutes ?? 20;
   const preferredTaskIds = new Set(options.preferredTaskIds ?? []);
 
   function mergeRestBlocks(unmerged: ScheduleBlock[]): ScheduleBlock[] {
@@ -324,6 +345,8 @@ export function generateTimeline(
 
   const hardBlocks = [...buildRoutineBlocks(routines, now, routineOverrides), ...buildEventBlocks(events, now)]
     .sort((a, b) => a.start_time.getTime() - b.start_time.getTime());
+  const planningEnd = getPlanningEnd(hardBlocks, now);
+
   if (schedulableTasks.length === 0) {
     return mergeRestBlocks([...hardBlocks].sort((a, b) => a.start_time.getTime() - b.start_time.getTime()));
   }
@@ -370,6 +393,7 @@ export function generateTimeline(
 
   const blocks: ScheduleBlock[] = [...hardBlocks.map((block) => ({ ...block }))];
   let cursor = new Date(now);
+  let workStreakMinutes = 0;
 
   for (let idx = 0; idx < finalSequence.length; idx++) {
     const task = finalSequence[idx];
@@ -379,6 +403,14 @@ export function generateTimeline(
 
     const initialStart = task.fixed_start && task.fixed_start > cursor ? new Date(task.fixed_start) : new Date(cursor);
     const start = findNextCoherentStart(initialStart, durationMs, hardBlocks);
+    const startMs = start.getTime();
+    const endMs = startMs + durationMs;
+    if (startMs >= planningEnd.getTime() || endMs > planningEnd.getTime()) {
+      continue;
+    }
+    if (task.fixed_end && endMs > task.fixed_end.getTime()) {
+      continue;
+    }
 
     if (start.getTime() > cursor.getTime()) {
       blocks.push({
@@ -393,6 +425,9 @@ export function generateTimeline(
     const end = task.fixed_end && task.fixed_end.getTime() > start.getTime()
       ? new Date(task.fixed_end)
       : new Date(start.getTime() + durationMs);
+    if (end.getTime() > planningEnd.getTime()) {
+      continue;
+    }
 
     blocks.push({
       id: createId('block'),
@@ -404,21 +439,27 @@ export function generateTimeline(
       cognitive_drain: task.cognitive_load * task.eta_minutes
     });
 
-    const desiredRestEnd = new Date(end.getTime() + breakMin * 60_000);
+    workStreakMinutes += Math.max(5, task.eta_minutes);
+    const nextBreakMin = workStreakMinutes >= workStreakLimit ? longBreakMin : breakMin;
+    const desiredRestEnd = new Date(end.getTime() + nextBreakMin * 60_000);
     const nextHardBlock = hardBlocks.find((block) => block.start_time.getTime() >= end.getTime());
-    const restEnd = nextHardBlock && nextHardBlock.start_time.getTime() < desiredRestEnd.getTime()
+    let restEnd = nextHardBlock && nextHardBlock.start_time.getTime() < desiredRestEnd.getTime()
       ? new Date(nextHardBlock.start_time)
       : desiredRestEnd;
+    if (restEnd.getTime() > planningEnd.getTime()) {
+      restEnd = new Date(planningEnd);
+    }
 
     if (restEnd.getTime() - end.getTime() >= 2 * 60_000) {
       blocks.push({
         id: createId('rest'),
         type: 'rest',
-        title: 'Descanso',
+        title: workStreakMinutes >= workStreakLimit ? 'Recarga mental' : 'Descanso',
         start_time: new Date(end),
         end_time: restEnd
       });
       cursor = restEnd;
+      workStreakMinutes = 0;
     } else {
       cursor = end;
     }

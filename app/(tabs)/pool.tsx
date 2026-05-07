@@ -540,7 +540,13 @@ export default function PoolScreen(): ReactElement {
         <View style={styles.formModalOverlay}>
           <ScrollView
             style={styles.formModalScroll}
-            contentContainerStyle={styles.formModalContent}
+            contentContainerStyle={[
+              styles.formModalContent,
+              {
+                paddingTop: insets.top + 24,
+                paddingBottom: Math.max(insets.bottom, 16) + 24
+              }
+            ]}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -593,9 +599,8 @@ export default function PoolScreen(): ReactElement {
                           { backgroundColor: form.color || lifeTheme.colors.primary }
                         ]}
                       />
-                      <Text style={styles.selectorColorText}>{form.color || 'Automático'}</Text>
+                      <Text style={styles.selectorColorText}>{(form.color || lifeTheme.colors.primary).toUpperCase()}</Text>
                     </View>
-                    <Text style={styles.selectorHint}>Elegir</Text>
                   </Pressable>
                 </View>
               </View>

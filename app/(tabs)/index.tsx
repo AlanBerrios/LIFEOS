@@ -43,6 +43,13 @@ function fmt(date: Date): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function localDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function getFatigueLabel(fatigue: 'low' | 'medium' | 'high'): string {
   if (fatigue === 'high') return 'Muy cansado';
   if (fatigue === 'medium') return 'Cansado';
@@ -167,6 +174,7 @@ function QuickTaskModal({
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+  const insets = useSafeAreaInsets();
   const { alertState, showAlert, hideAlert } = useCustomAlert();
   const addTask = useLifeStore((s) => s.addTask);
   const [title, setTitle] = useState('');
@@ -202,8 +210,20 @@ function QuickTaskModal({
   return (
     <>
       <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-        <Pressable style={styles.overlay} onPress={onClose}>
-          <View style={styles.modalCard}>
+        <Pressable
+          style={[
+            styles.overlay,
+            { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 16) + 8 }
+          ]}
+          onPress={onClose}
+        >
+          <Pressable style={[styles.modalCard, { maxHeight: '100%' }]} onPress={(e) => e.stopPropagation()}>
+            <ScrollView
+              style={{ maxHeight: '100%' }}
+              contentContainerStyle={{ gap: 14, paddingBottom: Math.max(insets.bottom, 12) }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             <Text style={styles.modalTitle}>Nueva tarea rápida</Text>
             
             <TextInput
@@ -251,9 +271,8 @@ function QuickTaskModal({
                 >
                   <View style={styles.colorPreviewRow}>
                     <View style={[styles.colorSwatch, { backgroundColor: color || lifeTheme.colors.primary }]} />
-                    <Text style={styles.selectorColorText}>{color || 'Automático'}</Text>
+                    <Text style={styles.selectorColorText}>{(color || lifeTheme.colors.primary).toUpperCase()}</Text>
                   </View>
-                  <Text style={styles.selectorHint}>Elegir</Text>
                 </Pressable>
               </View>
             </View>
@@ -278,7 +297,8 @@ function QuickTaskModal({
                 <Text style={styles.saveBtnText}>Guardar</Text>
               </Pressable>
             </View>
-          </View>
+            </ScrollView>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -387,6 +407,7 @@ function QuickEventModal({
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+  const insets = useSafeAreaInsets();
   const { alertState, showAlert, hideAlert } = useCustomAlert();
   const addEvent = useLifeStore((s) => s.addEvent);
   const [title, setTitle] = useState('');
@@ -427,8 +448,20 @@ function QuickEventModal({
   return (
     <>
       <Modal visible={visible} transparent animationType="slide">
-        <Pressable style={styles.overlay} onPress={onClose}>
-          <View style={styles.modalCard}>
+        <Pressable
+          style={[
+            styles.overlay,
+            { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 16) + 8 }
+          ]}
+          onPress={onClose}
+        >
+          <Pressable style={[styles.modalCard, { maxHeight: '100%' }]} onPress={(e) => e.stopPropagation()}>
+            <ScrollView
+              style={{ maxHeight: '100%' }}
+              contentContainerStyle={{ gap: 14, paddingBottom: Math.max(insets.bottom, 12) }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             <Text style={styles.modalTitle}>Rápido: Nuevo Evento</Text>
             
             <TextInput
@@ -456,9 +489,8 @@ function QuickEventModal({
                 >
                   <View style={styles.colorPreviewRow}>
                     <View style={[styles.colorSwatch, { backgroundColor: color || lifeTheme.colors.primary }]} />
-                    <Text style={styles.selectorColorText}>{color || 'Automático'}</Text>
+                    <Text style={styles.selectorColorText}>{(color || lifeTheme.colors.primary).toUpperCase()}</Text>
                   </View>
-                  <Text style={styles.selectorHint}>Elegir</Text>
                 </Pressable>
               </View>
             </View>
@@ -495,7 +527,8 @@ function QuickEventModal({
             <Text style={{ color: lifeTheme.colors.muted, fontSize: 10, textAlign: 'center' }}>
               * Usa el Calendario para configurar horas exactas.
             </Text>
-          </View>
+            </ScrollView>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -788,6 +821,7 @@ function BlockCard({
   const skipTask = useLifeStore((s) => s.skipTask);
   const postponeTask = useLifeStore((s) => s.postponeTask);
   const deleteBlock = useLifeStore((s) => s.deleteBlock);
+  const convertCompletedGhostToFree = useLifeStore((s) => s.convertCompletedGhostToFree);
   const logHabit = useLifeStore((s) => s.logHabit);
   const tasks = useLifeStore((s) => s.tasks);
   const habits = useLifeStore((s) => s.habits);
@@ -807,6 +841,7 @@ function BlockCard({
   const isTransit = block.type === 'transit';
   const isRoutineBlock = Boolean(block.isRoutineBlock);
   const isStaticEvent = Boolean(block.isStaticEvent);
+  const isGeneratedFreeBlock = block.type === 'rest' && block.title === 'Libre' && !isRoutineBlock;
   const isMovableTask = !isRest && !isHabit && !isStaticEvent && !isRoutineBlock && !isGhost;
   const isHabitDoneToday = Boolean(habit?.lastCompletedDate === getTodayStr());
   const dragOffsetY = useSharedValue(0);
@@ -967,6 +1002,23 @@ function BlockCard({
             <Text style={styles.ctrlIconLocked}>🔒</Text>
           </View>
         )}
+        {isGhost && (
+          <Pressable
+            style={[styles.ctrlBtn, styles.ctrlBtnDone]}
+            onPress={() => {
+              showAlert(
+                'Convertir en libre',
+                'Este hueco quedara disponible para descansar o reemplazarlo por otra tarea.',
+                [
+                  { text: 'Cancelar', style: 'cancel' },
+                  { text: 'Convertir', onPress: () => convertCompletedGhostToFree(block.id) }
+                ]
+              );
+            }}
+          >
+            <Text style={styles.ctrlIconDone}>L</Text>
+          </Pressable>
+        )}
         {isHabit && habit && !isHabitDoneToday && (
           <Pressable
             style={[styles.ctrlBtn, styles.ctrlBtnDone]}
@@ -978,7 +1030,7 @@ function BlockCard({
             <Text style={styles.ctrlIconDone}>✓</Text>
           </Pressable>
         )}
-        {isRest && (
+        {isRest && !isGeneratedFreeBlock && (
           <Pressable
             style={styles.editBreakBtn}
             onPress={() => onEditBreak(block.id, durationMin)}
@@ -997,6 +1049,11 @@ function BlockCard({
           >
             <Text style={styles.editBreakIcon}>✏️</Text>
           </Pressable>
+        )}
+        {isGeneratedFreeBlock && (
+          <View style={[styles.ctrlBtn, styles.ctrlBtnLocked]}>
+            <Text style={styles.ctrlIconLocked}>L</Text>
+          </View>
         )}
       </View>
       </Animated.View>
@@ -1017,6 +1074,7 @@ export default function DashboardScreen(): ReactElement {
   const tasks = useLifeStore((s) => s.tasks);
   const habits = useLifeStore((s) => s.habits);
   const logHabit = useLifeStore((s) => s.logHabit);
+  const unlogHabit = useLifeStore((s) => s.unlogHabit);
   const generateTimeline = useLifeStore((s) => s.generateTimeline);
   const isGenerating = useLifeStore((s) => s.isGenerating);
   const lastEngine = useLifeStore((s) => s.lastEngine);
@@ -1097,9 +1155,10 @@ export default function DashboardScreen(): ReactElement {
     [energySuggestedTaskIds, tasks]
   );
 
-  // Auto-filter completed tasks from timeline, but keep ghost blocks until their planned end
+  // Auto-filter completed tasks from timeline, but keep today's ghost blocks visible
   const visibleTimeline = useMemo(() => {
-    const activeGhostBlocks = completedGhostBlocks.filter((block) => block.end_time.getTime() > now.getTime());
+    const todayKey = getTodayStr();
+    const activeGhostBlocks = completedGhostBlocks.filter((block) => localDateKey(block.start_time) === todayKey);
     const activeTimeline = timeline.filter((block) => {
       if (block.type === 'habit') {
         return false;
@@ -1338,6 +1397,12 @@ export default function DashboardScreen(): ReactElement {
                   key={habit.id}
                   style={[styles.habitBubble, isDone && styles.habitBubbleDone]}
                   onPress={() => {
+                    if (isDone) {
+                      unlogHabit(habit.id);
+                      showFeedback('↩️ Hábito desmarcado', '-15 EXP en Vitalidad');
+                      return;
+                    }
+
                     if (remainingToComplete <= 0) return;
                     logHabit(habit.id, remainingToComplete);
                     showFeedback('✨ Hábito completado', '+15 EXP en Vitalidad');

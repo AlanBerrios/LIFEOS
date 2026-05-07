@@ -645,7 +645,7 @@ export default function SettingsScreen(): ReactElement {
       </View>
 
       <View style={styles.footerInfo}>
-        <Text style={styles.footerText}>LifeOS v3.0 "Nexus" | Desarrollado por Alan Berrios Estay (aka BlitZx)</Text>
+        <Text style={styles.footerText}>LifeOS v{buildInfo.appVersion} "Consolidation" | Desarrollado por Alan Berrios Estay (aka BlitZx)</Text>
         <Pressable onPress={() => Linking.openURL('https://github.com/AlanBerrios/LIFEOS')}>
           <Text style={[styles.footerText, { color: lifeTheme.colors.primary, marginTop: 4, fontWeight: '800' }]}>GitHub: AlanBerrios/LIFEOS</Text>
         </Pressable>

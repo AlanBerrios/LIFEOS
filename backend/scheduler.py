@@ -269,17 +269,44 @@ def _greedy_order(tasks: list[TaskIn], now: datetime) -> list[TaskIn]:
 def _build_timeline_greedy(
     ordered_tasks: list[TaskIn],
     start_time: datetime,
-) -> list[ScheduleBlockOut]:
+) -> tuple[list[ScheduleBlockOut], int]:
     """
     Construye los ScheduleBlocks a partir de la secuencia optimizada,
     insertando descansos por tiempo (10min) o energía cognitiva (20min).
     """
     blocks: list[ScheduleBlockOut] = []
+    scheduled_count = 0
     cursor = start_time
     time_streak   = 0
     cognitive_used = 0
 
     for task in ordered_tasks:
+        try:
+            fixed_start_minutes = _fixed_start_minutes(task, start_time, HORIZON_HOURS * 60)
+            fixed_end_minutes = _fixed_end_minutes(task, start_time, HORIZON_HOURS * 60 + task.eta_minutes)
+            _validate_fixed_window(task, fixed_start_minutes, fixed_end_minutes)
+        except ValueError:
+            # En fallback, tareas con ventanas inválidas se omiten para evitar inconsistencias.
+            continue
+
+        if fixed_start_minutes is not None:
+            fixed_start_at = start_time + timedelta(minutes=fixed_start_minutes)
+            if cursor > fixed_start_at:
+                # Ya se perdió la ventana de inicio fijo exacta.
+                continue
+
+            if cursor < fixed_start_at:
+                blocks.append(ScheduleBlockOut(
+                    id=_make_id("rest"),
+                    type="rest",
+                    title="Descanso",
+                    start_time=cursor,
+                    end_time=fixed_start_at,
+                ))
+                cursor = fixed_start_at
+                time_streak = 0
+                cognitive_used = 0
+
         drain = task.cognitive_load * task.eta_minutes
         time_exhausted  = time_streak   >= TIME_STREAK_LIMIT
         cog_exhausted   = cognitive_used >= COGNITIVE_BUDGET
@@ -301,16 +328,40 @@ def _build_timeline_greedy(
             time_streak    = 0
             cognitive_used = 0
 
-        task_end = cursor + timedelta(minutes=task.eta_minutes)
+            if fixed_start_minutes is not None:
+                fixed_start_at = start_time + timedelta(minutes=fixed_start_minutes)
+                if cursor > fixed_start_at:
+                    continue
+                if cursor < fixed_start_at:
+                    blocks.append(ScheduleBlockOut(
+                        id=_make_id("rest"),
+                        type="rest",
+                        title="Descanso",
+                        start_time=cursor,
+                        end_time=fixed_start_at,
+                    ))
+                    cursor = fixed_start_at
+                    time_streak = 0
+                    cognitive_used = 0
+
+        task_start = cursor
+        task_end = task_start + timedelta(minutes=task.eta_minutes)
+
+        if fixed_end_minutes is not None:
+            fixed_end_at = start_time + timedelta(minutes=fixed_end_minutes)
+            if task_end > fixed_end_at:
+                continue
+
         blocks.append(ScheduleBlockOut(
             id=_make_id("task"),
             type="task",
             task_id=task.id,
             title=task.title,
-            start_time=cursor,
+            start_time=task_start,
             end_time=task_end,
             cognitive_drain=float(drain),
         ))
+        scheduled_count += 1
         cursor = task_end
         time_streak    += task.eta_minutes
         cognitive_used += drain
@@ -332,7 +383,7 @@ def _build_timeline_greedy(
             time_streak    = 0
             cognitive_used = 0
 
-    return blocks
+    return blocks, scheduled_count
 
 
 def _build_timeline_from_solution(
@@ -401,10 +452,11 @@ def generate_schedule(
     # Si OR-Tools falla, usar greedy
     if status in ("INFEASIBLE", "UNKNOWN", "FALLBACK_GREEDY") or not solved_tasks:
         ordered = _greedy_order(pool_tasks, start_time)
-        blocks = _build_timeline_greedy(ordered, start_time)
+        blocks, tasks_scheduled = _build_timeline_greedy(ordered, start_time)
         status = "FALLBACK_GREEDY"
         solve_ms = 0.0
-        tasks_scheduled = len(ordered)
+        if tasks_scheduled == 0 and ordered:
+            status = "INFEASIBLE"
         engine = "greedy-fallback"
     else:
         blocks = _build_timeline_from_solution(solved_tasks, start_time)

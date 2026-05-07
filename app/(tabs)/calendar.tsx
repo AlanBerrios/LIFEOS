@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
 import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
+import { SafeDatePicker as TaskSafeDatePicker } from '../../src/components/SafeDatePicker';
 import { getEventsForDate } from '../../src/utils/events';
 import type { Task, StaticEvent, ScheduleBlock, RecurrenceFrequency } from '../../src/types';
 import { CustomAlertDialog, type AlertButtonConfig } from '../../src/components/CustomAlertDialog';
@@ -43,6 +44,22 @@ function addDays(date: Date, days: number): Date {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
+}
+
+function endOfDay(date: Date): Date {
+  return addDays(startOfDay(date), 1);
+}
+
+function getTimelineSegmentForDay(block: ScheduleBlock, day: Date): { start: Date; end: Date } | null {
+  const dayStart = startOfDay(day);
+  const dayEnd = endOfDay(day);
+  if (block.end_time <= dayStart || block.start_time >= dayEnd) return null;
+
+  const start = block.start_time > dayStart ? block.start_time : dayStart;
+  const end = block.end_time < dayEnd ? block.end_time : dayEnd;
+  if (end <= start) return null;
+
+  return { start, end };
 }
 
 function startOfWeek(date: Date): Date {
@@ -314,85 +331,318 @@ function SafeDatePicker({
 
 // ─── Month View ───────────────────────────────────────────────────────────────
 
-function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay }: {
+type MonthSpanEntry = {
+  key: string;
+  sourceId: string;
+  kind: 'event' | 'task';
+  title: string;
+  emoji: string;
+  color: string;
+  startDay: Date;
+  endDay: Date;
+};
+
+type MonthWeekBar = MonthSpanEntry & {
+  lane: number;
+  startIdx: number;
+  endIdx: number;
+  clippedStart: boolean;
+  clippedEnd: boolean;
+  anchorDate: Date;
+};
+
+const MAX_MONTH_BAR_ROWS = 3;
+const MONTH_BAR_HEIGHT = 18;
+const MONTH_BAR_GAP = 4;
+
+function diffDays(a: Date, b: Date): number {
+  const aStart = startOfDay(a).getTime();
+  const bStart = startOfDay(b).getTime();
+  return Math.round((aStart - bStart) / 86_400_000);
+}
+
+function normalizeSpanEnd(start: Date, end: Date): Date {
+  const nextEnd = new Date(end);
+  const isExactMidnight =
+    nextEnd.getHours() === 0 &&
+    nextEnd.getMinutes() === 0 &&
+    nextEnd.getSeconds() === 0 &&
+    nextEnd.getMilliseconds() === 0;
+
+  if (nextEnd.getTime() > start.getTime() && isExactMidnight) {
+    nextEnd.setTime(nextEnd.getTime() - 1);
+  }
+
+  if (nextEnd.getTime() < start.getTime()) {
+    return new Date(start);
+  }
+
+  return nextEnd;
+}
+
+function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay, onOpenEventInfo, onOpenTaskInfo }: {
   currentDate: Date;
   selectedDay: Date;
   tasks: Task[];
   events: StaticEvent[];
   onSelectDay: (d: Date) => void;
+  onOpenEventInfo: (id: string) => void;
+  onOpenTaskInfo: (id: string) => void;
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
-  const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
-  const firstDay = startOfMonth(currentDate);
-  const totalDays = daysInMonth(year, month);
-  // Monday=0 offset
-  let startOffset = firstDay.getDay() - 1;
-  if (startOffset < 0) startOffset = 6;
 
-  const cells: (Date | null)[] = [
-    ...Array(startOffset).fill(null),
-    ...Array.from({ length: totalDays }, (_, i) => new Date(year, month, i + 1))
-  ];
-  // Fill to complete last row
-  while (cells.length % 7 !== 0) cells.push(null);
+  const { cells, weeks, gridStart, gridEnd } = useMemo(() => {
+    const year = currentDate.getFullYear();
+    const firstDay = startOfMonth(currentDate);
+    const totalDays = daysInMonth(year, month);
 
-  function getTaskColorsOn(date: Date): string[] {
-    const dayEvents = getEventsForDate(events, date);
-    const dayTasks = tasks.filter((t) => {
-      if (t.fixed_start && sameDay(t.fixed_start, date)) return true;
-      if (t.deadline && sameDay(t.deadline, date)) return true;
-      return false;
+    let startOffset = firstDay.getDay() - 1;
+    if (startOffset < 0) startOffset = 6;
+
+    const gridStartDate = addDays(firstDay, -startOffset);
+    const cellCount = Math.ceil((startOffset + totalDays) / 7) * 7;
+    const nextCells = Array.from({ length: cellCount }, (_, i) => addDays(gridStartDate, i));
+    const nextWeeks = Array.from({ length: cellCount / 7 }, (_, i) => nextCells.slice(i * 7, i * 7 + 7));
+
+    return {
+      cells: nextCells,
+      weeks: nextWeeks,
+      gridStart: gridStartDate,
+      gridEnd: addDays(gridStartDate, cellCount - 1)
+    };
+  }, [currentDate, month]);
+
+  const monthSpans = useMemo(() => {
+    const spans: MonthSpanEntry[] = [];
+    const seenEventOccurrences = new Set<string>();
+
+    for (const date of cells) {
+      const dayEvents = getEventsForDate(events, date);
+      for (const event of dayEvents) {
+        const occurrenceKey = `${event.id}|${event.startTime.toISOString()}|${event.endTime.toISOString()}`;
+        if (seenEventOccurrences.has(occurrenceKey)) continue;
+        seenEventOccurrences.add(occurrenceKey);
+
+        const startDay = startOfDay(event.startTime);
+        const normalizedEnd = normalizeSpanEnd(event.startTime, event.endTime);
+        const endDay = startOfDay(normalizedEnd);
+
+        if (endDay.getTime() < gridStart.getTime() || startDay.getTime() > gridEnd.getTime()) continue;
+
+        spans.push({
+          key: `event|${occurrenceKey}`,
+          sourceId: event.id,
+          kind: 'event',
+          title: event.title,
+          emoji: getEventEmoji(event),
+          color: getEventAccent(event, lifeTheme),
+          startDay,
+          endDay
+        });
+      }
+    }
+
+    for (const task of tasks) {
+      let start: Date | null = null;
+      let end: Date | null = null;
+
+      if (task.fixed_start) {
+        start = task.fixed_start;
+        end = task.fixed_end
+          ? task.fixed_end
+          : new Date(task.fixed_start.getTime() + Math.max(15, task.eta_minutes || 30) * 60_000);
+      } else if (task.deadline) {
+        start = task.deadline;
+        end = task.deadline;
+      }
+
+      if (!start || !end) continue;
+
+      const startDay = startOfDay(start);
+      const normalizedEnd = normalizeSpanEnd(start, end);
+      const endDay = startOfDay(normalizedEnd);
+
+      if (endDay.getTime() < gridStart.getTime() || startDay.getTime() > gridEnd.getTime()) continue;
+
+      spans.push({
+        key: `task|${task.id}|${start.toISOString()}|${end.toISOString()}`,
+        sourceId: task.id,
+        kind: 'task',
+        title: task.title,
+        emoji: getTaskEmoji(task),
+        color: getTaskAccent(task, lifeTheme),
+        startDay,
+        endDay
+      });
+    }
+
+    return spans.sort((a, b) => {
+      const byStart = a.startDay.getTime() - b.startDay.getTime();
+      if (byStart !== 0) return byStart;
+
+      const aDuration = diffDays(a.endDay, a.startDay);
+      const bDuration = diffDays(b.endDay, b.startDay);
+      if (aDuration !== bDuration) return bDuration - aDuration;
+
+      if (a.kind !== b.kind) return a.kind === 'event' ? -1 : 1;
+      return a.title.localeCompare(b.title, 'es-ES');
     });
+  }, [cells, events, tasks, gridStart, gridEnd, lifeTheme]);
 
-    const colors: string[] = [];
-    dayEvents.forEach((event) => {
-      const accent = getEventAccent(event, lifeTheme);
-      if (!colors.includes(accent)) colors.push(accent);
-    });
-    
-    // Get unique urgency colors from tasks
-    dayTasks.forEach((task) => {
-      const accent = getTaskAccent(task, lifeTheme);
-      if (!colors.includes(accent)) colors.push(accent);
-    });
+  const weekBars = useMemo(() => {
+    return weeks.map((weekDates) => {
+      const weekStart = weekDates[0];
+      const weekEnd = weekDates[6];
+      const occupancy: boolean[][] = [];
+      const bars: MonthWeekBar[] = [];
+      let hiddenCount = 0;
+      let usedLanes = 0;
 
-    return colors.slice(0, 3);
-  }
+      const candidates = monthSpans.filter(
+        (span) => span.startDay.getTime() <= weekEnd.getTime() && span.endDay.getTime() >= weekStart.getTime()
+      );
+
+      for (const span of candidates) {
+        const startIdx = Math.max(0, diffDays(span.startDay, weekStart));
+        const endIdx = Math.min(6, diffDays(span.endDay, weekStart));
+        if (endIdx < startIdx) continue;
+
+        let lane = 0;
+        while (true) {
+          const laneSlots = occupancy[lane] ?? Array(7).fill(false);
+          const collides = laneSlots.slice(startIdx, endIdx + 1).some(Boolean);
+          if (!collides) {
+            occupancy[lane] = laneSlots;
+            break;
+          }
+          lane += 1;
+        }
+
+        for (let idx = startIdx; idx <= endIdx; idx += 1) {
+          occupancy[lane][idx] = true;
+        }
+
+        usedLanes = Math.max(usedLanes, lane + 1);
+
+        if (lane >= MAX_MONTH_BAR_ROWS) {
+          hiddenCount += 1;
+          continue;
+        }
+
+        bars.push({
+          ...span,
+          lane,
+          startIdx,
+          endIdx,
+          clippedStart: span.startDay.getTime() < weekStart.getTime(),
+          clippedEnd: span.endDay.getTime() > weekEnd.getTime(),
+          anchorDate: addDays(weekStart, startIdx)
+        });
+      }
+
+      return {
+        bars,
+        hiddenCount,
+        laneCount: Math.min(MAX_MONTH_BAR_ROWS, usedLanes)
+      };
+    });
+  }, [monthSpans, weeks]);
 
   return (
     <View style={styles.monthGrid}>
-      {WEEKDAYS.map((d) => (
-        <View key={d} style={styles.weekdayHeader}>
-          <Text style={styles.weekdayText}>{d}</Text>
-        </View>
-      ))}
-      {cells.map((date, idx) => {
-        if (!date) return <View key={`empty-${idx}`} style={styles.dayCell} />;
-        const isToday = sameDay(date, new Date());
-        const isSelected = sameDay(date, selectedDay);
+      <View style={styles.monthWeekHeaderRow}>
+        {WEEKDAYS.map((d) => (
+          <View key={d} style={styles.weekdayHeader}>
+            <Text style={styles.weekdayText}>{d}</Text>
+          </View>
+        ))}
+      </View>
+
+      {weeks.map((weekDates, weekIdx) => {
+        const data = weekBars[weekIdx];
+        const laneHeight = data.laneCount > 0
+          ? data.laneCount * MONTH_BAR_HEIGHT + (data.laneCount - 1) * MONTH_BAR_GAP
+          : 0;
+        const barsAreaHeight = laneHeight + (data.hiddenCount > 0 ? 16 : 0);
+
         return (
-          <Pressable
-            key={date.toISOString()}
-            style={[
-              styles.dayCell,
-              isToday && styles.dayCellToday,
-              isSelected && styles.dayCellSelected
-            ]}
-            onPress={() => onSelectDay(date)}
-          >
-            <Text style={[
-              styles.dayCellText,
-              isToday && styles.dayCellTextToday,
-              isSelected && styles.dayCellTextSelected
-            ]}>{date.getDate()}</Text>
-            <View style={styles.dayIndicatorsSlot}>
-              {getTaskColorsOn(date).map((color, i) => (
-                <View key={i} style={[styles.calDot, { backgroundColor: color }]} />
-              ))}
+          <View key={weekDates[0].toISOString()} style={styles.monthWeekRow}>
+            <View style={styles.monthDaysRow}>
+              {weekDates.map((date) => {
+                const isOutsideMonth = date.getMonth() !== month;
+                const isToday = sameDay(date, new Date());
+                const isSelected = sameDay(date, selectedDay);
+
+                return (
+                  <Pressable
+                    key={date.toISOString()}
+                    style={[
+                      styles.dayCell,
+                      isToday && styles.dayCellToday,
+                      isSelected && styles.dayCellSelected,
+                      isOutsideMonth && styles.dayCellOutsideMonth
+                    ]}
+                    onPress={() => onSelectDay(date)}
+                  >
+                    <Text
+                      style={[
+                        styles.dayCellText,
+                        isToday && styles.dayCellTextToday,
+                        isSelected && styles.dayCellTextSelected,
+                        isOutsideMonth && styles.dayCellTextOutsideMonth
+                      ]}
+                    >
+                      {date.getDate()}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
-          </Pressable>
+
+            <View style={[styles.monthBarsArea, { minHeight: barsAreaHeight }]}> 
+              {data.bars.map((bar) => {
+                const spanDays = bar.endIdx - bar.startIdx + 1;
+                const isCompact = spanDays <= 1;
+                const leftPercent = (bar.startIdx / 7) * 100;
+                const widthPercent = (spanDays / 7) * 100;
+
+                return (
+                  <Pressable
+                    key={`${bar.key}-${weekIdx}`}
+                    style={[
+                      styles.monthSpanBar,
+                      {
+                        top: bar.lane * (MONTH_BAR_HEIGHT + MONTH_BAR_GAP),
+                        left: `${leftPercent}%`,
+                        width: `${widthPercent}%`,
+                        borderColor: bar.color,
+                        backgroundColor: `${bar.color}22`,
+                        borderTopLeftRadius: bar.clippedStart ? 4 : 8,
+                        borderBottomLeftRadius: bar.clippedStart ? 4 : 8,
+                        borderTopRightRadius: bar.clippedEnd ? 4 : 8,
+                        borderBottomRightRadius: bar.clippedEnd ? 4 : 8
+                      }
+                    ]}
+                    onPress={() => {
+                      onSelectDay(bar.anchorDate);
+                      if (bar.kind === 'event') onOpenEventInfo(bar.sourceId);
+                      else onOpenTaskInfo(bar.sourceId);
+                    }}
+                  >
+                    <Text style={[styles.monthSpanText, { color: bar.color }]} numberOfLines={1}>
+                      {isCompact ? bar.emoji : `${bar.emoji} ${bar.title}`}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+
+              {data.hiddenCount > 0 && (
+                <Text style={styles.monthOverflowText}>+{data.hiddenCount} más</Text>
+              )}
+            </View>
+          </View>
         );
       })}
     </View>
@@ -492,23 +742,33 @@ function WeekView({ currentDate, tasks, habits, events, timeline, weekZoom, onWe
   const { width } = useWindowDimensions();
   const weekStart = startOfWeek(currentDate);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const hours = Array.from({ length: 18 }, (_, i) => i + 6); // 06:00 -> 23:00
-  const hourHeight = 34;
-  const baseHour = 6;
+  const hours = Array.from({ length: 24 }, (_, i) => i); // 00:00 -> 23:00
+  const baseHourHeight = 34;
+  const baseHour = 0;
   const dayColWidthBase = Math.max(112, Math.min(148, Math.round((width - 72) / 3)));
-  const dayColWidth = dayColWidthBase;
+  const hourHeight = Math.max(24, Math.min(128, Math.round(baseHourHeight * weekZoom)));
+  const dayColWidth = Math.max(96, Math.min(420, Math.round(dayColWidthBase * weekZoom)));
   const zoomStartRef = useRef(weekZoom);
   const weekZoomRef = useRef(weekZoom);
   const pinchDistanceStartRef = useRef<number | null>(null);
-  const zoomOriginRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     weekZoomRef.current = weekZoom;
   }, [weekZoom]);
 
   const applyPinchZoom = useCallback((scale: number) => {
-    const next = Math.max(0.6, Math.min(3.2, zoomStartRef.current * scale));
+    const next = Math.max(0.75, Math.min(2.4, zoomStartRef.current * scale));
+    if (Math.abs(next - weekZoomRef.current) < 0.01) return;
     onWeekZoom(next);
+  }, [onWeekZoom]);
+
+  const changeZoom = useCallback((delta: number) => {
+    const next = Math.max(0.75, Math.min(2.4, weekZoomRef.current + delta));
+    onWeekZoom(next);
+  }, [onWeekZoom]);
+
+  const resetZoom = useCallback(() => {
+    onWeekZoom(1);
   }, [onWeekZoom]);
 
   const panResponder = useMemo(
@@ -522,10 +782,7 @@ function WeekView({ currentDate, tasks, habits, events, timeline, weekZoom, onWe
         const [t1, t2] = evt.nativeEvent.touches;
         const dx = t2.pageX - t1.pageX;
         const dy = t2.pageY - t1.pageY;
-        const midX = (t1.pageX + t2.pageX) / 2;
-        const midY = (t1.pageY + t2.pageY) / 2;
-        pinchDistanceStartRef.current = Math.hypot(dx, dy);
-        zoomOriginRef.current = { x: midX, y: midY };
+        pinchDistanceStartRef.current = Math.max(1, Math.hypot(dx, dy));
         zoomStartRef.current = weekZoomRef.current;
       },
       onPanResponderMove: (evt) => {
@@ -535,14 +792,17 @@ function WeekView({ currentDate, tasks, habits, events, timeline, weekZoom, onWe
         const dy = t2.pageY - t1.pageY;
         const currentDistance = Math.hypot(dx, dy);
         const scale = currentDistance / pinchDistanceStartRef.current;
+        if (!Number.isFinite(scale) || Math.abs(scale - 1) < 0.015) return;
         applyPinchZoom(scale);
       },
       onPanResponderTerminationRequest: () => true,
       onPanResponderRelease: () => {
         pinchDistanceStartRef.current = null;
+        zoomStartRef.current = weekZoomRef.current;
       },
       onPanResponderTerminate: () => {
         pinchDistanceStartRef.current = null;
+        zoomStartRef.current = weekZoomRef.current;
       }
     }),
     [applyPinchZoom]
@@ -550,11 +810,24 @@ function WeekView({ currentDate, tasks, habits, events, timeline, weekZoom, onWe
 
   return (
     <View style={styles.weekContainer} {...panResponder.panHandlers}>
-        <View style={styles.weekZoomBadge}>
-          <Text style={styles.weekZoomBadgeText}>Zoom {Math.round(weekZoom * 100)}%</Text>
+        <View style={styles.weekZoomRow}>
+          <View style={styles.weekZoomBadge}>
+            <Text style={styles.weekZoomBadgeText}>Zoom {Math.round(weekZoom * 100)}%</Text>
+          </View>
+          <View style={styles.weekZoomControls}>
+            <Pressable style={styles.weekZoomBtn} onPress={() => changeZoom(-0.1)}>
+              <Text style={styles.weekZoomBtnText}>-</Text>
+            </Pressable>
+            <Pressable style={[styles.weekZoomBtn, styles.weekZoomBtnReset]} onPress={resetZoom}>
+              <Text style={styles.weekZoomBtnText}>100%</Text>
+            </Pressable>
+            <Pressable style={styles.weekZoomBtn} onPress={() => changeZoom(0.1)}>
+              <Text style={styles.weekZoomBtnText}>+</Text>
+            </Pressable>
+          </View>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={{ transform: [{ scale: weekZoom }] }}>
+          <View style={styles.weekHorizontalContent}>
             <View style={styles.weekHdrRowWide}>
               <View style={styles.hourColSpacerWide} />
               {days.map((d, i) => (
@@ -566,7 +839,7 @@ function WeekView({ currentDate, tasks, habits, events, timeline, weekZoom, onWe
             </View>
 
             <ScrollView style={styles.weekGridScroll} showsVerticalScrollIndicator={false}>
-              <View style={[styles.weekGridBodyWide, { transform: [{ scale: weekZoom }] }]}>
+              <View style={styles.weekGridBodyWide}>
                 <View style={styles.hourColWide}>
                   {hours.map((h) => (
                     <View key={h} style={[styles.hourLabelCellWide, { height: hourHeight }]}>
@@ -577,7 +850,14 @@ function WeekView({ currentDate, tasks, habits, events, timeline, weekZoom, onWe
 
                 {days.map((day, dayIdx) => {
                 const dayEvents = getEventsForDate(events, day);
-                const dayTimelineTasks = timeline.filter((b) => sameDay(b.start_time, day) && !b.isStaticEvent);
+                const dayTimelineTasks = timeline
+                  .filter((b) => !b.isStaticEvent)
+                  .map((block) => {
+                    const segment = getTimelineSegmentForDay(block, day);
+                    if (!segment) return null;
+                    return { block, segment };
+                  })
+                  .filter((entry): entry is { block: ScheduleBlock; segment: { start: Date; end: Date } } => !!entry);
 
                 const blocks = assignOverlapLanes([
                   ...dayEvents.map((e) => ({
@@ -590,29 +870,29 @@ function WeekView({ currentDate, tasks, habits, events, timeline, weekZoom, onWe
                     dotted: true,
                     onPress: () => onOpenEventInfo(e.id)
                   })),
-                  ...dayTimelineTasks.map((b) => ({
-                    id: `tsk-${b.id}`,
-                    title: b.title,
-                    start: b.start_time,
-                    end: b.end_time,
-                    color: b.type === 'habit'
-                      ? habits.find((habit) => habit.id === b.habit_id)?.color?.trim() || lifeTheme.colors.alert
-                      : b.task_id
-                        ? getTaskAccent(tasks.find((t) => t.id === b.task_id), lifeTheme)
+                  ...dayTimelineTasks.map(({ block, segment }) => ({
+                    id: `tsk-${block.id}`,
+                    title: block.title,
+                    start: segment.start,
+                    end: segment.end,
+                    color: block.type === 'habit'
+                      ? habits.find((habit) => habit.id === block.habit_id)?.color?.trim() || lifeTheme.colors.alert
+                      : block.task_id
+                        ? getTaskAccent(tasks.find((t) => t.id === block.task_id), lifeTheme)
                         : lifeTheme.colors.muted,
-                    kind: b.type === 'rest'
+                    kind: block.type === 'rest'
                       ? ('Descanso' as const)
-                      : b.type === 'meal'
+                      : block.type === 'meal'
                         ? ('Comida' as const)
-                        : b.type === 'sleep'
+                        : block.type === 'sleep'
                           ? ('Sueño' as const)
-                          : b.type === 'transit'
+                          : block.type === 'transit'
                             ? ('Tránsito' as const)
-                            : b.type === 'habit'
+                            : block.type === 'habit'
                               ? ('Hábito' as const)
                               : ('Tarea' as const),
-                    dotted: b.type !== 'task',
-                    onPress: () => onOpenBlockInfo(b.id)
+                    dotted: block.type !== 'task',
+                    onPress: () => onOpenBlockInfo(block.id)
                   }))
                 ]);
 
@@ -684,12 +964,19 @@ function DayView({ date, tasks, habits, events, timeline, onOpenEventInfo, onOpe
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
-  const hours = Array.from({ length: 18 }, (_, i) => i + 6);
+  const hours = Array.from({ length: 24 }, (_, i) => i);
   const hourHeight = 56;
-  const baseHour = 6;
+  const baseHour = 0;
 
   const dayEvents = getEventsForDate(events, date);
-  const dayTimelineTasks = timeline.filter((b) => sameDay(b.start_time, date) && !b.isStaticEvent);
+  const dayTimelineTasks = timeline
+    .filter((b) => !b.isStaticEvent)
+    .map((block) => {
+      const segment = getTimelineSegmentForDay(block, date);
+      if (!segment) return null;
+      return { block, segment };
+    })
+    .filter((entry): entry is { block: ScheduleBlock; segment: { start: Date; end: Date } } => !!entry);
 
   const blocks = assignOverlapLanes([
     ...dayEvents.map((e) => ({
@@ -702,29 +989,29 @@ function DayView({ date, tasks, habits, events, timeline, onOpenEventInfo, onOpe
       dotted: true,
       onPress: () => onOpenEventInfo(e.id)
     })),
-    ...dayTimelineTasks.map((b) => ({
-      id: `tsk-${b.id}`,
-      title: b.title,
-      start: b.start_time,
-      end: b.end_time,
-      color: b.type === 'habit'
-        ? habits.find((habit) => habit.id === b.habit_id)?.color?.trim() || lifeTheme.colors.alert
-        : b.task_id
-          ? getTaskAccent(tasks.find((t) => t.id === b.task_id), lifeTheme)
+    ...dayTimelineTasks.map(({ block, segment }) => ({
+      id: `tsk-${block.id}`,
+      title: block.title,
+      start: segment.start,
+      end: segment.end,
+      color: block.type === 'habit'
+        ? habits.find((habit) => habit.id === block.habit_id)?.color?.trim() || lifeTheme.colors.alert
+        : block.task_id
+          ? getTaskAccent(tasks.find((t) => t.id === block.task_id), lifeTheme)
           : lifeTheme.colors.muted,
-      kind: b.type === 'rest'
+      kind: block.type === 'rest'
         ? ('Descanso' as const)
-        : b.type === 'meal'
+        : block.type === 'meal'
           ? ('Comida' as const)
-          : b.type === 'sleep'
+          : block.type === 'sleep'
             ? ('Sueño' as const)
-            : b.type === 'transit'
+            : block.type === 'transit'
               ? ('Tránsito' as const)
-              : b.type === 'habit'
+              : block.type === 'habit'
                 ? ('Hábito' as const)
                 : ('Tarea' as const),
-      dotted: b.type !== 'task',
-      onPress: () => onOpenBlockInfo(b.id)
+      dotted: block.type !== 'task',
+      onPress: () => onOpenBlockInfo(block.id)
     }))
   ]);
 
@@ -826,6 +1113,7 @@ function EventModal({
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+  const insets = useSafeAreaInsets();
   const addEvent = useLifeStore(s => s.addEvent);
   const updateEvent = useLifeStore(s => s.updateEvent);
   const deleteEvent = useLifeStore(s => s.deleteEvent);
@@ -838,9 +1126,6 @@ function EventModal({
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [endTime, setEndTime] = useState<Date | null>(null);
   const [reminderAt, setReminderAt] = useState<Date | null>(null);
-  const [showReminderDatePicker, setShowReminderDatePicker] = useState(false);
-  const [showReminderTimePicker, setShowReminderTimePicker] = useState(false);
-  const [pendingReminderDate, setPendingReminderDate] = useState<Date | null>(null);
   const [frequency, setFrequency] = useState<RecurrenceFrequency>('none');
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
   const [endDate, setEndDate] = useState<Date | null>(null);
@@ -876,40 +1161,11 @@ function EventModal({
       setStartTime(null);
       setEndTime(null);
       setReminderAt(null);
-      setShowReminderDatePicker(false);
-      setShowReminderTimePicker(false);
-      setPendingReminderDate(null);
       setFrequency('none');
       setDaysOfWeek([]);
       setEndDate(null);
     }
   }, [visible, editId, events]);
-
-  function openReminderPicker() {
-    if (!startTime) {
-      showAlert('Primero elige hora de inicio', 'Necesitamos la hora de inicio para calcular cuántos minutos antes avisar.');
-      return;
-    }
-    setShowReminderDatePicker(true);
-  }
-
-  function handleReminderDateConfirm(selected: Date) {
-    setShowReminderDatePicker(false);
-    const base = reminderAt ?? startTime ?? new Date();
-    const merged = new Date(base);
-    merged.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
-    setPendingReminderDate(merged);
-    setShowReminderTimePicker(true);
-  }
-
-  function handleReminderTimeConfirm(selected: Date) {
-    const base = pendingReminderDate ?? reminderAt ?? startTime ?? new Date();
-    const merged = new Date(base);
-    merged.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-    setReminderAt(merged);
-    setPendingReminderDate(null);
-    setShowReminderTimePicker(false);
-  }
 
   function handleSave() {
     if (!title.trim() || !startTime || !endTime) {
@@ -959,8 +1215,20 @@ function EventModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Pressable style={styles.modalCard} onPress={undefined}>
+      <View style={styles.modalOverlay}>
+        <ScrollView
+          style={styles.modalScroll}
+          contentContainerStyle={[
+            styles.modalScrollContent,
+            {
+              paddingTop: insets.top + 16,
+              paddingBottom: Math.max(insets.bottom, 16) + 20
+            }
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+        <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
           <Text style={styles.modalTitle}>{editId ? 'Editar Evento' : 'Nuevo Evento Fijo'}</Text>
           <Text style={styles.modalSub}>Clases, reuniones, compromisos inamovibles.</Text>
           
@@ -1006,14 +1274,14 @@ function EventModal({
             </View>
           </View>
 
-          <SafeDatePicker
+          <TaskSafeDatePicker
             label="Hora de Inicio"
             value={startTime}
             onClear={() => setStartTime(null)}
             onConfirm={setStartTime}
           />
 
-          <SafeDatePicker
+          <TaskSafeDatePicker
             label="Hora de Fin"
             value={endTime}
             onClear={() => setEndTime(null)}
@@ -1062,7 +1330,7 @@ function EventModal({
           )}
 
           {frequency !== 'none' && (
-            <SafeDatePicker
+            <TaskSafeDatePicker
               label="Finalizar repetición (opcional)"
               value={endDate}
               onClear={() => setEndDate(null)}
@@ -1072,26 +1340,12 @@ function EventModal({
 
           <View style={{ gap: 6 }}>
             <Text style={styles.modalLabel}>Recordatorio</Text>
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <Pressable style={[styles.dateBtn, { flex: 1 }]} onPress={openReminderPicker}>
-                <Text style={[styles.dateBtnText, reminderAt ? styles.dateBtnTextActive : null]}>
-                  {reminderAt
-                    ? `⏰ ${reminderAt.toLocaleDateString('es-ES')} ${reminderAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                    : '+ Añadir hora de recordatorio'}
-                </Text>
-                {reminderAt && (
-                  <Pressable
-                    hitSlop={12}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      setReminderAt(null);
-                    }}
-                  >
-                    <Text style={styles.dateClear}>✕</Text>
-                  </Pressable>
-                )}
-              </Pressable>
-            </View>
+            <TaskSafeDatePicker
+              label="⏰ Hora de recordatorio (opcional)"
+              value={reminderAt}
+              onClear={() => setReminderAt(null)}
+              onConfirm={setReminderAt}
+            />
             {startTime && reminderAt ? (
               <Text style={styles.modalSub}>
                 Avisará {Math.max(1, Math.round((startTime.getTime() - reminderAt.getTime()) / 60_000))} min antes del inicio.
@@ -1114,7 +1368,8 @@ function EventModal({
             </Pressable>
           )}
         </Pressable>
-      </Pressable>
+        </ScrollView>
+      </View>
 
       <Modal
         visible={isEmojiPickerVisible}
@@ -1197,34 +1452,6 @@ function EventModal({
         onClose={() => setIsColorPickerVisible(false)}
         onClear={() => setColor('')}
         onApply={(hex) => setColor(hex)}
-      />
-
-      <AppDateTimePickerSheet
-        visible={showReminderDatePicker}
-        mode="date"
-        value={reminderAt ?? startTime ?? new Date()}
-        title="Recordatorio"
-        subtitle="Selecciona la fecha del recordatorio"
-        confirmLabel="Siguiente"
-        onConfirm={handleReminderDateConfirm}
-        onClose={() => {
-          setShowReminderDatePicker(false);
-          setPendingReminderDate(null);
-        }}
-      />
-
-      <AppDateTimePickerSheet
-        visible={showReminderTimePicker}
-        mode="time"
-        value={pendingReminderDate ?? reminderAt ?? startTime ?? new Date()}
-        title="Recordatorio"
-        subtitle="Selecciona la hora del recordatorio"
-        confirmLabel="Guardar"
-        onConfirm={handleReminderTimeConfirm}
-        onClose={() => {
-          setShowReminderTimePicker(false);
-          setPendingReminderDate(null);
-        }}
       />
     </Modal>
   );
@@ -1424,8 +1651,8 @@ export default function CalendarScreen(): ReactElement {
 
   const titleText = useMemo(() => headerTitle(), [view, currentDate]);
   const handleWeekZoom = useCallback((next: number) => {
-    const normalized = Math.max(0.6, Math.min(3.2, Number(next.toFixed(2))));
-    setWeekZoom(normalized);
+    const normalized = Math.max(0.75, Math.min(2.4, Number(next.toFixed(2))));
+    setWeekZoom((prev) => (Math.abs(prev - normalized) < 0.01 ? prev : normalized));
   }, []);
 
   return (
@@ -1467,6 +1694,8 @@ export default function CalendarScreen(): ReactElement {
             tasks={activeTasks}
             events={events}
             onSelectDay={setSelectedDay}
+            onOpenEventInfo={openEventInfo}
+            onOpenTaskInfo={openTaskInfo}
           />
         )}
         {view === 'week' && (
@@ -1572,34 +1801,83 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   calBody: { flex: 1 },
   calBodyMonth: { flex: 0 },
   // Month
-  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 10, paddingBottom: 10 },
+  monthGrid: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+    gap: 6
+  },
+  monthWeekHeaderRow: {
+    flexDirection: 'row'
+  },
   weekdayHeader: { width: '14.28%', alignItems: 'center', paddingVertical: 7 },
   weekdayText: { color: lifeTheme.colors.muted, fontSize: lifeTheme.typography.bodySm, fontWeight: '700' },
+  monthWeekRow: {
+    borderWidth: 1,
+    borderColor: `${lifeTheme.colors.border}66`,
+    borderRadius: 12,
+    paddingTop: 4,
+    paddingBottom: 6,
+    backgroundColor: `${lifeTheme.colors.surface}99`
+  },
+  monthDaysRow: {
+    flexDirection: 'row',
+    marginBottom: 4
+  },
   dayCell: {
     width: '14.28%',
-    aspectRatio: 1,
+    minHeight: 30,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 6,
-    paddingBottom: 5,
-    borderRadius: 10,
+    justifyContent: 'center',
+    paddingTop: 4,
+    paddingBottom: 4,
+    borderRadius: 8,
     position: 'relative',
     borderWidth: 1,
     borderColor: 'transparent'
   },
   dayCellToday: { backgroundColor: `${lifeTheme.colors.primary}22` },
   dayCellSelected: { backgroundColor: lifeTheme.colors.primary, borderColor: `${lifeTheme.colors.onPrimary}44` },
+  dayCellOutsideMonth: { opacity: 0.5 },
   dayCellText: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '600' },
+  dayCellTextOutsideMonth: { color: lifeTheme.colors.muted },
   dayCellTextToday: { color: lifeTheme.colors.primary, fontWeight: '800' },
   dayCellTextSelected: { color: lifeTheme.colors.onPrimary, fontWeight: '800' },
+  monthBarsArea: {
+    position: 'relative',
+    paddingHorizontal: 2
+  },
+  monthSpanBar: {
+    position: 'absolute',
+    height: 18,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    justifyContent: 'center',
+    overflow: 'hidden'
+  },
+  monthSpanText: {
+    fontSize: 10,
+    fontWeight: '800'
+  },
+  monthOverflowText: {
+    marginTop: 2,
+    color: lifeTheme.colors.muted,
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'right',
+    paddingRight: 4
+  },
   dayIndicatorsSlot: { minHeight: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
   calDot: { width: 5, height: 5, borderRadius: 3 },
   // Week Vertical
   weekContainer: { flex: 1 },
-  weekZoomBadge: {
-    alignSelf: 'flex-end',
-    marginRight: 12,
+  weekZoomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 6,
+    paddingHorizontal: 12
+  },
+  weekZoomBadge: {
     backgroundColor: `${lifeTheme.colors.surfaceAlt}D9`,
     borderColor: lifeTheme.colors.border,
     borderWidth: 1,
@@ -1608,6 +1886,21 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     paddingVertical: 4
   },
   weekZoomBadgeText: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '800' },
+  weekZoomControls: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  weekZoomBtn: {
+    minWidth: 34,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    backgroundColor: lifeTheme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8
+  },
+  weekZoomBtnReset: { minWidth: 56 },
+  weekZoomBtnText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '800' },
+  weekHorizontalContent: { paddingBottom: 8 },
   weekHdrRowWide: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: lifeTheme.colors.border, paddingBottom: 8 },
   hourColSpacerWide: { width: 52 },
   weekHdrCellWide: { alignItems: 'center' },
@@ -1730,8 +2023,20 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   statusPending: { backgroundColor: lifeTheme.colors.border },
   
   // Modal & Forms
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: 20 },
-  modalCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: 20, padding: 24, gap: 14, borderWidth: 1, borderColor: lifeTheme.colors.border },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)' },
+  modalScroll: { flex: 1 },
+  modalScrollContent: { paddingHorizontal: 16 },
+  modalCard: {
+    backgroundColor: lifeTheme.colors.surface,
+    borderRadius: 20,
+    padding: 24,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: lifeTheme.colors.border,
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center'
+  },
   modalTitle: { color: lifeTheme.colors.text, fontSize: 18, fontWeight: '800' },
   modalSub: { color: lifeTheme.colors.muted, fontSize: 12, marginTop: -8 },
   modalLabel: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },

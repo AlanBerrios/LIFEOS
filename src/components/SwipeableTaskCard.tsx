@@ -17,7 +17,7 @@ import { useAppTheme } from '../theme';
 import type { Task, TaskUrgency } from '../types';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.30;
+const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.42;
 
 function getUrgencyColor(urgency: TaskUrgency, lifeTheme: ReturnType<typeof useAppTheme>): string {
   if (urgency === 'today') return lifeTheme.colors.alert;
@@ -75,6 +75,8 @@ export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props)
   function triggerDelete()   { onDelete(task.id); }
 
   const panGesture = Gesture.Pan()
+    .activeOffsetX([-28, 28])
+    .failOffsetY([-12, 12])
     // Completed tasks: only swipe left to delete. Pending: both directions.
     .onUpdate((event) => {
       if (isCompleted) {
@@ -195,9 +197,17 @@ export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props)
           {/* Actions row */}
           <View style={styles.actionsRow}>
             {!isCompleted && (
-              <Pressable style={styles.editBtn} onPress={() => onEdit(task)}>
-                <Text style={styles.editBtnText}>Editar</Text>
-              </Pressable>
+              <>
+                <Pressable style={styles.completeBtn} onPress={() => onComplete(task.id)}>
+                  <Text style={styles.completeBtnText}>Completar</Text>
+                </Pressable>
+                <Pressable style={styles.editBtn} onPress={() => onEdit(task)}>
+                  <Text style={styles.editBtnText}>Editar</Text>
+                </Pressable>
+                <Pressable style={styles.deleteBtn} onPress={() => onDelete(task.id)}>
+                  <Text style={styles.deleteBtnText}>Borrar</Text>
+                </Pressable>
+              </>
             )}
             {isCompleted && (
               <Pressable
@@ -253,7 +263,12 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderColor: lifeTheme.colors.border, overflow: 'hidden'
   },
   chipText: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '600' },
-  actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 2 },
+  actionsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingTop: 2 },
+  completeBtn: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 9,
+    backgroundColor: `${lifeTheme.colors.success}14`, borderWidth: 1, borderColor: `${lifeTheme.colors.success}44`
+  },
+  completeBtnText: { color: lifeTheme.colors.success, fontSize: 12, fontWeight: '800' },
   editBtn: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: 9,
     backgroundColor: lifeTheme.colors.surfaceAlt, borderWidth: 1, borderColor: lifeTheme.colors.border
@@ -264,6 +279,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     backgroundColor: 'rgba(252,108,143,0.1)', borderWidth: 1, borderColor: `${lifeTheme.colors.alert}40`
   },
   deleteBtnText: { color: lifeTheme.colors.alert, fontSize: 12, fontWeight: '700' },
-  swipeHint: { flex: 1, color: lifeTheme.colors.muted, fontSize: 10, textAlign: 'center' }
+  swipeHint: { flex: 1, minWidth: 96, color: lifeTheme.colors.muted, fontSize: 10, textAlign: 'center' }
   });
 }

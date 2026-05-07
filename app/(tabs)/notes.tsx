@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View
 } from 'react-native';
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
@@ -16,7 +15,8 @@ import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
 import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
-import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
+import { SafeDatePicker } from '../../src/components/SafeDatePicker';
+import { AppColorPickerSheet } from '../../src/components/AppColorPickerSheet';
 
 function parseReminder(reminderAt?: string): Date | null {
   if (!reminderAt) return null;
@@ -38,12 +38,15 @@ function formatReminder(reminderAt?: string): string {
   return `${parsed.toLocaleDateString('es-ES')} · ${parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
 
+const EMOJI_OPTIONS = [
+  '📝', '✨', '💡', '📌', '🎯', '🧠', '📚', '💼',
+  '🏠', '🛒', '🎵', '📊', '🧪', '🚀', '🔥', '✅'
+];
+
 export default function NotesScreen(): ReactElement {
   const insets = useSafeAreaInsets();
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
-  const { width } = useWindowDimensions();
-  const isNarrow = width < 390;
   const notes = useLifeStore((s) => s.notes);
   const addNote = useLifeStore((s) => s.addNote);
   const updateNote = useLifeStore((s) => s.updateNote);
@@ -51,10 +54,11 @@ export default function NotesScreen(): ReactElement {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [newNote, setNewNote] = useState({ title: '', content: '', reminderAt: '' });
-  const [showReminderDatePicker, setShowReminderDatePicker] = useState(false);
-  const [showReminderTimePicker, setShowReminderTimePicker] = useState(false);
-  const [pendingReminderDate, setPendingReminderDate] = useState<Date | null>(null);
+  const [newNote, setNewNote] = useState({ title: '', content: '', emoji: '📝', color: '', reminderAt: '' });
+  const [isEmojiPickerVisible, setIsEmojiPickerVisible] = useState(false);
+  const [isCustomEmojiInputVisible, setIsCustomEmojiInputVisible] = useState(false);
+  const [customEmojiDraft, setCustomEmojiDraft] = useState('');
+  const [isColorPickerVisible, setIsColorPickerVisible] = useState(false);
   const { alertState, showAlert, hideAlert } = useCustomAlert();
 
   function handleSave() {
@@ -64,61 +68,49 @@ export default function NotesScreen(): ReactElement {
       updateNote(editingNoteId, {
         title: newNote.title.trim() || 'Nota sin título',
         content: newNote.content.trim(),
+        emoji: newNote.emoji.trim() || undefined,
+        color: newNote.color.trim() || undefined,
         reminderAt: newNote.reminderAt || undefined
       });
     } else {
       addNote({
-        ...newNote,
-        title: newNote.title.trim() || 'Nota sin título'
+        title: newNote.title.trim() || 'Nota sin título',
+        content: newNote.content.trim(),
+        emoji: newNote.emoji.trim() || undefined,
+        color: newNote.color.trim() || undefined,
+        reminderAt: newNote.reminderAt || undefined
       });
     }
     
     setModalVisible(false);
     setEditingNoteId(null);
-    setNewNote({ title: '', content: '', reminderAt: '' });
-    setShowReminderDatePicker(false);
-    setShowReminderTimePicker(false);
-    setPendingReminderDate(null);
+    setNewNote({ title: '', content: '', emoji: '📝', color: '', reminderAt: '' });
+    setIsEmojiPickerVisible(false);
+    setIsCustomEmojiInputVisible(false);
+    setCustomEmojiDraft('');
+    setIsColorPickerVisible(false);
   }
 
   function openEdit(note: any) {
     setEditingNoteId(note.id);
-    setNewNote({ title: note.title, content: note.content, reminderAt: note.reminderAt || '' });
+    setNewNote({
+      title: note.title,
+      content: note.content,
+      emoji: note.emoji || '📝',
+      color: note.color || '',
+      reminderAt: note.reminderAt || ''
+    });
     setModalVisible(true);
   }
 
   function openCreate() {
     setEditingNoteId(null);
-    setNewNote({ title: '', content: '', reminderAt: '' });
+    setNewNote({ title: '', content: '', emoji: '📝', color: '', reminderAt: '' });
     setModalVisible(true);
-  }
-
-  function openReminderPicker() {
-    setShowReminderDatePicker(true);
   }
 
   function clearReminder() {
     setNewNote((prev) => ({ ...prev, reminderAt: '' }));
-    setPendingReminderDate(null);
-  }
-
-  function handleReminderDateChange(selected: Date) {
-    setShowReminderDatePicker(false);
-    setPendingReminderDate(selected);
-    setShowReminderTimePicker(true);
-  }
-
-  function handleReminderTimeChange(selected: Date) {
-    setShowReminderTimePicker(false);
-    if (!pendingReminderDate) {
-      setPendingReminderDate(null);
-      return;
-    }
-
-    const merged = new Date(pendingReminderDate);
-    merged.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-    setNewNote((prev) => ({ ...prev, reminderAt: merged.toISOString() }));
-    setPendingReminderDate(null);
   }
 
   return (
@@ -150,9 +142,14 @@ export default function NotesScreen(): ReactElement {
               entering={FadeInDown.delay(idx * 50)}
               layout={Layout.springify()}
             >
-              <Pressable style={styles.noteCard} onPress={() => openEdit(note)} accessibilityRole="button" accessibilityLabel={`Editar nota ${note.title}`}>
+              <Pressable
+                style={[styles.noteCard, note.color ? { borderLeftWidth: 4, borderLeftColor: note.color } : null]}
+                onPress={() => openEdit(note)}
+                accessibilityRole="button"
+                accessibilityLabel={`Editar nota ${note.title}`}
+              >
               <View style={styles.noteHdr}>
-                <Text style={styles.noteTitle}>{note.title}</Text>
+                <Text style={styles.noteTitle}>{note.emoji?.trim() || '📝'} {note.title}</Text>
                 <Pressable
                   onPress={() => {
                     showAlert('Eliminar', '¿Borrar esta nota?', [
@@ -207,6 +204,25 @@ export default function NotesScreen(): ReactElement {
               placeholderTextColor={lifeTheme.colors.muted}
             />
 
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Emoji</Text>
+                  <Pressable style={styles.selectorInput} onPress={() => setIsEmojiPickerVisible(true)}>
+                    <Text style={styles.selectorEmojiValue}>{newNote.emoji || '📝'}</Text>
+                    <Text style={styles.selectorHint}>Seleccionar</Text>
+                  </Pressable>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Color</Text>
+                  <Pressable style={styles.selectorInput} onPress={() => setIsColorPickerVisible(true)}>
+                    <View style={styles.colorPreviewRow}>
+                      <View style={[styles.colorSwatch, { backgroundColor: newNote.color || lifeTheme.colors.primary }]} />
+                      <Text style={styles.selectorColorText}>{(newNote.color || lifeTheme.colors.primary).toUpperCase()}</Text>
+                    </View>
+                  </Pressable>
+                </View>
+              </View>
+
             <TextInput
               style={styles.inputContent}
               value={newNote.content}
@@ -218,45 +234,13 @@ export default function NotesScreen(): ReactElement {
             />
 
             <View style={styles.reminderRow}>
-              <Text style={styles.label}>Recordatorio (día y hora)</Text>
-              <View style={[styles.reminderActionRow, isNarrow && styles.reminderActionRowNarrow]}>
-                <Pressable style={styles.reminderPickerBtn} onPress={openReminderPicker} accessibilityRole="button" accessibilityLabel="Seleccionar fecha y hora del recordatorio">
-                  <Text style={[styles.reminderPickerText, newNote.reminderAt ? styles.reminderPickerTextActive : null]}>
-                    {newNote.reminderAt ? formatReminder(newNote.reminderAt) : 'Seleccionar fecha y hora'}
-                  </Text>
-                </Pressable>
-                {newNote.reminderAt ? (
-                  <Pressable style={styles.clearReminderBtn} onPress={clearReminder} accessibilityRole="button" accessibilityLabel="Quitar recordatorio">
-                    <Text style={styles.clearReminderText}>✕</Text>
-                  </Pressable>
-                ) : null}
-              </View>
+              <SafeDatePicker
+                label="Recordatorio (día y hora)"
+                value={parseReminder(newNote.reminderAt)}
+                onClear={clearReminder}
+                onConfirm={(d) => setNewNote((prev) => ({ ...prev, reminderAt: d.toISOString() }))}
+              />
             </View>
-
-            <AppDateTimePickerSheet
-              visible={showReminderDatePicker}
-              mode="date"
-              value={parseReminder(newNote.reminderAt) ?? new Date()}
-              title="Seleccionar fecha"
-              subtitle="Elige el día del recordatorio."
-              confirmLabel="Siguiente"
-              onConfirm={handleReminderDateChange}
-              onClose={() => setShowReminderDatePicker(false)}
-            />
-
-            <AppDateTimePickerSheet
-              visible={showReminderTimePicker}
-              mode="time"
-              value={pendingReminderDate ?? new Date()}
-              title="Seleccionar hora"
-              subtitle="Elige la hora del recordatorio."
-              confirmLabel="Guardar"
-              onConfirm={handleReminderTimeChange}
-              onClose={() => {
-                setShowReminderTimePicker(false);
-                setPendingReminderDate(null);
-              }}
-            />
 
             <View style={styles.modalBtns}>
               <Pressable style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
@@ -269,6 +253,89 @@ export default function NotesScreen(): ReactElement {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={isEmojiPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setIsEmojiPickerVisible(false);
+          setIsCustomEmojiInputVisible(false);
+          setCustomEmojiDraft('');
+        }}
+      >
+        <Pressable
+          style={styles.pickerOverlay}
+          onPress={() => {
+            setIsEmojiPickerVisible(false);
+            setIsCustomEmojiInputVisible(false);
+            setCustomEmojiDraft('');
+          }}
+        >
+          <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.pickerTitle}>Selecciona un emoji</Text>
+            <Pressable
+              style={styles.customEmojiToggleBtn}
+              onPress={() => setIsCustomEmojiInputVisible((value) => !value)}
+            >
+              <Text style={styles.customEmojiToggleIcon}>🙂➕</Text>
+              <Text style={styles.customEmojiToggleText}>Agregar con teclado</Text>
+            </Pressable>
+
+            {isCustomEmojiInputVisible && (
+              <View style={styles.customEmojiInputWrap}>
+                <TextInput
+                  style={styles.customEmojiInput}
+                  value={customEmojiDraft}
+                  onChangeText={setCustomEmojiDraft}
+                  placeholder="Escribe o pega un emoji"
+                  placeholderTextColor={lifeTheme.colors.muted}
+                  autoFocus
+                  returnKeyType="done"
+                />
+                <Pressable
+                  style={styles.customEmojiApplyBtn}
+                  onPress={() => {
+                    const nextEmoji = customEmojiDraft.trim();
+                    if (!nextEmoji) return;
+                    setNewNote((prev) => ({ ...prev, emoji: nextEmoji }));
+                    setIsEmojiPickerVisible(false);
+                    setIsCustomEmojiInputVisible(false);
+                    setCustomEmojiDraft('');
+                  }}
+                >
+                  <Text style={styles.customEmojiApplyText}>Usar</Text>
+                </Pressable>
+              </View>
+            )}
+
+            <View style={styles.emojiGrid}>
+              {EMOJI_OPTIONS.map((option) => (
+                <Pressable
+                  key={option}
+                  style={[styles.emojiChip, newNote.emoji === option && styles.emojiChipActive]}
+                  onPress={() => {
+                    setNewNote((prev) => ({ ...prev, emoji: option }));
+                    setIsEmojiPickerVisible(false);
+                    setIsCustomEmojiInputVisible(false);
+                    setCustomEmojiDraft('');
+                  }}
+                >
+                  <Text style={styles.emojiChipText}>{option}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <AppColorPickerSheet
+        visible={isColorPickerVisible}
+        value={newNote.color || lifeTheme.colors.primary}
+        onClose={() => setIsColorPickerVisible(false)}
+        onClear={() => setNewNote((prev) => ({ ...prev, color: '' }))}
+        onApply={(hex: string) => setNewNote((prev) => ({ ...prev, color: hex }))}
+      />
 
       <CustomAlertDialog
         visible={alertState.visible}
@@ -328,38 +395,122 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   modalCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: 24, padding: 24, gap: 16, borderWidth: 1, borderColor: ui.border },
   modalTitle: { color: lifeTheme.colors.text, fontSize: 20, fontWeight: '900', marginBottom: 4 },
   label: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
-  inputTitle: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: ui.radiusInput, padding: 14, color: lifeTheme.colors.text, fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: ui.border },
-  inputContent: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: ui.radiusInput, padding: 14, color: lifeTheme.colors.text, fontSize: 15, minHeight: 120, borderWidth: 1, borderColor: ui.border },
-  reminderRow: { gap: 8, alignItems: 'stretch' },
-  reminderActionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%' },
-  reminderActionRowNarrow: { flexDirection: 'column', alignItems: 'stretch' },
-  reminderPickerBtn: {
-    flex: 1,
+  selectorInput: {
     backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderColor: ui.border,
+    borderWidth: 1,
     borderRadius: ui.radiusInput,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 11,
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  selectorHint: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '700' },
+  selectorEmojiValue: { color: lifeTheme.colors.text, fontSize: 22 },
+  colorPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  colorSwatch: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     borderWidth: 1,
     borderColor: ui.border
   },
-  reminderPickerText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '600', flexShrink: 1 },
-  reminderPickerTextActive: { color: lifeTheme.colors.text, fontWeight: '700' },
-  clearReminderBtn: {
-    width: 30,
-    height: 30,
+  selectorColorText: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
+  inputTitle: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: ui.radiusInput, padding: 14, color: lifeTheme.colors.text, fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: ui.border },
+  inputContent: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: ui.radiusInput, padding: 14, color: lifeTheme.colors.text, fontSize: 15, minHeight: 120, borderWidth: 1, borderColor: ui.border },
+  reminderRow: { gap: 8, alignItems: 'stretch' },
+  modalBtns: { flexDirection: 'row', gap: 12, marginTop: 10 },
+  cancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center' },
+  cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
+  saveBtn: { flex: 2, backgroundColor: lifeTheme.colors.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    paddingHorizontal: 20
+  },
+  pickerCard: {
+    backgroundColor: lifeTheme.colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: ui.border,
+    padding: 14,
+    gap: 12
+  },
+  pickerTitle: {
+    color: lifeTheme.colors.text,
+    fontSize: 16,
+    fontWeight: '800'
+  },
+  customEmojiToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
     borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: ui.border
+  },
+  customEmojiToggleIcon: {
+    fontSize: 16
+  },
+  customEmojiToggleText: {
+    color: lifeTheme.colors.text,
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  customEmojiInputWrap: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center'
+  },
+  customEmojiInput: {
+    flex: 1,
+    backgroundColor: lifeTheme.colors.surfaceAlt,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: ui.border,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: lifeTheme.colors.text
+  },
+  customEmojiApplyBtn: {
+    borderRadius: 10,
+    backgroundColor: lifeTheme.colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  customEmojiApplyText: {
+    color: lifeTheme.colors.onPrimary,
+    fontSize: 12,
+    fontWeight: '800'
+  },
+  emojiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8
+  },
+  emojiChip: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     backgroundColor: lifeTheme.colors.surfaceAlt,
     borderWidth: 1,
     borderColor: ui.border,
     alignItems: 'center',
     justifyContent: 'center'
   },
-  clearReminderText: { color: lifeTheme.colors.muted, fontSize: 14, fontWeight: '800' },
-  inputTime: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: lifeTheme.colors.text, fontSize: 14, width: 80, textAlign: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
-  modalBtns: { flexDirection: 'row', gap: 12, marginTop: 10 },
-  cancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center' },
-  cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
-  saveBtn: { flex: 2, backgroundColor: lifeTheme.colors.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-  saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' }
+  emojiChipActive: {
+    borderColor: lifeTheme.colors.primary,
+    backgroundColor: `${lifeTheme.colors.primary}22`
+  },
+  emojiChipText: {
+    fontSize: 22
+  }
   });
 }

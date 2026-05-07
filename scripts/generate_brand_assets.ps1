@@ -108,9 +108,9 @@ function New-LifeosImage {
   $bmp.Dispose()
 }
 
-New-LifeosImage -Path (Join-Path $assetsDir 'icon-v3.png') -Size 1024 -WithRoundedFrame $true -Transparent $false -WithWordmark $false -ForegroundScale 0.9
-New-LifeosImage -Path (Join-Path $assetsDir 'adaptive-icon-v3.png') -Size 1024 -WithRoundedFrame $false -Transparent $true -WithWordmark $false -ForegroundScale 0.9
-New-LifeosImage -Path (Join-Path $assetsDir 'splash-icon-v3.png') -Size 1024 -WithRoundedFrame $false -Transparent $true -WithWordmark $false
-New-LifeosImage -Path (Join-Path $assetsDir 'favicon-v3.png') -Size 256 -WithRoundedFrame $true -Transparent $false -WithWordmark $false
+New-LifeosImage -Path (Join-Path $assetsDir 'icon-v4.png') -Size 1024 -WithRoundedFrame $true -Transparent $false -WithWordmark $false -ForegroundScale 0.9
+New-LifeosImage -Path (Join-Path $assetsDir 'adaptive-icon-v4.png') -Size 1024 -WithRoundedFrame $false -Transparent $true -WithWordmark $false -ForegroundScale 0.9
+New-LifeosImage -Path (Join-Path $assetsDir 'splash-icon-v4.png') -Size 1024 -WithRoundedFrame $false -Transparent $true -WithWordmark $false
+New-LifeosImage -Path (Join-Path $assetsDir 'favicon-v4.png') -Size 256 -WithRoundedFrame $true -Transparent $false -WithWordmark $false
 
 Write-Output "Brand assets generated in $assetsDir"

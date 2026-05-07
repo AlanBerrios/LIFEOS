@@ -162,6 +162,8 @@ function reviveNote(note: QuickNote): QuickNote {
     id: asString((note as any).id, createId('note')),
     title: asString((note as any).title, 'Nota'),
     content: asString((note as any).content, ''),
+    emoji: asOptionalString((note as any).emoji),
+    color: asOptionalString((note as any).color),
     reminderAt: asOptionalString((note as any).reminderAt),
     createdAt: safeDateRequired((note as any).createdAt)
   };
