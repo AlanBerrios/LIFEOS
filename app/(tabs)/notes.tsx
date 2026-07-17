@@ -17,6 +17,7 @@ import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 import { SafeDatePicker } from '../../src/components/SafeDatePicker';
 import { AppColorPickerSheet } from '../../src/components/AppColorPickerSheet';
+import { FormSheet } from '../../src/components/FormSheet';
 
 function parseReminder(reminderAt?: string): Date | null {
   if (!reminderAt) return null;
@@ -191,9 +192,7 @@ export default function NotesScreen(): ReactElement {
         <Text style={styles.fabText}>+ Nota</Text>
       </Pressable>
 
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+      <FormSheet visible={modalVisible} onClose={() => setModalVisible(false)}>
             <Text style={styles.modalTitle}>{editingNoteId ? 'Editar Nota' : 'Nueva Nota'}</Text>
             
             <TextInput
@@ -250,9 +249,7 @@ export default function NotesScreen(): ReactElement {
                 <Text style={styles.saveBtnText}>{editingNoteId ? 'Guardar Cambios' : 'Guardar'}</Text>
               </Pressable>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </FormSheet>
 
       <Modal
         visible={isEmojiPickerVisible}
@@ -391,8 +388,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   reminderText: { color: lifeTheme.colors.primary, fontSize: 11, fontWeight: '700' },
   emptyCard: { padding: 40, alignItems: 'center' },
   emptyText: { color: lifeTheme.colors.muted, textAlign: 'center', lineHeight: 22 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },
-  modalCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: 24, padding: 24, gap: 16, borderWidth: 1, borderColor: ui.border },
   modalTitle: { color: lifeTheme.colors.text, fontSize: 20, fontWeight: '900', marginBottom: 4 },
   label: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
   selectorInput: {

@@ -70,6 +70,19 @@ export interface ScheduleOverflowPromptState {
   maxSelections: number;
 }
 
+export interface FreeBlockOpportunityPromptState {
+  visible: boolean;
+  blockId: string;
+  createdAt: Date;
+  start_time: Date;
+  end_time: Date;
+  totalMinutes: number;
+  bufferMinutes: number;
+  usableMinutes: number;
+  candidateTasks: ScheduleOverflowCandidate[];
+  recommendedTaskId?: string;
+}
+
 export interface GlobalAlertState {
   visible: boolean;
   title: string;
@@ -151,6 +164,7 @@ export interface LifeStoreState {
   last_replan_reason?: string;
   replan_history: ReplanDecision[];
   pending_schedule_overflow?: ScheduleOverflowPromptState;
+  pending_free_block_opportunity?: FreeBlockOpportunityPromptState;
   global_alert?: GlobalAlertState;
   last_scheduler_parity?: SchedulerParityState;
   daily_energy_reports: DailyEnergyReport[];
@@ -235,6 +249,8 @@ export interface LifeStoreActions {
   triggerReplanification: () => Promise<void>;
   resolveScheduleOverflow: (keepTaskIds: string[]) => Promise<void>;
   dismissScheduleOverflow: () => void;
+  resolveFreeBlockOpportunity: (taskId: string) => void;
+  dismissFreeBlockOpportunity: () => void;
   showGlobalAlert: (title: string, message?: string, buttons?: AlertButtonConfig[]) => void;
   dismissGlobalAlert: () => void;
   reportDailyEnergy: (level: EnergyLevel, fatigue: 'low' | 'medium' | 'high', note?: string) => void;

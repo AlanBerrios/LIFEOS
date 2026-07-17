@@ -7,6 +7,7 @@ import type { LifeStore, MoveBlockResult, MoveSuggestion } from '../lifeStore.ty
 import type { DailySession, LifeTimer, ScheduleBlock, Task, ExecutionRecord, SkipReason, PostponeReason, PendingCompletionCheck, DailyEnergyReport, EnergyTelemetry } from '../../types';
 import { rankTasksByImportance } from '../../core/scheduler';
 import { computeTaskFocusXp, setTaskStatus } from '../domain/taskRules';
+import { applyXpProgress, computeSkillLevelBonus } from '../domain/profileProgress';
 import { triggerNotificationResync } from '../sideEffects/notifications';
 import { callSchedulerApi, SchedulerApiError } from '../../services/schedulerApi';
 import { compareSchedulerParity, createRemoteUnavailableParity } from '../../core/schedulerParity';
@@ -23,6 +24,9 @@ const ENERGY_LEVEL_EXPECTED_LOAD: Record<1 | 2 | 3 | 4 | 5, number> = {
 
 const ENERGY_BIAS_MIN = -2;
 const ENERGY_BIAS_MAX = 2;
+const FREE_BLOCK_MIN_TOTAL_MINUTES = 30;
+const FREE_BLOCK_MIN_TASK_MINUTES = 10;
+const FREE_BLOCK_MAX_CANDIDATES = 4;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -110,6 +114,91 @@ function getSameDayGhostBlocks(blocks: ScheduleBlock[], startTime: Date): Schedu
   return dedupeScheduleBlocks(
     blocks.filter((block) => isSameLocalDay(block.start_time, startTime))
   );
+}
+
+function getBlockMinutes(block: ScheduleBlock): number {
+  return Math.max(0, Math.round((block.end_time.getTime() - block.start_time.getTime()) / MINUTE_MS));
+}
+
+function isGeneratedFreeBlock(block: ScheduleBlock): boolean {
+  return block.type === 'rest' && block.title === 'Libre' && !block.isRoutineBlock && !block.isStaticEvent;
+}
+
+function getFreeBlockBufferMinutes(settings: LifeStore['settings']): number {
+  const configuredBreak = settings.breakDurationMinutes ?? 10;
+  return clamp(Math.round(configuredBreak / 2), 3, 15);
+}
+
+function toOverflowCandidate(task: Task): NonNullable<LifeStore['pending_schedule_overflow']>['candidateTasks'][number] {
+  return {
+    id: task.id,
+    title: task.title,
+    priority: task.priority,
+    urgency: task.urgency,
+    eta_minutes: task.eta_minutes,
+    cognitive_load: task.cognitive_load,
+    deadline: task.deadline ?? null
+  };
+}
+
+function createFreeBlockOpportunityState(
+  tasks: Task[],
+  blocks: ScheduleBlock[],
+  settings: LifeStore['settings'],
+  startTime: Date
+): LifeStore['pending_free_block_opportunity'] {
+  const scheduledTaskIds = new Set(
+    blocks
+      .filter((block) => block.type === 'task' && block.task_id)
+      .map((block) => block.task_id as string)
+  );
+  const bufferMinutes = getFreeBlockBufferMinutes(settings);
+  const rankedCandidates = rankTasksByImportance(
+    tasks.filter((task) => (
+      (task.status === 'pool' || task.status === 'scheduled' || task.status === 'in_progress') &&
+      !scheduledTaskIds.has(task.id) &&
+      !task.fixed_start &&
+      !task.fixed_end &&
+      task.eta_minutes >= FREE_BLOCK_MIN_TASK_MINUTES
+    )),
+    startTime
+  );
+
+  if (rankedCandidates.length === 0) return undefined;
+
+  const freeBlocks = blocks
+    .filter((block) => (
+      isGeneratedFreeBlock(block) &&
+      isSameLocalDay(block.start_time, startTime) &&
+      block.end_time.getTime() > startTime.getTime()
+    ))
+    .sort((a, b) => a.start_time.getTime() - b.start_time.getTime());
+
+  for (const block of freeBlocks) {
+    const totalMinutes = getBlockMinutes(block);
+    if (totalMinutes < FREE_BLOCK_MIN_TOTAL_MINUTES) continue;
+
+    const usableMinutes = totalMinutes - (bufferMinutes * 2);
+    if (usableMinutes < FREE_BLOCK_MIN_TASK_MINUTES) continue;
+
+    const fittingTasks = rankedCandidates.slice(0, FREE_BLOCK_MAX_CANDIDATES);
+    if (fittingTasks.length === 0) continue;
+
+    return {
+      visible: true,
+      blockId: block.id,
+      createdAt: new Date(),
+      start_time: new Date(block.start_time),
+      end_time: new Date(block.end_time),
+      totalMinutes,
+      bufferMinutes,
+      usableMinutes,
+      candidateTasks: fittingTasks.map(toOverflowCandidate),
+      recommendedTaskId: fittingTasks[0]?.id
+    };
+  }
+
+  return undefined;
 }
 
 function shouldPreserveDayHistoryBlock(block: ScheduleBlock, startTime: Date, tasks: Task[]): boolean {
@@ -689,6 +778,7 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
   'startTaskExecution' | 'pauseTaskExecution' | 'resumeTaskExecution' | 
   'confirmCompletionOK' | 'confirmCompletionPartial' | 'reportTaskSkipped' | 'reportTaskPostponed' |
   'addReplanDecision' | 'triggerReplanification' | 'resolveScheduleOverflow' | 'dismissScheduleOverflow' | 'confirmReplan' | 'rejectReplan' |
+  'resolveFreeBlockOpportunity' | 'dismissFreeBlockOpportunity' |
   'reportDailyEnergy' | 'applyEnergyBasedSuggestions' |
   'checkTransitArrivalPrompt' | 'respondTransitArrivalPrompt' | 'dismissTransitArrivalPrompt'
 >> = (set, get) => ({
@@ -736,6 +826,8 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
           lastSolverStatus: 'REST_DAY',
           last_scheduler_parity: undefined,
           pending_transit_arrival_prompt: undefined,
+          pending_schedule_overflow: undefined,
+          pending_free_block_opportunity: undefined,
           isGenerating: false
         };
       });
@@ -772,25 +864,29 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       // Preservar bloques completados (ghost blocks) durante reorganización
       const historyBlocks = getDayHistoryBlocks(state, startTime, updatedTasks);
       const dayGhostBlocks = getSameDayGhostBlocks(state.completedGhostBlocks, startTime);
+      const activeTimeline = dedupeScheduleBlocks([...historyBlocks, ...newBlocks]);
       
       // Combinar timeline nuevo con ghost blocks preservados
-      const timelineWithGhosts = dedupeScheduleBlocks([...historyBlocks, ...newBlocks, ...dayGhostBlocks]);
+      const timelineWithGhosts = dedupeScheduleBlocks([...activeTimeline, ...dayGhostBlocks]);
 
       const session = buildSession(state, updatedTasks, timelineWithGhosts);
       const otherSessions = state.sessions.filter((sessionItem) => sessionItem.date !== today);
+      const overflowPrompt = options.suppressOverflowPrompt
+        ? undefined
+        : createOverflowPromptState(schedulableTasks, newBlocks, startTime);
+      const freeBlockOpportunity = createFreeBlockOpportunityState(updatedTasks, activeTimeline, settings, startTime);
 
       return {
         tasks: updatedTasks,
-        timeline: dedupeScheduleBlocks([...historyBlocks, ...newBlocks]),
+        timeline: activeTimeline,
         completedGhostBlocks: dayGhostBlocks,
         sessions: [...otherSessions, session],
         lastEngine: engine,
         lastSolverStatus: parityResult.solverStatus,
         last_scheduler_parity: parityResult.parity,
         pending_transit_arrival_prompt: undefined,
-        pending_schedule_overflow: options.suppressOverflowPrompt
-          ? undefined
-          : createOverflowPromptState(schedulableTasks, newBlocks, startTime),
+        pending_schedule_overflow: overflowPrompt,
+        pending_free_block_opportunity: freeBlockOpportunity,
         isGenerating: false
       };
     });
@@ -1066,16 +1162,18 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
 
       const updatedTasks = setTaskStatus(state.tasks, task_id, 'completed');
 
+      const beforeFocus = state.userProfile.skills.focus;
+      const nextFocus = beforeFocus + gainedXp;
+      const skillLevelBonus = computeSkillLevelBonus(beforeFocus, nextFocus);
+      const xpProgress = applyXpProgress(
+        state.userProfile.currentXP,
+        state.userProfile.level,
+        gainedXp + skillLevelBonus
+      );
       const nextSkills = {
         ...state.userProfile.skills,
-        focus: state.userProfile.skills.focus + gainedXp
+        focus: nextFocus
       };
-      let nextLevel = state.userProfile.level;
-      let nextXp = state.userProfile.currentXP + gainedXp;
-      while (nextXp >= nextLevel * 100) {
-        nextXp -= nextLevel * 100;
-        nextLevel += 1;
-      }
 
       return {
         tasks: updatedTasks,
@@ -1086,8 +1184,8 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
         execution_records: [...(state.execution_records || []), completionRecord],
         userProfile: {
           ...state.userProfile,
-          level: nextLevel,
-          currentXP: nextXp,
+          level: xpProgress.level,
+          currentXP: xpProgress.currentXP,
           skills: nextSkills
         }
       };
@@ -1156,16 +1254,19 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
     set((state) => {
       const historyBlocks = getDayHistoryBlocks(state, replanStart, state.tasks);
       const dayGhostBlocks = getSameDayGhostBlocks(state.completedGhostBlocks, replanStart);
+      const activeTimeline = dedupeScheduleBlocks([...historyBlocks, ...blocks]);
 
       return {
-        timeline: dedupeScheduleBlocks([...historyBlocks, ...blocks]),
+        timeline: activeTimeline,
         completedGhostBlocks: dayGhostBlocks,
         is_replanning: false,
         replan_error: undefined,
         lastEngine: 'local-ts',
         lastSolverStatus: parityResult.solverStatus,
         last_scheduler_parity: parityResult.parity,
-        pending_transit_arrival_prompt: undefined
+        pending_transit_arrival_prompt: undefined,
+        pending_schedule_overflow: undefined,
+        pending_free_block_opportunity: createFreeBlockOpportunityState(state.tasks, activeTimeline, settings, replanStart)
       };
     });
 
@@ -1196,6 +1297,93 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
 
   dismissScheduleOverflow: () => {
     set({ pending_schedule_overflow: undefined });
+  },
+
+  resolveFreeBlockOpportunity: (taskId: string) => {
+    set((state) => {
+      const prompt = state.pending_free_block_opportunity;
+      if (!prompt) return state;
+
+      const targetTask = state.tasks.find((task) => task.id === taskId);
+      const freeBlockIndex = state.timeline.findIndex((block) => block.id === prompt.blockId);
+      const freeBlock = freeBlockIndex >= 0 ? state.timeline[freeBlockIndex] : undefined;
+      if (!targetTask || !freeBlock || !isGeneratedFreeBlock(freeBlock)) {
+        return { pending_free_block_opportunity: undefined };
+      }
+
+      const taskMinutes = Math.min(Math.max(FREE_BLOCK_MIN_TASK_MINUTES, targetTask.eta_minutes), prompt.usableMinutes);
+      if (taskMinutes < FREE_BLOCK_MIN_TASK_MINUTES) {
+        return { pending_free_block_opportunity: undefined };
+      }
+
+      const bufferMs = prompt.bufferMinutes * MINUTE_MS;
+      const taskStart = new Date(freeBlock.start_time.getTime() + bufferMs);
+      const taskEnd = new Date(taskStart.getTime() + taskMinutes * MINUTE_MS);
+      const latestTaskEnd = freeBlock.end_time.getTime() - bufferMs;
+      if (taskEnd.getTime() > latestTaskEnd) {
+        return { pending_free_block_opportunity: undefined };
+      }
+
+      const replacementBlocks: ScheduleBlock[] = [];
+      if (taskStart.getTime() - freeBlock.start_time.getTime() >= 2 * MINUTE_MS) {
+        replacementBlocks.push({
+          id: createId('rest'),
+          type: 'rest',
+          title: 'Libre',
+          start_time: new Date(freeBlock.start_time),
+          end_time: new Date(taskStart)
+        });
+      }
+
+      replacementBlocks.push({
+        id: createId('block'),
+        type: 'task',
+        task_id: targetTask.id,
+        title: `Avance: ${targetTask.title}`,
+        start_time: taskStart,
+        end_time: taskEnd,
+        cognitive_drain: targetTask.cognitive_load * taskMinutes,
+        pinned: true,
+        isSoftBlock: taskMinutes < targetTask.eta_minutes
+      });
+
+      if (freeBlock.end_time.getTime() - taskEnd.getTime() >= 2 * MINUTE_MS) {
+        replacementBlocks.push({
+          id: createId('rest'),
+          type: 'rest',
+          title: 'Libre',
+          start_time: new Date(taskEnd),
+          end_time: new Date(freeBlock.end_time)
+        });
+      }
+
+      const nextTimeline = dedupeScheduleBlocks([
+        ...state.timeline.slice(0, freeBlockIndex),
+        ...replacementBlocks,
+        ...state.timeline.slice(freeBlockIndex + 1)
+      ]);
+      const nextTasks = state.tasks.map((task) => (
+        task.id === targetTask.id && task.status === 'pool'
+          ? { ...task, status: 'scheduled' as const }
+          : task
+      ));
+      const today = todayISO();
+      const nextSession = buildSession(state, nextTasks, [...nextTimeline, ...state.completedGhostBlocks]);
+      const otherSessions = state.sessions.filter((session) => session.date !== today);
+
+      return {
+        tasks: nextTasks,
+        timeline: nextTimeline,
+        sessions: [...otherSessions, nextSession],
+        pending_free_block_opportunity: undefined
+      };
+    });
+
+    triggerNotificationResync(get, set, 'resincronizar notificaciones tras usar bloque Libre');
+  },
+
+  dismissFreeBlockOpportunity: () => {
+    set({ pending_free_block_opportunity: undefined });
   },
 
   reportDailyEnergy: (level, fatigue, note) => {
@@ -1436,6 +1624,7 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
         replan_error: undefined,
         pending_completion_check: undefined,
         last_replan_reason: undefined,
+        pending_free_block_opportunity: createFreeBlockOpportunityState(state.tasks, updatedTimeline, state.settings, now),
       };
     });
 
@@ -1450,6 +1639,7 @@ export const createExecutionSlice: StateCreator<LifeStore, [], [], Pick<LifeStor
       replan_error: undefined,
       pending_completion_check: undefined,
       last_replan_reason: undefined,
+      pending_free_block_opportunity: undefined,
     });
 
     get().addReplanDecision('rejected', reason, previousTimeline.length, previousTimeline.length, 0);

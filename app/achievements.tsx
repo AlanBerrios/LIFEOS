@@ -30,6 +30,7 @@ type AchievementDefinition = {
   title: string;
   icon: string;
   requirement: string;
+  hint?: string;
   xpReward: number;
   secret?: boolean;
   rarity: Rarity;
@@ -376,6 +377,27 @@ function getRarityColor(rarity: Rarity, colors: ReturnType<typeof useAppTheme>['
   }
 }
 
+function getSecretHint(id: string): string {
+  const hints: Record<string, string> = {
+    perfect_day: 'Pista: intenta cerrar un dia con muchas tareas completadas.',
+    night_owl: 'Pista: combina varias sesiones con reorganizaciones nocturnas.',
+    early_bird: 'Pista: construye una racha estable con sesiones frecuentes.',
+    multitasker: 'Pista: concentra varias tareas completadas en un mismo dia.',
+    consistent_master: 'Pista: la consistencia larga desbloquea este logro.',
+    zero_drain: 'Pista: registra energia y completa tareas de forma sostenida.',
+    comeback_kid: 'Pista: recupera una racha fuerte despues de una caida.',
+    focus_master: 'Pista: sube tu atributo de Enfoque a un punto alto.',
+    all_nighter: 'Pista: acumula sesiones y varias reorganizaciones exigentes.',
+    speedrunner: 'Pista: completa muchas tareas con Enfoque y Disciplina altos.',
+    phoenix_mode: 'Pista: vuelve a levantar una racha despues de una mejor marca.',
+    iron_mind: 'Pista: lleva Disciplina a su tramo mas alto.',
+    strategic_brain: 'Pista: desarrolla Sabiduria hasta nivel experto.',
+    ritual_keeper: 'Pista: combina Vitalidad y Disciplina en niveles altos.',
+    ghost_mode: 'Pista: avanza muchas sesiones sin aceptar replanteos.'
+  };
+  return hints[id] ?? 'Pista: sigue usando LifeOS de forma consistente.';
+}
+
 export default function AchievementsScreen(): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
@@ -425,6 +447,7 @@ export default function AchievementsScreen(): ReactElement {
 
       return {
         ...def,
+        hint: def.hint ?? (def.secret ? getSecretHint(def.id) : undefined),
         unlocked,
         unlockedAt: persistedBadge?.unlockedAt,
         progressLabel: def.getProgress(context)
@@ -448,7 +471,7 @@ export default function AchievementsScreen(): ReactElement {
         </Pressable>
         <View>
           <Text style={styles.headerTitle}>Logros RPG</Text>
-          <Text style={styles.headerSub}>{unlockedCount} de {totalCount} desbloqueados</Text>
+          <Text style={styles.headerSub}>{unlockedCount}/{totalCount} logros desbloqueados</Text>
         </View>
       </Animated.View>
 
@@ -509,7 +532,9 @@ export default function AchievementsScreen(): ReactElement {
                   {achievement.rarity}
                 </Text>
 
-                <Text style={styles.requirementText}>{isHiddenSecret ? 'Condición oculta. Sigue jugando para descubrirla.' : achievement.requirement}</Text>
+                <Text style={styles.requirementText} numberOfLines={3}>
+                  {isHiddenSecret ? achievement.hint : achievement.requirement}
+                </Text>
 
                 <View style={styles.progressRow}>
                   <Text style={styles.progressText}>{achievement.progressLabel}</Text>
@@ -551,8 +576,8 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       backgroundColor: lifeTheme.colors.background
     },
     content: {
-      padding: lifeTheme.spacing.lg,
-      gap: lifeTheme.spacing.lg
+      padding: 14,
+      gap: 12
     },
     header: {
       flexDirection: 'row',
@@ -574,7 +599,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       fontSize: 14
     },
     headerTitle: {
-      fontSize: 24,
+      fontSize: 22,
       fontWeight: '900',
       color: lifeTheme.colors.text,
       marginBottom: 4
@@ -586,7 +611,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     },
     statsRow: {
       flexDirection: 'row',
-      gap: lifeTheme.spacing.md
+      gap: 8
     },
     statBox: {
       flex: 1,
@@ -594,12 +619,12 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       borderRadius: lifeTheme.radius.md,
       borderWidth: 1,
       borderColor: lifeTheme.colors.border,
-      padding: lifeTheme.spacing.md,
+      padding: 10,
       alignItems: 'center',
       gap: 4
     },
     statNumber: {
-      fontSize: 22,
+      fontSize: 20,
       fontWeight: '900',
       fontFamily: 'monospace'
     },
@@ -630,19 +655,19 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     grid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: lifeTheme.spacing.md
+      gap: 8
     },
     achievementWrapper: {
-      width: '48%'
+      width: '48.8%'
     },
     achievementCard: {
       backgroundColor: lifeTheme.colors.surface,
       borderRadius: lifeTheme.radius.md,
       borderWidth: 1,
       borderColor: lifeTheme.colors.border,
-      padding: lifeTheme.spacing.md,
-      gap: 8,
-      minHeight: 230,
+      padding: 10,
+      gap: 6,
+      minHeight: 178,
       position: 'relative'
     },
     achievementCardLocked: {
@@ -658,22 +683,22 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       alignItems: 'flex-start'
     },
     achievementIcon: {
-      fontSize: 28
+      fontSize: 24
     },
     secretBadge: {
       fontSize: 14
     },
     achievementTitle: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: '800',
       color: lifeTheme.colors.text,
-      lineHeight: 18
+      lineHeight: 16
     },
     achievementTitleLocked: {
       color: lifeTheme.colors.muted
     },
     rarityBadge: {
-      fontSize: 10,
+      fontSize: 9,
       fontWeight: '800',
       textTransform: 'uppercase',
       borderWidth: 1,
@@ -683,22 +708,22 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       alignSelf: 'flex-start'
     },
     requirementText: {
-      fontSize: 11,
+      fontSize: 10,
       color: lifeTheme.colors.muted,
-      lineHeight: 16
+      lineHeight: 14
     },
     progressRow: {
       backgroundColor: lifeTheme.colors.surfaceAlt,
       borderRadius: 8,
       borderWidth: 1,
       borderColor: lifeTheme.colors.border,
-      padding: 8
+      padding: 6
     },
     progressText: {
-      fontSize: 11,
+      fontSize: 10,
       color: lifeTheme.colors.text,
       fontWeight: '600',
-      lineHeight: 15
+      lineHeight: 13
     },
     rewardRow: {
       marginTop: 'auto',

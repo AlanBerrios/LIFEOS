@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
+import { getSkillProgress, SKILL_LEVEL_BONUS_XP } from '../../src/store/domain/profileProgress';
 
 function formatMinutes(mins: number): string {
   if (mins < 60) return `${mins}m`;
@@ -56,55 +57,94 @@ function StatCard({ label, value, icon, accent, delay = 0 }: StatCardProps): Rea
   );
 }
 
-interface BarProps {
+type SkillKey = 'focus' | 'vitality' | 'discipline' | 'wisdom';
+
+interface SkillDefinition {
+  key: SkillKey;
+  icon: string;
   label: string;
-  progress: number;
-  count: number;
+  source: string;
+  meaning: string;
+  nextAction: string;
+  systemNote: string;
+}
+
+interface SkillCardProps {
+  definition: SkillDefinition;
+  points: number;
   color: string;
   delay?: number;
+  onPress: (definition: SkillDefinition) => void;
 }
 
-function HBar({ label, progress, count, color, delay = 0 }: BarProps): ReactElement {
+const SKILL_DEFINITIONS: SkillDefinition[] = [
+  {
+    key: 'focus',
+    icon: '🧠',
+    label: 'Enfoque',
+    meaning: 'Mide tu capacidad acumulada para cerrar tareas exigentes.',
+    source: 'Sube al completar tareas. La EXP depende de prioridad y carga cognitiva.',
+    nextAction: 'Completa tareas importantes o de alta carga para subirlo mas rapido.',
+    systemNote: 'Formula actual: prioridad x10 + carga cognitiva x2.'
+  },
+  {
+    key: 'vitality',
+    icon: '⚡',
+    label: 'Vitalidad',
+    meaning: 'Representa energia de rutina fisica y cuidado personal sostenido.',
+    source: 'Sube al completar un habito del dia. Bajar el progreso del habito revierte esa EXP.',
+    nextAction: 'Cierra habitos diarios, especialmente los de salud o energia.',
+    systemNote: 'Regla actual: +15 al completar el habito diario.'
+  },
+  {
+    key: 'discipline',
+    icon: '🛡️',
+    label: 'Disciplina',
+    meaning: 'Mide consistencia: volver a la app y mantener actividad entre dias.',
+    source: 'Sube cuando una accion cuenta como actividad diaria; las rachas tambien pueden dar badges y EXP.',
+    nextAction: 'Completa tareas o habitos en dias consecutivos.',
+    systemNote: 'Regla actual: +5 por dia activo nuevo; badges de racha dan EXP extra.'
+  },
+  {
+    key: 'wisdom',
+    icon: '📜',
+    label: 'Sabiduria',
+    meaning: 'Deberia representar reflexion, notas, revision y aprendizaje del sistema.',
+    source: 'Sube al crear notas utiles o al ampliar una nota con contenido significativo.',
+    nextAction: 'Usa notas para registrar decisiones, aprendizajes o reflexiones del dia.',
+    systemNote: 'Regla actual: +4/+8/+12 al crear notas segun contenido; +4/+8 al ampliarlas de verdad.'
+  }
+];
+
+function SkillCard({ definition, points, color, delay = 0, onPress }: SkillCardProps): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+  const progress = getSkillProgress(points);
 
   return (
-    <Animated.View entering={FadeInRight.delay(delay).duration(260)} style={styles.hbarRow}>
-      <Text style={styles.hbarLabel}>{label}</Text>
-      <View style={styles.hbarTrack}>
-        <View style={[styles.hbarFill, { width: `${Math.max(2, Math.min(progress, 1) * 100)}%`, backgroundColor: color }]} />
-      </View>
-      <Text style={[styles.hbarCount, { color }]}>{count}</Text>
-    </Animated.View>
-  );
-}
+    <Animated.View entering={FadeInRight.delay(delay).duration(260)}>
+      <Pressable
+        style={styles.skillCard}
+        onPress={() => onPress(definition)}
+        accessibilityRole="button"
+        accessibilityLabel={`Ver detalle de ${definition.label}`}
+      >
+        <View style={styles.skillTopRow}>
+          <Text style={styles.skillIcon}>{definition.icon}</Text>
+          <View style={styles.skillTitleWrap}>
+            <Text style={styles.skillLabel}>{definition.label}</Text>
+            <Text style={styles.skillMeta}>Nivel {progress.level} · {points} pts</Text>
+          </View>
+          <Text style={[styles.skillLevelBadge, { color, borderColor: `${color}66` }]}>N{progress.level}</Text>
+        </View>
 
-function InfoModal({
-  visible,
-  title,
-  body,
-  onClose
-}: {
-  visible: boolean;
-  title: string;
-  body: string;
-  onClose: () => void;
-}): ReactElement {
-  const lifeTheme = useAppTheme();
-  const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
+        <View style={styles.skillTrack}>
+          <View style={[styles.skillFill, { width: `${Math.max(3, progress.progress * 100)}%`, backgroundColor: color }]} />
+        </View>
 
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
-        <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-          <Text style={styles.modalTitle}>{title}</Text>
-          <Text style={styles.modalBody}>{body}</Text>
-          <Pressable style={styles.modalCloseBtn} onPress={onClose}>
-            <Text style={styles.modalCloseText}>Entendido</Text>
-          </Pressable>
-        </Pressable>
+        <Text style={styles.skillHint}>{progress.current}/{progress.required} para el siguiente nivel</Text>
       </Pressable>
-    </Modal>
+    </Animated.View>
   );
 }
 
@@ -113,14 +153,12 @@ export default function StatsScreen(): ReactElement {
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [selectedSkill, setSelectedSkill] = useState<SkillDefinition | null>(null);
 
   const tasks = useLifeStore((s) => s.tasks);
   const timeline = useLifeStore((s) => s.timeline);
   const sessions = useLifeStore((s) => s.sessions);
-  const dailyEnergyReports = useLifeStore((s) => s.daily_energy_reports);
   const userProfile = useLifeStore((s) => s.userProfile);
-
-  const [showEnergyInfo, setShowEnergyInfo] = useState(false);
 
   const today = todayISO();
   const todaySession = sessions.find((s) => s.date === today);
@@ -143,36 +181,7 @@ export default function StatsScreen(): ReactElement {
     0
   );
 
-  const poolCount = tasks.filter((t) => t.status === 'pool').length;
-  const scheduledCount = tasks.filter((t) => t.status === 'scheduled').length;
-  const completedCount = tasks.filter((t) => t.status === 'completed').length;
-  const totalTasks = Math.max(tasks.length, 1);
-
   const maxCompleted = Math.max(1, ...last7.map((d) => sessionMap[d]?.tasksCompleted ?? 0));
-
-  const taskBlocks = timeline.filter((b) => b.type === 'task');
-  let lowLoad = 0;
-  let midLoad = 0;
-  let highLoad = 0;
-
-  for (const block of taskBlocks) {
-    const task = block.task_id ? taskMap[block.task_id] : null;
-    if (!task) continue;
-
-    if (task.cognitive_load <= 3) lowLoad += 1;
-    else if (task.cognitive_load <= 6) midLoad += 1;
-    else highLoad += 1;
-  }
-
-  const maxLoad = Math.max(lowLoad, midLoad, highLoad, 1);
-
-  const totalDrain = todaySession?.totalCognitiveDrain ?? 0;
-  const dailyBudget = 600;
-  const drainPercent = Math.min(100, Math.round((totalDrain / dailyBudget) * 100));
-  const remainingBudget = Math.max(0, dailyBudget - totalDrain);
-
-  const energyTelemetry = dailyEnergyReports.find((report) => report.date === today)?.telemetry ??
-    todaySession?.energy_reported?.telemetry ?? null;
 
   const completionRate = scheduledToday > 0 ? Math.round((completedToday / scheduledToday) * 100) : 0;
   const avgLast7 =
@@ -183,6 +192,14 @@ export default function StatsScreen(): ReactElement {
   const unlockedBadges = userProfile.badges.length;
   const knownAchievementsCount = 50;
   const knownSecretsCount = 15;
+  const selectedSkillPoints = selectedSkill ? userProfile.skills[selectedSkill.key] : 0;
+  const selectedSkillProgress = getSkillProgress(selectedSkillPoints);
+  const skillAccentByKey: Record<SkillKey, string> = {
+    focus: lifeTheme.colors.primary,
+    vitality: lifeTheme.colors.success,
+    discipline: '#fb923c',
+    wisdom: '#818cf8'
+  };
 
   return (
     <>
@@ -221,27 +238,8 @@ export default function StatsScreen(): ReactElement {
           )}
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(110).duration(260)} style={styles.section}>
-          <Text style={styles.sectionTitle}>2. Estado del Pool</Text>
-          <View style={styles.poolGrid}>
-            {[
-              { label: 'En pool', count: poolCount, color: lifeTheme.colors.muted },
-              { label: 'Programadas', count: scheduledCount, color: lifeTheme.colors.primary },
-              { label: 'Completadas', count: completedCount, color: lifeTheme.colors.success }
-            ].map(({ label, count, color }) => (
-              <View key={label} style={styles.poolCard}>
-                <Text style={[styles.poolValue, { color }]}>{count}</Text>
-                <Text style={styles.poolLabel}>{label}</Text>
-                <View style={styles.poolTrack}>
-                  <View style={[styles.poolFill, { width: `${Math.round((count / totalTasks) * 100)}%`, backgroundColor: color }]} />
-                </View>
-              </View>
-            ))}
-          </View>
-        </Animated.View>
-
         <Animated.View entering={FadeInDown.delay(150).duration(260)} style={styles.section}>
-          <Text style={styles.sectionTitle}>3. Últimos 7 Días</Text>
+          <Text style={styles.sectionTitle}>2. Últimos 7 Días</Text>
           <View style={styles.sparklineRow}>
             {last7.map((date, i) => {
               const completed = sessionMap[date]?.tasksCompleted ?? 0;
@@ -272,70 +270,23 @@ export default function StatsScreen(): ReactElement {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(190).duration(260)} style={styles.section}>
-          <Text style={styles.sectionTitle}>4. Atributos y Habilidades</Text>
-          <View style={styles.loadBars}>
-            <HBar label="🧠 Enfoque" progress={Math.min(1, userProfile.skills.focus / 500)} count={userProfile.skills.focus} color={lifeTheme.colors.primary} delay={200} />
-            <HBar label="⚡ Vitalidad" progress={Math.min(1, userProfile.skills.vitality / 500)} count={userProfile.skills.vitality} color={lifeTheme.colors.success} delay={240} />
-            <HBar label="🛡️ Disciplina" progress={Math.min(1, userProfile.skills.discipline / 500)} count={userProfile.skills.discipline} color={'#fb923c'} delay={280} />
-            <HBar label="📜 Sabiduría" progress={Math.min(1, userProfile.skills.wisdom / 500)} count={userProfile.skills.wisdom} color={'#818cf8'} delay={320} />
+          <Text style={styles.sectionTitle}>3. Atributos y Habilidades</Text>
+          <View style={styles.skillGrid}>
+            {SKILL_DEFINITIONS.map((definition, index) => (
+              <SkillCard
+                key={definition.key}
+                definition={definition}
+                points={userProfile.skills[definition.key]}
+                color={skillAccentByKey[definition.key]}
+                delay={200 + index * 40}
+                onPress={setSelectedSkill}
+              />
+            ))}
           </View>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(230).duration(260)} style={styles.section}>
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionTitle}>5. Energía Cognitiva</Text>
-            <Pressable style={styles.inlineInfoBtn} onPress={() => setShowEnergyInfo(true)}>
-              <Text style={styles.inlineInfoText}>Info</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.energyTopRow}>
-            <Text style={styles.energyMain}>{drainPercent}%</Text>
-            <View>
-              <Text style={styles.energyLabel}>Drenaje actual</Text>
-              <Text style={styles.energySub}>{totalDrain} / {dailyBudget} unidades</Text>
-              <Text style={styles.energySub}>Restante estimado: {Math.round(remainingBudget)} unidades</Text>
-            </View>
-          </View>
-
-          <View style={styles.energyGauge}>
-            <View
-              style={[
-                styles.energyFill,
-                {
-                  width: `${drainPercent}%`,
-                  backgroundColor:
-                    drainPercent < 50
-                      ? lifeTheme.colors.success
-                      : drainPercent < 80
-                      ? '#f59e0b'
-                      : lifeTheme.colors.alert
-                }
-              ]}
-            />
-          </View>
-
-          <View style={styles.loadBars}>
-            <HBar label="Carga baja (1-3)" progress={lowLoad / maxLoad} count={lowLoad} color={lifeTheme.colors.success} delay={260} />
-            <HBar label="Carga media (4-6)" progress={midLoad / maxLoad} count={midLoad} color={'#f59e0b'} delay={300} />
-            <HBar label="Carga alta (7-10)" progress={highLoad / maxLoad} count={highLoad} color={lifeTheme.colors.alert} delay={340} />
-          </View>
-
-          <View style={styles.energyTipsRow}>
-            <View style={styles.tipChip}><Text style={styles.tipChipText}>Prioriza bloques de alta carga al inicio</Text></View>
-            <View style={styles.tipChip}><Text style={styles.tipChipText}>Inserta descansos si pasas 70%</Text></View>
-            <View style={styles.tipChip}><Text style={styles.tipChipText}>Agrupa tareas simples al cierre</Text></View>
-          </View>
-
-          {energyTelemetry && (
-            <Text style={styles.smallHint}>
-              Telemetría: match {Math.round(energyTelemetry.suggestedHitRate * 100)}% · calibración {energyTelemetry.calibration}.
-            </Text>
-          )}
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(270).duration(260)} style={styles.section}>
-          <Text style={styles.sectionTitle}>6. Logros RPG</Text>
+          <Text style={styles.sectionTitle}>4. Logros RPG</Text>
           <View style={styles.achievementsSummaryRow}>
             <View style={styles.achievementMiniCard}>
               <Text style={styles.achievementMiniValue}>{unlockedBadges}</Text>
@@ -357,7 +308,7 @@ export default function StatsScreen(): ReactElement {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(310).duration(260)} style={styles.section}>
-          <Text style={styles.sectionTitle}>7. Métricas</Text>
+          <Text style={styles.sectionTitle}>5. Métricas</Text>
           <View style={styles.simpleMetricsRow}>
             <View style={styles.simpleMetricCard}>
               <Text style={styles.simpleMetricValue}>{completionRate}%</Text>
@@ -379,12 +330,50 @@ export default function StatsScreen(): ReactElement {
         </Animated.View>
       </ScrollView>
 
-      <InfoModal
-        visible={showEnergyInfo}
-        title="Cómo leer la Energía Cognitiva"
-        body={`La energía cognitiva estima cuánto esfuerzo mental consumió tu jornada.\n\n• Presupuesto base: 600 unidades/día.\n• Drenaje: suma de carga cognitiva × duración real.\n• Zona recomendada: 40%-70%.\n\nInterpretación:\n- < 50%: margen para tareas exigentes.\n- 50%-79%: mantener ritmo con pausas.\n- 80%+: riesgo de fatiga y menor calidad.\n\nRecomendaciones avanzadas:\n1) Coloca tareas de alta carga en tu ventana de mayor energía.\n2) Encadena tareas medias y cierra con tareas bajas.\n3) Si el drenaje sube demasiado, replanifica o reduce carga.`}
-        onClose={() => setShowEnergyInfo(false)}
-      />
+      <Modal visible={selectedSkill != null} transparent animationType="fade" onRequestClose={() => setSelectedSkill(null)}>
+        <Pressable style={styles.skillModalOverlay} onPress={() => setSelectedSkill(null)}>
+          <Pressable style={styles.skillModalCard} onPress={(event) => event.stopPropagation()}>
+            {selectedSkill && (
+              <>
+                <View style={styles.skillModalHeader}>
+                  <Text style={styles.skillModalIcon}>{selectedSkill.icon}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.skillModalTitle}>{selectedSkill.label}</Text>
+                    <Text style={styles.skillModalSubtitle}>
+                      Nivel {selectedSkillProgress.level} · {selectedSkillPoints} puntos
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.skillModalTrack}>
+                  <View
+                    style={[
+                      styles.skillModalFill,
+                      {
+                        width: `${Math.max(3, selectedSkillProgress.progress * 100)}%`,
+                        backgroundColor: skillAccentByKey[selectedSkill.key]
+                      }
+                    ]}
+                  />
+                </View>
+
+                <Text style={styles.skillModalBody}>{selectedSkill.meaning}</Text>
+                <Text style={styles.skillModalBody}>{selectedSkill.source}</Text>
+                <Text style={styles.skillModalBody}>{selectedSkill.nextAction}</Text>
+                <Text style={styles.skillModalMeta}>
+                  Faltan {selectedSkillProgress.pointsToNext} pts para nivel {selectedSkillProgress.level + 1}.
+                  Cada nivel de atributo entrega +{SKILL_LEVEL_BONUS_XP} EXP de perfil.
+                </Text>
+                <Text style={styles.skillModalMeta}>{selectedSkill.systemNote}</Text>
+
+                <Pressable style={styles.skillModalCloseBtn} onPress={() => setSelectedSkill(null)}>
+                  <Text style={styles.skillModalCloseText}>Cerrar</Text>
+                </Pressable>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
   );
 }
@@ -446,24 +435,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       fontSize: 14,
       fontWeight: '800',
       textTransform: 'uppercase'
-    },
-    sectionTitleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between'
-    },
-    inlineInfoBtn: {
-      borderWidth: 1,
-      borderColor: `${lifeTheme.colors.primary}55`,
-      backgroundColor: `${lifeTheme.colors.primary}14`,
-      borderRadius: 999,
-      paddingHorizontal: 10,
-      paddingVertical: 4
-    },
-    inlineInfoText: {
-      color: lifeTheme.colors.primary,
-      fontSize: 12,
-      fontWeight: '800'
     },
     statGrid: {
       flexDirection: 'row',
@@ -528,39 +499,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       height: '100%',
       borderRadius: 999
     },
-    poolGrid: {
-      flexDirection: 'row',
-      gap: 10
-    },
-    poolCard: {
-      flex: 1,
-      backgroundColor: lifeTheme.colors.surfaceAlt,
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      borderRadius: 14,
-      padding: 12,
-      gap: 8
-    },
-    poolValue: {
-      fontSize: 24,
-      fontWeight: '900',
-      fontFamily: 'monospace'
-    },
-    poolLabel: {
-      color: lifeTheme.colors.muted,
-      fontSize: 12,
-      fontWeight: '700'
-    },
-    poolTrack: {
-      height: 6,
-      borderRadius: 999,
-      backgroundColor: lifeTheme.colors.border,
-      overflow: 'hidden'
-    },
-    poolFill: {
-      height: '100%',
-      borderRadius: 999
-    },
     sparklineRow: {
       flexDirection: 'row',
       alignItems: 'flex-end',
@@ -595,84 +533,66 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     sparkDayToday: {
       color: lifeTheme.colors.primary
     },
-    loadBars: {
+    skillGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 10
     },
-    hbarRow: {
+    skillCard: {
+      width: '48%',
+      minHeight: 118,
+      backgroundColor: lifeTheme.colors.surfaceAlt,
+      borderWidth: 1,
+      borderColor: lifeTheme.colors.border,
+      borderRadius: 12,
+      padding: 12,
+      gap: 10
+    },
+    skillTopRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8
     },
-    hbarLabel: {
-      width: 120,
-      color: lifeTheme.colors.text,
-      fontSize: 12,
-      fontWeight: '700'
+    skillIcon: {
+      fontSize: 20
     },
-    hbarTrack: {
+    skillTitleWrap: {
       flex: 1,
-      height: 8,
+      minWidth: 0
+    },
+    skillLabel: {
+      color: lifeTheme.colors.text,
+      fontSize: 13,
+      fontWeight: '800'
+    },
+    skillMeta: {
+      color: lifeTheme.colors.muted,
+      fontSize: 10,
+      marginTop: 2
+    },
+    skillLevelBadge: {
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      fontSize: 10,
+      fontWeight: '900',
+      fontFamily: 'monospace'
+    },
+    skillTrack: {
+      height: 7,
       borderRadius: 999,
       backgroundColor: lifeTheme.colors.border,
       overflow: 'hidden'
     },
-    hbarFill: {
+    skillFill: {
       height: '100%',
       borderRadius: 999
     },
-    hbarCount: {
-      width: 40,
-      textAlign: 'right',
-      fontSize: 12,
-      fontWeight: '800',
-      fontFamily: 'monospace'
-    },
-    energyTopRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 14
-    },
-    energyMain: {
-      color: lifeTheme.colors.text,
-      fontSize: 34,
-      fontWeight: '900',
-      fontFamily: 'monospace'
-    },
-    energyLabel: {
-      color: lifeTheme.colors.text,
-      fontSize: 13,
-      fontWeight: '700'
-    },
-    energySub: {
+    skillHint: {
       color: lifeTheme.colors.muted,
-      fontSize: 12,
-      lineHeight: 18
-    },
-    energyGauge: {
-      height: 12,
-      borderRadius: 999,
-      overflow: 'hidden',
-      backgroundColor: lifeTheme.colors.border
-    },
-    energyFill: {
-      height: '100%',
-      borderRadius: 999
-    },
-    energyTipsRow: {
-      gap: 8
-    },
-    tipChip: {
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      backgroundColor: lifeTheme.colors.surfaceAlt,
-      borderRadius: 12,
-      paddingHorizontal: 10,
-      paddingVertical: 8
-    },
-    tipChipText: {
-      color: lifeTheme.colors.text,
-      fontSize: 12,
-      fontWeight: '600'
+      fontSize: 10,
+      lineHeight: 14
     },
     achievementsSummaryRow: {
       flexDirection: 'row',
@@ -755,43 +675,72 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       fontSize: 11,
       lineHeight: 17
     },
-    modalOverlay: {
+    skillModalOverlay: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.65)',
+      backgroundColor: 'rgba(0,0,0,0.68)',
       justifyContent: 'center',
       alignItems: 'center',
-      padding: 24
+      padding: 22
     },
-    modalCard: {
+    skillModalCard: {
       width: '100%',
+      maxWidth: 420,
       backgroundColor: lifeTheme.colors.surface,
-      borderRadius: 16,
       borderWidth: 1,
       borderColor: lifeTheme.colors.border,
+      borderRadius: 16,
       padding: 16,
       gap: 12
     },
-    modalTitle: {
-      color: lifeTheme.colors.text,
-      fontSize: 16,
-      fontWeight: '800'
+    skillModalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10
     },
-    modalBody: {
+    skillModalIcon: {
+      fontSize: 26
+    },
+    skillModalTitle: {
+      color: lifeTheme.colors.text,
+      fontSize: 17,
+      fontWeight: '900'
+    },
+    skillModalSubtitle: {
+      color: lifeTheme.colors.muted,
+      fontSize: 12,
+      marginTop: 2
+    },
+    skillModalTrack: {
+      height: 8,
+      borderRadius: 999,
+      backgroundColor: lifeTheme.colors.border,
+      overflow: 'hidden'
+    },
+    skillModalFill: {
+      height: '100%',
+      borderRadius: 999
+    },
+    skillModalBody: {
       color: lifeTheme.colors.text,
       fontSize: 13,
-      lineHeight: 20
+      lineHeight: 19
     },
-    modalCloseBtn: {
+    skillModalMeta: {
+      color: lifeTheme.colors.muted,
+      fontSize: 12,
+      lineHeight: 18
+    },
+    skillModalCloseBtn: {
       alignSelf: 'flex-end',
-      paddingHorizontal: 14,
-      paddingVertical: 8,
+      backgroundColor: lifeTheme.colors.primary,
       borderRadius: 10,
-      backgroundColor: lifeTheme.colors.primary
+      paddingHorizontal: 14,
+      paddingVertical: 9
     },
-    modalCloseText: {
+    skillModalCloseText: {
       color: lifeTheme.colors.onPrimary,
       fontSize: 12,
-      fontWeight: '800'
-    }
+      fontWeight: '900'
+    },
   });
 }

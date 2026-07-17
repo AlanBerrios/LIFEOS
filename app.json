@@ -31,7 +31,14 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/branding/adaptive-icon-v4.png",
         "backgroundColor": "#000000"
-      }
+      },
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.WAKE_LOCK"
+      ]
     },
     "web": {
       "favicon": "./assets/branding/favicon-v4.png"
@@ -43,8 +50,9 @@
         "buildTimestamp": "2026-05-07T16:26:47-04:00"
       },
       "eas": {
-        "projectId": "9b0d0b38-a4e3-4343-a007-fb2edd693a19"
+        "projectId": "d7d211ca-fcee-48ec-ae92-b9424924dd45"
       }
-    }
+    },
+    "owner": "alanberrios"
   }
 }

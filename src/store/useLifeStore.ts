@@ -49,6 +49,7 @@ const initialState = {
   last_replan_reason: undefined,
   replan_history: [],
   pending_schedule_overflow: undefined,
+  pending_free_block_opportunity: undefined,
   global_alert: undefined,
   last_scheduler_parity: undefined,
   daily_energy_reports: [],

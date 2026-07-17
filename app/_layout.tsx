@@ -19,6 +19,7 @@ import AppLoadingSplash from '../src/components/AppLoadingSplash';
 import { DailyStartPrompt } from '../src/components/DailyStartPrompt';
 import { RestDayPrompt } from '../src/components/RestDayPrompt';
 import { ScheduleOverflowPrompt } from '../src/components/ScheduleOverflowPrompt';
+import { FreeBlockOpportunityPrompt } from '../src/components/FreeBlockOpportunityPrompt';
 import { CustomAlertDialog } from '../src/components/CustomAlertDialog';
 import { useDailyStart } from '../src/hooks/useDailyStart';
 
@@ -40,16 +41,20 @@ export default function RootLayout(): ReactElement {
   const overflowPrompt = useLifeStore((s) => s.pending_schedule_overflow);
   const resolveScheduleOverflow = useLifeStore((s) => s.resolveScheduleOverflow);
   const dismissScheduleOverflow = useLifeStore((s) => s.dismissScheduleOverflow);
+  const freeBlockOpportunity = useLifeStore((s) => s.pending_free_block_opportunity);
+  const resolveFreeBlockOpportunity = useLifeStore((s) => s.resolveFreeBlockOpportunity);
+  const dismissFreeBlockOpportunity = useLifeStore((s) => s.dismissFreeBlockOpportunity);
   const globalAlert = useLifeStore((s) => s.global_alert);
   const dismissGlobalAlert = useLifeStore((s) => s.dismissGlobalAlert);
 
   // Matriz de precedencia global para evitar overlays simultáneos:
-  // 1) Alert global > 2) Overflow > 3) Rest day > 4) Daily start.
+  // 1) Alert global > 2) Overflow > 3) Free block > 4) Rest day > 5) Daily start.
   const isGlobalAlertVisible = globalAlert?.visible ?? false;
   const isOverflowVisible = (overflowPrompt?.visible ?? false) && !isGlobalAlertVisible;
-  const isRestPromptVisible = showRestDayPrompt && !isGlobalAlertVisible && !isOverflowVisible;
+  const isFreeBlockVisible = (freeBlockOpportunity?.visible ?? false) && !isGlobalAlertVisible && !isOverflowVisible;
+  const isRestPromptVisible = showRestDayPrompt && !isGlobalAlertVisible && !isOverflowVisible && !isFreeBlockVisible;
   const isDailyPromptVisible =
-    showDailyPrompt && !isGlobalAlertVisible && !isOverflowVisible && !isRestPromptVisible;
+    showDailyPrompt && !isGlobalAlertVisible && !isOverflowVisible && !isFreeBlockVisible && !isRestPromptVisible;
 
   useEffect(() => {
     let mounted = true;
@@ -67,6 +72,14 @@ export default function RootLayout(): ReactElement {
 
       const block = useLifeStore.getState().timeline.find((item) => item.id === blockId);
       return block?.task_id;
+    };
+
+    const getHabitIdFromData = (data: NotificationPayloadData): string | undefined => {
+      const directHabitId = typeof data.habitId === 'string' ? data.habitId : undefined;
+      if (directHabitId) return directHabitId;
+
+      if (data.type === 'habit' && typeof data.id === 'string') return data.id;
+      return undefined;
     };
 
     const processNotificationResponse = async (
@@ -91,6 +104,24 @@ export default function RootLayout(): ReactElement {
         const rawData = resp.notification.request.content.data;
         const data: NotificationPayloadData =
           rawData && typeof rawData === 'object' ? (rawData as NotificationPayloadData) : {};
+
+        if (actionId === 'habit_done' || actionId === 'habit_skip') {
+          const habitId = getHabitIdFromData(data);
+          if (!habitId) return;
+
+          const store = useLifeStore.getState();
+          if (actionId === 'habit_done') {
+            const habit = store.habits.find((item) => item.id === habitId);
+            if (!habit) return;
+            store.logHabit(habitId, Math.max(1, habit.goalValue || 1));
+            return;
+          }
+
+          const reminderId = await scheduleRandomHabitReminder(store.habits, store.habitReminderNotificationId);
+          useLifeStore.setState({ habitReminderNotificationId: reminderId });
+          return;
+        }
+
         const taskId = getTaskIdFromData(data);
 
         if (actionId === 'snooze') {
@@ -273,6 +304,16 @@ export default function RootLayout(): ReactElement {
             }
             dismissScheduleOverflow();
           }}
+        />
+        <FreeBlockOpportunityPrompt
+          visible={isFreeBlockVisible}
+          candidateTasks={freeBlockOpportunity?.candidateTasks ?? []}
+          recommendedTaskId={freeBlockOpportunity?.recommendedTaskId}
+          totalMinutes={freeBlockOpportunity?.totalMinutes ?? 0}
+          usableMinutes={freeBlockOpportunity?.usableMinutes ?? 0}
+          bufferMinutes={freeBlockOpportunity?.bufferMinutes ?? 0}
+          onPickTask={resolveFreeBlockOpportunity}
+          onDismiss={dismissFreeBlockOpportunity}
         />
         <CustomAlertDialog
           visible={isGlobalAlertVisible}

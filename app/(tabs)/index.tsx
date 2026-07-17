@@ -32,6 +32,7 @@ import { CustomAlertDialog, AlertButtonConfig } from '../../src/components/Custo
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
 import { AppColorPickerSheet } from '../../src/components/AppColorPickerSheet';
+import { FormSheet } from '../../src/components/FormSheet';
 
 const EMOJI_OPTIONS = [
   '✨', '🔥', '✅', '🧠', '💼', '📚', '🏃', '💪',
@@ -66,6 +67,10 @@ function getEnergyLevelLabel(level: 1 | 2 | 3 | 4 | 5): string {
 
 function blockDurationMin(block: ScheduleBlock): number {
   return Math.max(1, Math.round((block.end_time.getTime() - block.start_time.getTime()) / 60_000));
+}
+
+function isFinishedBlock(block: ScheduleBlock, now: Date): boolean {
+  return block.end_time.getTime() <= now.getTime();
 }
 
 function explainRestSource(block: ScheduleBlock, previousBlock?: ScheduleBlock, nextBlock?: ScheduleBlock): string {
@@ -174,7 +179,6 @@ function QuickTaskModal({
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
-  const insets = useSafeAreaInsets();
   const { alertState, showAlert, hideAlert } = useCustomAlert();
   const addTask = useLifeStore((s) => s.addTask);
   const [title, setTitle] = useState('');
@@ -209,21 +213,7 @@ function QuickTaskModal({
 
   return (
     <>
-      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-        <Pressable
-          style={[
-            styles.overlay,
-            { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 16) + 8 }
-          ]}
-          onPress={onClose}
-        >
-          <Pressable style={[styles.modalCard, { maxHeight: '100%' }]} onPress={(e) => e.stopPropagation()}>
-            <ScrollView
-              style={{ maxHeight: '100%' }}
-              contentContainerStyle={{ gap: 14, paddingBottom: Math.max(insets.bottom, 12) }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
+      <FormSheet visible={visible} onClose={onClose} align="center">
             <Text style={styles.modalTitle}>Nueva tarea rápida</Text>
             
             <TextInput
@@ -297,10 +287,7 @@ function QuickTaskModal({
                 <Text style={styles.saveBtnText}>Guardar</Text>
               </Pressable>
             </View>
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      </FormSheet>
 
       <Modal
         visible={isEmojiPickerVisible}
@@ -407,7 +394,6 @@ function QuickEventModal({
 }): ReactElement {
   const lifeTheme = useAppTheme();
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
-  const insets = useSafeAreaInsets();
   const { alertState, showAlert, hideAlert } = useCustomAlert();
   const addEvent = useLifeStore((s) => s.addEvent);
   const [title, setTitle] = useState('');
@@ -447,21 +433,7 @@ function QuickEventModal({
 
   return (
     <>
-      <Modal visible={visible} transparent animationType="slide">
-        <Pressable
-          style={[
-            styles.overlay,
-            { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 16) + 8 }
-          ]}
-          onPress={onClose}
-        >
-          <Pressable style={[styles.modalCard, { maxHeight: '100%' }]} onPress={(e) => e.stopPropagation()}>
-            <ScrollView
-              style={{ maxHeight: '100%' }}
-              contentContainerStyle={{ gap: 14, paddingBottom: Math.max(insets.bottom, 12) }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
+      <FormSheet visible={visible} onClose={onClose} align="center">
             <Text style={styles.modalTitle}>Rápido: Nuevo Evento</Text>
             
             <TextInput
@@ -527,10 +499,7 @@ function QuickEventModal({
             <Text style={{ color: lifeTheme.colors.muted, fontSize: 10, textAlign: 'center' }}>
               * Usa el Calendario para configurar horas exactas.
             </Text>
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      </FormSheet>
 
       <Modal
         visible={isEmojiPickerVisible}
@@ -648,9 +617,7 @@ function QuickNoteModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <View style={styles.modalCard}>
+    <FormSheet visible={visible} onClose={onClose} align="center">
           <Text style={styles.modalTitle}>Nueva anotación</Text>
           <TextInput
             style={[styles.modalInput, { fontSize: 16, textAlign: 'left', height: 120 }]}
@@ -669,9 +636,7 @@ function QuickNoteModal({
               <Text style={styles.saveBtnText}>Guardar Nota</Text>
             </Pressable>
           </View>
-        </View>
-      </Pressable>
-    </Modal>
+    </FormSheet>
   );
 }
 
@@ -702,9 +667,7 @@ function BreakEditModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <View style={styles.modalCard}>
+    <FormSheet visible={visible} onClose={onClose} animationType="fade" align="center">
           <Text style={styles.modalTitle}>Editar descanso</Text>
           <Text style={styles.modalLabel}>Duración en minutos</Text>
           <TextInput
@@ -723,9 +686,7 @@ function BreakEditModal({
               <Text style={styles.saveBtnText}>Guardar</Text>
             </Pressable>
           </View>
-        </View>
-      </Pressable>
-    </Modal>
+    </FormSheet>
   );
 }
 
@@ -844,6 +805,7 @@ function BlockCard({
   const isGeneratedFreeBlock = block.type === 'rest' && block.title === 'Libre' && !isRoutineBlock;
   const isMovableTask = !isRest && !isHabit && !isStaticEvent && !isRoutineBlock && !isGhost;
   const isHabitDoneToday = Boolean(habit?.lastCompletedDate === getTodayStr());
+  const isFinished = isFinishedBlock(block, now) && !isGhost && !isInProgress;
   const dragOffsetY = useSharedValue(0);
 
   let emoji = '☕';
@@ -902,6 +864,7 @@ function BlockCard({
           isRest ? styles.blockRest : styles.blockTask,
           isMeal && styles.blockMeal,
           isSleep && styles.blockSleep,
+          isFinished && styles.blockFinished,
           isGhost && styles.blockGhost,
           isInProgress && styles.blockInProgress,
           { borderLeftColor: accentColor }
@@ -943,6 +906,11 @@ function BlockCard({
           {isGhost && (
             <View style={styles.ghostBadge}>
               <Text style={styles.ghostBadgeText}>FANTASMA</Text>
+            </View>
+          )}
+          {isFinished && (
+            <View style={styles.finishedBadge}>
+              <Text style={styles.finishedBadgeText}>TERMINADO</Text>
             </View>
           )}
           {isInProgress && (
@@ -1814,6 +1782,11 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderLeftColor: lifeTheme.colors.success,
     backgroundColor: `${lifeTheme.colors.success}10`
   },
+  blockFinished: {
+    backgroundColor: `${lifeTheme.colors.success}08`,
+    borderColor: `${lifeTheme.colors.success}35`,
+    opacity: 0.82
+  },
   blockInProgress: {
     borderColor: lifeTheme.colors.primary,
     borderWidth: 2,
@@ -1848,6 +1821,15 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderColor: `${lifeTheme.colors.success}55`
   },
   ghostBadgeText: { color: lifeTheme.colors.success, fontSize: 10, fontWeight: '900' },
+  finishedBadge: {
+    backgroundColor: `${lifeTheme.colors.success}12`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: `${lifeTheme.colors.success}35`
+  },
+  finishedBadgeText: { color: lifeTheme.colors.success, fontSize: 10, fontWeight: '900' },
   blockCtrl: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   ctrlBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: `${lifeTheme.colors.text}10`, alignItems: 'center', justifyContent: 'center' },
   ctrlBtnDisabled: { opacity: 0.3 },

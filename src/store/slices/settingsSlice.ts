@@ -48,6 +48,7 @@ export const createSettingsSlice: StateCreator<LifeStore, [], [], Pick<LifeStore
       lastEngine: 'idle',
       lastSolverStatus: '',
       pending_schedule_overflow: undefined,
+      pending_free_block_opportunity: undefined,
       global_alert: undefined,
       last_scheduler_parity: undefined,
       daily_energy_reports: [],

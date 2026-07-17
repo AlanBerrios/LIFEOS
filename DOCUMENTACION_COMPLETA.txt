@@ -1,5 +1,5 @@
 LIFEOS - DOCUMENTACION COMPLETA
-Actualizado: 2026-05-07
+Actualizado: 2026-07-17
 
 Este documento describe el estado actual del proyecto y reemplaza la documentacion raiz historica que estaba mezclada entre auditorias, changelogs y backlog.
 
@@ -20,7 +20,7 @@ LIFEOS es una app Android local-first hecha con Expo, React Native, TypeScript y
 Estado validado en esta revision:
 
 - TypeScript: npm run typecheck OK.
-- Tests unitarios: npm test OK, 3 archivos, 44 tests.
+- Tests unitarios: npm test OK, 4 archivos, 51 tests.
 - Runtime principal: app local con scheduler TypeScript.
 - Backend Python: soporte de paridad, validacion y benchmark; no runtime principal.
 - Version visible unificada: 4.1.0 en package.json, package-lock.json, app.json, Android versionName, splash y Settings.
@@ -139,8 +139,9 @@ Estado:
 
 Riesgos:
 
-- La logica de huecos libres todavia necesita una politica de producto mas fina.
-- Falta flujo de decision para usar huecos libres como avance parcial de tarea.
+- Los huecos Libre largos ya generan una oportunidad accionable para avanzar una tarea que cabe en el bloque.
+- El avance en hueco Libre respeta buffers de descanso al inicio y final.
+- Aun falta evolucionar avance parcial hacia saldo restante y ExecutionRecord parcial.
 - Falta explicabilidad visible del scheduler en Home.
 
 4.2 Tareas y ejecucion
@@ -172,9 +173,9 @@ Estado:
 
 Riesgos:
 
-- UI de rutinas sigue siendo una zona grande de deuda.
-- Formularios/popup pueden quedar bajo botones del sistema o teclado.
-- Minutos entre hora inicio/fin no siempre se recalculan de forma clara.
+- UI de rutinas ya tiene una primera compactacion y formularios con hoja segura para teclado.
+- Formularios/popup principales de rutinas ya no deberian quedar bajo botones del sistema o teclado.
+- Minutos de traslados se recalculan al cambiar salida, llegada o duracion.
 - Falta soporte pulido para rutinas personalizadas.
 
 4.4 Habitos
@@ -184,12 +185,14 @@ Estado:
 - Habitos tienen logs, streak y XP.
 - Pueden aparecer en UI y recordatorios.
 - Existe recordatorio aleatorio de habitos.
+- Los botones + y - de habitos aceptan mantener presionado para incremento/decremento continuo y controlado.
+- El recordatorio de habito tiene acciones de notificacion: Hecho y Hoy no.
+- Hecho registra el objetivo diario completo del habito desde la respuesta de notificacion.
 
 Riesgos:
 
 - Aun falta una regla canonica: bloque, recordatorio, senal analitica o todo lo anterior.
-- Notificaciones de habitos deben aceptar "completado/no completado" sin abrir la app.
-- Mantener + o - deberia incrementar/decrementar de forma continua y controlada.
+- Falta QA real de acciones de habito en Android foreground/background/cold start; con opensAppToForeground=false, Expo no garantiza listener si la app esta completamente cerrada.
 
 4.5 Alarmas y notificaciones
 
@@ -202,7 +205,7 @@ Estado:
 
 Riesgos Android:
 
-- El AndroidManifest revisado no muestra POST_NOTIFICATIONS.
+- app.json declara POST_NOTIFICATIONS para Android 13+.
 - Hay permisos heredados/sensibles como READ/WRITE_EXTERNAL_STORAGE y SYSTEM_ALERT_WINDOW que deben justificarse o retirarse.
 - Las alarmas no son todavia equivalentes a una alarma nativa de telefono con AlarmManager/full-screen intent.
 - Falta QA real en dispositivo para foreground, background, cold start, permisos, Do Not Disturb y fabricantes Android.
@@ -236,19 +239,17 @@ Riesgos:
 
 Estado:
 
-- Stats muestra resumen, energia, logros y metricas.
+- Stats muestra resumen, ultimos 7 dias, atributos/habilidades, logros y acceso a metricas.
 - Hay pagina achievements con catalogo y logros secretos.
 - Hay pagina advanced-metrics.
-- Atributos/habilidades existen dentro del perfil.
+- Atributos/habilidades existen dentro del perfil y se muestran como tarjetas tocables con nivel propio derivado.
+- Achievements tiene grilla compacta, contador inicial y pistas para logros secretos bloqueados.
 
 Riesgos:
 
-- El usuario reporto que energia cognitiva no es intuitiva.
-- Estado del pool en metricas es redundante.
-- Atributos/habilidades necesitan explicacion y progresion propia.
-- Logros secretos necesitan pistas.
-- Logros deben verse en cuadricula compacta y mostrar conteo inicial.
-- Metricas avanzadas deben medir uso real de la app, no solo paridad o datos tecnicos.
+- Energia cognitiva fue retirada de Stats principal y queda como metrica avanzada hasta que sea mas accionable.
+- Sabiduria ya sube por crear o ampliar notas utiles; falta conectarla tambien a revision/analisis.
+- Metricas avanzadas ya priorizan uso real de la app, pero falta validar que cada metrica sea accionable en uso diario.
 
 ============================================================
 5. CAMBIOS RECIENTES RELEVANTES
@@ -263,9 +264,23 @@ En la ultima tanda se implemento:
 - Preservacion de completedGhostBlocks del mismo dia.
 - Accion convertCompletedGhostToFree.
 - Proteccion de bloques Libre generados.
+- Prompt de oportunidad para bloques Libre largos con accion Dejar libre o usar para avance de tarea.
+- Insercion de avance de tarea dentro del hueco Libre sin desplazar eventos/rutinas.
 - Recordatorio de pendientes activo por default.
 - Swipe del task pool menos sensible.
 - Botones explicitos en cards del task pool.
+- FormSheet reutilizable para formularios con teclado y safe area.
+- Rutinas/notas/home/habitos usan formularios mas seguros frente al teclado.
+- Logros compactos con contador y pistas secretas.
+- Habitos permiten mantener + o - para ajustar cantidad.
+- POST_NOTIFICATIONS declarado en app.json.
+- Estadisticas ya no muestra Estado del Pool redundante.
+- Metricas avanzadas ahora priorizan cumplimiento, ejecucion real, replans, huecos libres, transito observado y energia.
+- Energia cognitiva ya no ocupa una seccion principal en Stats.
+- Atributos/habilidades explican al tocar: significado, fuente de puntos, accion recomendada, nivel y bonus de EXP.
+- Cada 100 puntos de atributo sube un nivel derivado y entrega bonus de EXP de perfil.
+- Sabiduria gana puntos al crear notas con contenido util o ampliar notas de forma significativa.
+- Notificaciones de habitos permiten responder Hecho/Hoy no desde la notificacion.
 - Tests nuevos para scheduler y store.
 
 ============================================================
@@ -279,6 +294,7 @@ Timeline:
 - El scheduler no debe planificar tareas flexibles despues del inicio de sueno.
 - El scheduler no debe empujar trabajo flexible al dia siguiente.
 - Reorganizar no debe borrar historia relevante ya ocurrida en el dia.
+- Un bloque Libre largo convertido en avance debe mantener buffers y no mover bloques protegidos.
 
 Tareas:
 
@@ -309,11 +325,11 @@ Validado en esta revision:
 
 - npm run typecheck: OK.
 - npm test: OK.
-- Vitest: 3 test files, 44 tests.
+- Vitest: 4 test files, 51 tests.
 
 Validacion pendiente:
 
-- Build release Android actual.
+- Build release Android posterior a los ultimos cambios.
 - Instalacion en dispositivo real.
 - Pruebas E2E de notificaciones.
 - Pruebas de alarmas reales.
@@ -333,7 +349,7 @@ La incoherencia principal ya no es conceptual, sino operacional:
 - algunas pantallas existen pero aun necesitan pulido Android;
 - ciertos modulos estan implementados, pero no explicados al usuario;
 - notificaciones y alarmas requieren validacion nativa real;
-- el scheduler ya mejoro, pero todavia necesita reglas de huecos libres y avance parcial.
+- el scheduler ya mejoro y tiene primera decision de huecos Libre, pero todavia necesita saldo restante y ExecutionRecord parcial para avances.
 
 Conclusion:
 La direccion es correcta. La prioridad ahora es consolidar la experiencia diaria antes de sumar inteligencia nueva.

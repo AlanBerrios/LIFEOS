@@ -107,6 +107,26 @@ describe('scheduler core', () => {
     expect(timeline.some((block) => block.task_id === 'too-late')).toBe(false);
   });
 
+  it('keeps the configured sleep start visible while inside the sleep window', () => {
+    const now = new Date(2026, 3, 12, 1, 0, 0, 0);
+    const routine: DailyRoutine = {
+      dayOfWeek: now.getDay(),
+      sleepStart: '23:00',
+      sleepEnd: '07:00',
+      meals: [],
+      transits: []
+    };
+
+    const timeline = generateTimeline([], [], [routine], now);
+    const sleep = timeline.find((block) => block.type === 'sleep');
+
+    expect(sleep).toBeDefined();
+    expect(sleep?.start_time.getHours()).toBe(23);
+    expect(sleep?.start_time.getDate()).toBe(11);
+    expect(sleep?.end_time.getHours()).toBe(7);
+    expect(sleep?.end_time.getDate()).toBe(12);
+  });
+
   it('does not push tasks into the next local day', () => {
     const now = new Date(2026, 3, 11, 23, 45, 0, 0);
     const tasks = [

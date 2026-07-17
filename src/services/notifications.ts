@@ -30,6 +30,7 @@ export interface NotificationTestContext {
 export interface NotificationPayloadData {
   type?: string;
   id?: string;
+  habitId?: string;
   taskId?: string;
   task_id?: string;
   blockId?: string;
@@ -90,6 +91,21 @@ export function initNotifications(): void {
     }
   ]).catch((error) => {
     console.log('Error setting completion notification category:', error);
+  });
+
+  void Notifications.setNotificationCategoryAsync('habit_reminder', [
+    {
+      identifier: 'habit_done',
+      buttonTitle: '✅ Hecho',
+      options: { opensAppToForeground: false }
+    },
+    {
+      identifier: 'habit_skip',
+      buttonTitle: 'Hoy no',
+      options: { opensAppToForeground: false }
+    }
+  ]).catch((error) => {
+    console.log('Error setting habit notification category:', error);
   });
 
   if (Platform.OS === 'android') {
@@ -657,7 +673,8 @@ export async function scheduleRandomHabitReminder(
     content: {
       title: getHabitReminderTitle(habit),
       body: getHabitReminderBody(habit),
-      data: { type: 'habit', id: habit.id, taskTitle: habit.name },
+      data: { type: 'habit', id: habit.id, habitId: habit.id, taskTitle: habit.name } satisfies NotificationPayloadData,
+      categoryIdentifier: 'habit_reminder',
       sound: true,
       priority: Notifications.AndroidNotificationPriority.DEFAULT
     },

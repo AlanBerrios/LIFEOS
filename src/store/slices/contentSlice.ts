@@ -31,11 +31,35 @@ function dedupeEvents(events: StaticEvent[]): StaticEvent[] {
   return deduped;
 }
 
+function noteSignalLength(note: Pick<QuickNote, 'title' | 'content'>): number {
+  return `${note.title ?? ''} ${note.content ?? ''}`.replace(/\s+/g, ' ').trim().length;
+}
+
+function computeNoteCreateWisdomXp(note: Pick<QuickNote, 'title' | 'content'>): number {
+  const signalLength = noteSignalLength(note);
+  if (signalLength >= 160) return 12;
+  if (signalLength >= 40) return 8;
+  if (signalLength >= 12) return 4;
+  return 0;
+}
+
+function computeNoteUpdateWisdomXp(
+  previous: Pick<QuickNote, 'title' | 'content'>,
+  next: Pick<QuickNote, 'title' | 'content'>
+): number {
+  const delta = noteSignalLength(next) - noteSignalLength(previous);
+  if (delta >= 160) return 8;
+  if (delta >= 60) return 4;
+  return 0;
+}
+
 export const createContentSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
   'addNote' | 'updateNote' | 'deleteNote' | 'addAlarm' | 'toggleAlarm' | 'deleteAlarm' |
   'addEvent' | 'updateEvent' | 'setEvents' | 'deleteEvent' | 'updateRoutineDay' | 'addTravelLog'
 >> = (set, get) => ({
   addNote: (note) => {
+    const wisdomXp = computeNoteCreateWisdomXp(note);
+
     set((state) => ({
       notes: [
         {
@@ -47,13 +71,26 @@ export const createContentSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
       ]
     }));
 
+    if (wisdomXp > 0) {
+      get().addXP(wisdomXp, 'wisdom');
+    }
+
     triggerNotificationResync(get, set, 'resincronizar notificaciones de notas');
   },
 
   updateNote: (id: string, updates: Partial<QuickNote>) => {
+    const previous = get().notes.find((note) => note.id === id);
+    const wisdomXp = previous
+      ? computeNoteUpdateWisdomXp(previous, { ...previous, ...updates })
+      : 0;
+
     set((state) => ({
       notes: state.notes.map((note) => (note.id === id ? { ...note, ...updates } : note))
     }));
+
+    if (wisdomXp > 0) {
+      get().addXP(wisdomXp, 'wisdom');
+    }
 
     triggerNotificationResync(get, set, 'resincronizar notificaciones de notas');
   },

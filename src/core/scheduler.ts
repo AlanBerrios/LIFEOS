@@ -148,10 +148,14 @@ function buildRoutineBlocks(routines: DailyRoutine[], now: Date, routineOverride
   if (inSleepWindow || nowMinutes < sleepStartMinutes || (!overnightSleep && nowMinutes < sleepEndMinutes)) {
     const sleepOverride = overrideMap.get('sleep');
     if (!sleepOverride?.hidden) {
-    const sleepStart = inSleepWindow ? new Date(now) : toDateAt(routine.sleepStart);
+    const sleepStart = toDateAt(routine.sleepStart);
     const sleepEnd = toDateAt(routine.sleepEnd);
-    if (overnightSleep && sleepEnd <= sleepStart) {
-      sleepEnd.setDate(sleepEnd.getDate() + 1);
+    if (overnightSleep) {
+      if (nowMinutes < sleepEndMinutes) {
+        sleepStart.setDate(sleepStart.getDate() - 1);
+      } else if (sleepEnd <= sleepStart) {
+        sleepEnd.setDate(sleepEnd.getDate() + 1);
+      }
     }
 
     if (sleepOverride?.startTime) {

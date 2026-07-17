@@ -1,7 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
-  Modal,
   LayoutChangeEvent,
   Platform,
   Pressable,
@@ -19,6 +18,7 @@ import { createId } from '../../src/utils/ids';
 import type { MealRoutine, TransitRoutine } from '../../src/types';
 import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
+import { FormSheet } from '../../src/components/FormSheet';
 
 const DAYS_SHORT = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 type RoutineDraftKind = 'meal' | 'transit';
@@ -178,6 +178,23 @@ export default function RoutinesScreen(): ReactElement {
     updateRoutine(selectedDay, { transits: [...(currentRoutine?.transits || []), newTransit] });
     setIsRoutineModalVisible(false);
     showAlert('Traslado añadido', 'Te llevé al nuevo traslado para que configures salida, llegada y duración.');
+  }
+
+  function handleDraftTransitTime(nextTime: string) {
+    const nextDuration = Math.max(1, Number(newTransitDuration) || 30);
+    setNewTransitTime(nextTime);
+    setNewTransitArrivalTime(deriveArrivalTime(nextTime, nextDuration));
+  }
+
+  function handleDraftTransitArrival(nextArrivalTime: string) {
+    setNewTransitArrivalTime(nextArrivalTime);
+    setNewTransitDuration(String(deriveDuration(newTransitTime, nextArrivalTime)));
+  }
+
+  function handleDraftTransitDuration(nextValue: string) {
+    setNewTransitDuration(nextValue);
+    const nextDuration = Math.max(1, Number(nextValue) || 30);
+    setNewTransitArrivalTime(deriveArrivalTime(newTransitTime, nextDuration));
   }
 
   function handleDeleteMeal(mealId: string) {
@@ -522,9 +539,7 @@ export default function RoutinesScreen(): ReactElement {
 
       </ScrollView>
 
-      <Modal visible={isAlarmModalVisible} transparent animationType="slide" onRequestClose={() => setIsAlarmModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCardAlarm}>
+      <FormSheet visible={isAlarmModalVisible} onClose={() => setIsAlarmModalVisible(false)}>
             <Text style={styles.sectionTitle}>Nueva alarma</Text>
 
             <Text style={styles.label}>Etiqueta</Text>
@@ -562,13 +577,9 @@ export default function RoutinesScreen(): ReactElement {
                 <Text style={styles.addBtnText}>Guardar</Text>
               </Pressable>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </FormSheet>
 
-      <Modal visible={isRoutineModalVisible} transparent animationType="slide" onRequestClose={closeRoutineModal}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCardAlarm}>
+      <FormSheet visible={isRoutineModalVisible} onClose={closeRoutineModal}>
             <Text style={styles.sectionTitle}>{getRoutineModalTitle()}</Text>
             <Text style={styles.sectionHint}>{getRoutineModalHint()}</Text>
 
@@ -606,14 +617,14 @@ export default function RoutinesScreen(): ReactElement {
                   placeholderTextColor={lifeTheme.colors.muted}
                 />
 
-                <SafeTimePicker label="Salida" value={newTransitTime} onConfirm={setNewTransitTime} />
-                <SafeTimePicker label="Llegada" value={newTransitArrivalTime} onConfirm={setNewTransitArrivalTime} />
+                <SafeTimePicker label="Salida" value={newTransitTime} onConfirm={handleDraftTransitTime} />
+                <SafeTimePicker label="Llegada" value={newTransitArrivalTime} onConfirm={handleDraftTransitArrival} />
 
                 <Text style={styles.label}>Duración (min)</Text>
                 <TextInput
                   style={styles.alarmInput}
                   value={newTransitDuration}
-                  onChangeText={setNewTransitDuration}
+                  onChangeText={handleDraftTransitDuration}
                   keyboardType="numeric"
                   placeholder="30"
                   placeholderTextColor={lifeTheme.colors.muted}
@@ -638,9 +649,7 @@ export default function RoutinesScreen(): ReactElement {
                 <Text style={styles.addBtnText}>Guardar</Text>
               </Pressable>
             </View>
-          </View>
-        </View>
-      </Modal>
+      </FormSheet>
 
       <CustomAlertDialog
         visible={alertState.visible}
@@ -686,26 +695,26 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   section: { gap: 10 },
   sectionTitle: { color: lifeTheme.colors.text, fontSize: 19, fontWeight: '900', letterSpacing: -0.5 },
   sectionHint: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18, marginTop: -6 },
-  card: { backgroundColor: lifeTheme.colors.surface, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: lifeTheme.colors.border },
+  card: { backgroundColor: lifeTheme.colors.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: lifeTheme.colors.border },
   
-  mealCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: 20, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: lifeTheme.colors.border, gap: 12 },
-  mealDetails: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 14, padding: 12, gap: 10 },
+  mealCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: lifeTheme.colors.border, gap: 8 },
+  mealDetails: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 10, padding: 10, gap: 6 },
   
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { color: lifeTheme.colors.muted, fontSize: 15, fontWeight: '700' },
+  label: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '700' },
   
   timePickerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  timeValueBtn: { backgroundColor: `${lifeTheme.colors.primary}15`, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
-  timeValueText: { color: lifeTheme.colors.primary, fontWeight: '900', fontSize: 18 },
+  timeValueBtn: { backgroundColor: `${lifeTheme.colors.primary}15`, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9 },
+  timeValueText: { color: lifeTheme.colors.primary, fontWeight: '900', fontSize: 16 },
   
-  mealTypeInput: { color: lifeTheme.colors.text, fontSize: 18, fontWeight: '900', flex: 1, textTransform: 'capitalize' },
-  deleteBtn: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
+  mealTypeInput: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '900', flex: 1, textTransform: 'capitalize', paddingVertical: 2 },
+  deleteBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   
   durationInputGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  durationInput: { color: lifeTheme.colors.primary, fontWeight: '900', fontSize: 18, textAlign: 'right', minWidth: 40 },
-  durationSuffix: { color: lifeTheme.colors.muted, fontSize: 14, fontWeight: '700' },
+  durationInput: { color: lifeTheme.colors.primary, fontWeight: '900', fontSize: 16, textAlign: 'right', minWidth: 42, paddingVertical: 2 },
+  durationSuffix: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
   
-  divider: { height: 1, backgroundColor: lifeTheme.colors.border, marginVertical: 4 },
+  divider: { height: 1, backgroundColor: lifeTheme.colors.border, marginVertical: 2 },
   addBtn: { backgroundColor: `${lifeTheme.colors.primary}15`, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
   addBtnText: { color: lifeTheme.colors.primary, fontWeight: '900', fontSize: 13 },
   emptyText: { color: lifeTheme.colors.muted, textAlign: 'center', fontStyle: 'italic', marginTop: 20 }
@@ -714,8 +723,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   togglePillActive: { backgroundColor: `${lifeTheme.colors.primary}20`, borderColor: `${lifeTheme.colors.primary}80` },
   togglePillText: { color: lifeTheme.colors.muted, fontWeight: '800', fontSize: 11 },
   togglePillTextActive: { color: lifeTheme.colors.primary },
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
-  modalCardAlarm: { backgroundColor: lifeTheme.colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, gap: 10, borderWidth: 1, borderColor: lifeTheme.colors.border },
   alarmInput: { borderWidth: 1, borderColor: lifeTheme.colors.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: lifeTheme.colors.text, backgroundColor: lifeTheme.colors.surfaceAlt },
   daysChipRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   dayChip: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: lifeTheme.colors.surfaceAlt, borderWidth: 1, borderColor: lifeTheme.colors.border },

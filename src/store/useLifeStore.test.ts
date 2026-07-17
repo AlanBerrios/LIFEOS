@@ -41,6 +41,7 @@ vi.mock('../services/notifications', () => ({
 
 import { useLifeStore } from './useLifeStore';
 import { callSchedulerApi } from '../services/schedulerApi';
+import { generateTimeline as mockedGenerateTimeline } from '../core/scheduler';
 
 describe('useLifeStore replanification', () => {
   beforeEach(() => {
@@ -59,6 +60,7 @@ describe('useLifeStore replanification', () => {
       lastSolverStatus: '',
       isGenerating: false,
       pending_schedule_overflow: undefined,
+      pending_free_block_opportunity: undefined,
       last_scheduler_parity: undefined,
       daily_energy_reports: [],
       energy_suggested_task_ids: [],
@@ -376,6 +378,77 @@ describe('useLifeStore replanification', () => {
     const state = useLifeStore.getState();
     expect(state.completedGhostBlocks).toHaveLength(0);
     expect(state.timeline.some((block) => block.type === 'rest' && block.title === 'Libre' && block.start_time.getTime() === start.getTime())).toBe(true);
+  });
+
+  it('prompts long Libre blocks and inserts a selected task advance with buffers', async () => {
+    useLifeStore.setState((state) => ({
+      settings: { ...state.settings, breakDurationMinutes: 10 }
+    }));
+
+    useLifeStore.getState().addTask({
+      title: 'Bloque principal',
+      eta_minutes: 30,
+      priority: 4,
+      cognitive_load: 5,
+      urgency: 'today'
+    });
+    useLifeStore.getState().addTask({
+      title: 'Preparar informe',
+      eta_minutes: 90,
+      priority: 5,
+      cognitive_load: 4,
+      urgency: 'today'
+    });
+
+    const [firstTask, secondTask] = useLifeStore.getState().tasks;
+    const freeStart = new Date('2026-04-11T11:00:00.000Z');
+    const freeEnd = new Date('2026-04-11T12:00:00.000Z');
+    vi.mocked(mockedGenerateTimeline).mockReturnValueOnce([
+      {
+        id: 'block-main',
+        type: 'task',
+        task_id: firstTask.id,
+        title: firstTask.title,
+        start_time: new Date('2026-04-11T10:00:00.000Z'),
+        end_time: new Date('2026-04-11T10:30:00.000Z'),
+        cognitive_drain: 150
+      },
+      {
+        id: 'free-gap',
+        type: 'rest',
+        title: 'Libre',
+        start_time: freeStart,
+        end_time: freeEnd
+      }
+    ]);
+
+    await useLifeStore.getState().generateTimeline(new Date('2026-04-11T09:00:00.000Z'), {
+      suppressOverflowPrompt: true
+    });
+
+    const prompt = useLifeStore.getState().pending_free_block_opportunity;
+    expect(prompt?.visible).toBe(true);
+    expect(prompt?.blockId).toBe('free-gap');
+    expect(prompt?.bufferMinutes).toBe(5);
+    expect(prompt?.usableMinutes).toBe(50);
+    expect(prompt?.candidateTasks.map((task) => task.id)).toContain(secondTask.id);
+
+    useLifeStore.getState().resolveFreeBlockOpportunity(secondTask.id);
+
+    const state = useLifeStore.getState();
+    const advanceBlock = state.timeline.find((block) => block.task_id === secondTask.id);
+    expect(state.pending_free_block_opportunity).toBeUndefined();
+    expect(advanceBlock).toMatchObject({
+      type: 'task',
+      title: 'Avance: Preparar informe',
+      pinned: true,
+      isSoftBlock: true
+    });
+    expect(advanceBlock?.start_time.getTime()).toBe(new Date('2026-04-11T11:05:00.000Z').getTime());
+    expect(advanceBlock?.end_time.getTime()).toBe(new Date('2026-04-11T11:55:00.000Z').getTime());
+    expect(state.timeline.some((block) => block.type === 'rest' && block.title === 'Libre' && block.start_time.getTime() === freeStart.getTime())).toBe(true);
+    expect(state.timeline.some((block) => block.type === 'rest' && block.title === 'Libre' && block.end_time.getTime() === freeEnd.getTime())).toBe(true);
+    expect(state.tasks.find((task) => task.id === secondTask.id)?.status).toBe('scheduled');
   });
 
   it('preserves past routine blocks when regenerating the same day', async () => {
@@ -1100,6 +1173,46 @@ describe('useLifeStore replanification', () => {
 
       const task = useLifeStore.getState().tasks.find((t) => t.id === taskId);
       expect(['skipped', 'postponed']).toContain(task?.status); // May postpone on reschedule
+    });
+  });
+
+  describe('Sync Point S4: Profile Skill Progression', () => {
+    it('A4: addXP grants profile bonus when a skill crosses its own level', () => {
+      useLifeStore.getState().addXP(95, 'focus');
+      expect(useLifeStore.getState().userProfile).toMatchObject({
+        level: 1,
+        currentXP: 95,
+        skills: { focus: 95 }
+      });
+
+      useLifeStore.getState().addXP(5, 'focus');
+      expect(useLifeStore.getState().userProfile).toMatchObject({
+        level: 2,
+        currentXP: 25,
+        skills: { focus: 100 }
+      });
+    });
+
+    it('A4: meaningful notes grant Wisdom without separate persistence', () => {
+      useLifeStore.getState().addNote({
+        title: 'Decision del dia',
+        content: 'Revisar el plan y dejar una conclusion clara para manana.'
+      });
+
+      const createdNote = useLifeStore.getState().notes[0];
+      expect(useLifeStore.getState().userProfile).toMatchObject({
+        currentXP: 8,
+        skills: { wisdom: 8 }
+      });
+
+      useLifeStore.getState().updateNote(createdNote.id, {
+        content: `${createdNote.content} Tambien anoto el motivo, el resultado esperado y la siguiente accion concreta.`
+      });
+
+      expect(useLifeStore.getState().userProfile).toMatchObject({
+        currentXP: 12,
+        skills: { wisdom: 12 }
+      });
     });
   });
 

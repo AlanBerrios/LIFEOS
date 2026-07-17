@@ -1,17 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  View,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableWithoutFeedback,
-  Keyboard
+  View
 } from 'react-native';
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +15,7 @@ import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
 import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
+import { FormSheet } from '../../src/components/FormSheet';
 
 const EMOJI_OPTIONS = ['💧', '🏃', '🥗', '🧘', '📚', '💊', '🍎', '💤', '🚶', '💪', '🧠', '✨'];
 
@@ -30,6 +26,68 @@ const SUGGESTIONS = [
   { name: 'Dormir 8h', emoji: '💤', goalValue: 8, goalUnit: 'horas', color: '#60a5fa' },
   { name: 'Sin Cafeína', emoji: '☕', goalValue: 1, goalUnit: 'día', color: '#f87171' }
 ];
+
+type HabitStepButtonProps = {
+  label: string;
+  delta: number;
+  onStep: (delta: number) => void;
+  accessibilityLabel: string;
+  styles: ReturnType<typeof createStyles>;
+};
+
+function HabitStepButton({
+  label,
+  delta,
+  onStep,
+  accessibilityLabel,
+  styles
+}: HabitStepButtonProps): ReactElement {
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const repeatCountRef = useRef(0);
+  const holdingRef = useRef(false);
+
+  function clearRepeat(): void {
+    holdingRef.current = false;
+    repeatCountRef.current = 0;
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }
+
+  function scheduleRepeat(delayMs: number): void {
+    timeoutRef.current = setTimeout(() => {
+      if (!holdingRef.current) return;
+      repeatCountRef.current += 1;
+      onStep(delta);
+      const nextDelay = Math.max(160, delayMs - (repeatCountRef.current % 4 === 0 ? 45 : 0));
+      scheduleRepeat(nextDelay);
+    }, delayMs);
+  }
+
+  useEffect(() => clearRepeat, []);
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.stepBtn,
+        holdingRef.current && styles.stepBtnHolding,
+        pressed && { opacity: 0.7 }
+      ]}
+      onPressIn={() => {
+        clearRepeat();
+        holdingRef.current = true;
+        onStep(delta);
+        scheduleRepeat(520);
+      }}
+      onPressOut={clearRepeat}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+    >
+      <Text style={styles.stepBtnText}>{label}</Text>
+    </Pressable>
+  );
+}
 
 export default function HabitsScreen(): ReactElement {
   const insets = useSafeAreaInsets();
@@ -130,7 +188,7 @@ export default function HabitsScreen(): ReactElement {
         </View>
       </View>
 
-      <Text style={styles.helperText}>Tip: usa + y - para ajustar progreso; la racha solo sube al completar 100%.</Text>
+      <Text style={styles.helperText}>Tip: toca + o - para ajustar de a uno; mantenlo presionado para avanzar continuo.</Text>
 
       {habits.length > 0 && (() => {
         const maxStreak = Math.max(...habits.map((h) => h.streak), 7);
@@ -209,29 +267,21 @@ export default function HabitsScreen(): ReactElement {
                 </View>
 
                 <View style={styles.habitActions}>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.stepBtn,
-                      pressed && { opacity: 0.7 }
-                    ]}
-                    onPress={() => logHabit(habit.id, -1)}
-                    accessibilityRole="button"
+                  <HabitStepButton
+                    label="−"
+                    delta={-1}
+                    onStep={(delta) => logHabit(habit.id, delta)}
+                    styles={styles}
                     accessibilityLabel={`Disminuir progreso del habito ${habit.name}`}
-                  >
-                    <Text style={styles.stepBtnText}>−</Text>
-                  </Pressable>
+                  />
 
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.stepBtn,
-                      pressed && { opacity: 0.7 }
-                    ]}
-                    onPress={() => logHabit(habit.id, 1)}
-                    accessibilityRole="button"
+                  <HabitStepButton
+                    label="+"
+                    delta={1}
+                    onStep={(delta) => logHabit(habit.id, delta)}
+                    styles={styles}
                     accessibilityLabel={`Aumentar progreso del habito ${habit.name}`}
-                  >
-                    <Text style={styles.stepBtnText}>+</Text>
-                  </Pressable>
+                  />
 
                   <Pressable
                     style={({ pressed }) => [
@@ -286,14 +336,7 @@ export default function HabitsScreen(): ReactElement {
         )}
       </View>
 
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalCard}>
+      <FormSheet visible={modalVisible} onClose={() => { setModalVisible(false); setEditingHabitId(null); }}>
                 <Text style={styles.modalTitle}>{editingHabitId ? 'Editar Hábito' : 'Nuevo Hábito'}</Text>
 
                 <View style={styles.modalSuggestions}>
@@ -368,11 +411,7 @@ export default function HabitsScreen(): ReactElement {
                     <Text style={styles.saveBtnText}>{editingHabitId ? 'Guardar' : 'Crear'}</Text>
                   </Pressable>
                 </View>
-              </View>
-            </View>
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
-      </Modal>
+      </FormSheet>
 
       <CustomAlertDialog
         visible={alertState.visible}
@@ -470,6 +509,10 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       borderColor: lifeTheme.colors.border,
       alignItems: 'center'
     },
+    stepBtnHolding: {
+      borderColor: lifeTheme.colors.primary,
+      backgroundColor: `${lifeTheme.colors.primary}18`
+    },
     stepBtnText: { color: lifeTheme.colors.text, fontWeight: '900', fontSize: 16 },
     completeBtn: {
       flex: 1,
@@ -487,8 +530,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     delBtnText: { fontSize: 14 },
     emptyCard: { padding: 40, alignItems: 'center' },
     emptyText: { color: lifeTheme.colors.muted, textAlign: 'center', lineHeight: 22 },
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20 },
-    modalCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: 24, padding: 24, gap: 16, borderWidth: 1, borderColor: lifeTheme.colors.border },
     modalTitle: { color: lifeTheme.colors.text, fontSize: 20, fontWeight: '900', marginBottom: 4 },
     label: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
     input: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12, padding: 14, color: lifeTheme.colors.text, fontSize: 16, borderWidth: 1, borderColor: lifeTheme.colors.border },

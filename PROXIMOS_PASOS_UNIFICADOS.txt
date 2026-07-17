@@ -1,5 +1,5 @@
 LIFEOS - PROXIMOS PASOS UNIFICADOS
-Actualizado: 2026-05-07
+Actualizado: 2026-07-17
 
 Este archivo reemplaza To_do_ideas, ANALISIS ACTUAL, AUDITORIA_Y_PLAN_LIFEOS y el reporte suelto de backend.
 Es el backlog operativo unico por impacto.
@@ -31,14 +31,27 @@ Estos puntos de la lista del usuario ya tienen primera solucion:
 - El scheduler corta en sueno o fin de dia.
 - Reorganizar conserva bloques pasados relevantes y fantasmas del dia.
 - Los bloques Libre generados quedan protegidos para no romper el plan.
+- Los bloques Libre largos generan prompt de oportunidad para avanzar una tarea o dejarlos libres.
+- El avance dentro de Libre inserta buffers de descanso al inicio/final sin mover eventos ni rutinas.
 - Los fantasmas completados se pueden convertir a Libre.
 - Recordatorio de pendientes activo por default.
 - Swipe del task pool menos sensible.
 - Botones explicitos en tareas del pool.
-- Tests agregados: 44 pasando.
+- FormSheet reutilizable para formularios Android con teclado/safe area.
+- Rutinas, notas, home y habitos usan formularios mas seguros frente al teclado.
+- Rutinas mas compactas y traslados recalculan duracion/salida/llegada.
+- Rutina de dormir aparece en timeline y conserva inicio configurado si ya estas en horario de sueno.
+- Bloques pasados se marcan visualmente como TERMINADO sin modificar datos.
+- Logros en grilla compacta, contador inicial y pistas secretas.
+- POST_NOTIFICATIONS declarado en app.json.
+- Habitos: mantener + o - incrementa/decrementa de forma continua y controlada.
+- Habitos desde notificacion: acciones Hecho/Hoy no conectadas al store.
+- Atributos/habilidades: tarjetas tocables con nivel, progreso, fuente de puntos y bonus de EXP por nivel.
+- Sabiduria: crear o ampliar notas utiles entrega puntos reales.
+- Tests agregados: 51 pasando.
 
 Pendiente:
-Validar en build Android instalada, no solo en tests.
+Validar en build Android instalada, no solo en tests. Regenerar APK despues de cambios recientes si se quiere probar esta tanda exacta.
 
 ============================================================
 2. P0 - CONFIABILIDAD ANDROID
@@ -47,11 +60,11 @@ Validar en build Android instalada, no solo en tests.
 P0.1 Permisos Android de notificaciones
 
 Problema:
-AndroidManifest no muestra POST_NOTIFICATIONS, y en Android moderno puede impedir notificaciones reales si Expo/prebuild no lo agrega correctamente.
+Android moderno requiere POST_NOTIFICATIONS para notificaciones reales.
 
 Accion:
-- Revisar app.json/plugins/permisos Expo.
-- Asegurar POST_NOTIFICATIONS para Android 13+.
+- Mantener POST_NOTIFICATIONS en app.json.
+- Confirmar que prebuild/manifest lo reflejan correctamente.
 - Revisar exact alarms si se decide implementar alarma nativa.
 - Retirar permisos heredados no justificados: READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, SYSTEM_ALERT_WINDOW.
 
@@ -97,17 +110,16 @@ P1.1 Politica canonica para bloques Libre
 Problema:
 Los bloques Libre largos pueden ser utiles, pero hoy se sienten como ruido o como bloques peligrosos.
 
-Accion:
-- Definir tipos visuales:
-  - Libre corto: buffer.
-  - Libre largo: oportunidad.
-  - Descanso: recuperacion sugerida.
-  - Avance: bloque parcial de tarea.
-- No permitir edicion destructiva directa en bloques Libre generados.
-- Agregar acciones:
-  - Dejar libre.
-  - Tomar descanso.
-  - Usar para avance de tarea.
+Estado:
+- Primera solucion implementada.
+- Los bloques Libre generados no permiten edicion destructiva directa.
+- Libre largo se trata como oportunidad.
+- Hay prompt global para Dejar libre o Usar para avance de tarea.
+- El avance elegido divide el hueco en buffer Libre + tarea + buffer Libre.
+
+Accion pendiente:
+- Diferenciar visualmente Libre corto, Libre largo, descanso sugerido y avance con mas claridad.
+- Agregar opcion explicita Tomar descanso cuando el usuario quiera conservar el hueco como recuperacion.
 
 Criterio de salida:
 - Editar o tocar Libre nunca rompe eventos/rutinas.
@@ -119,11 +131,14 @@ Caso:
 Transito termina 18:40 y once empieza 20:00. Hay 80 minutos libres.
 
 Accion:
-- Configurar buffers de descanso al inicio y final del hueco.
-- Si queda tiempo productivo, preguntar al organizar el dia:
-  - quieres hacer un avance de una tarea?
-  - quieres dejarlo libre?
-- Permitir elegir una tarea y crear bloque parcial.
+- Configurar buffers de descanso al inicio y final del hueco: primera solucion usa la mitad del descanso configurado, por defecto 5 min por lado.
+- Si queda tiempo productivo, preguntar al organizar el dia: implementado con prompt de oportunidad.
+- Permitir elegir una tarea y crear bloque parcial: implementado como bloque "Avance: ...".
+
+Pendiente:
+- El avance todavia no crea ExecutionRecord parcial.
+- El avance todavia no divide la tarea en saldo restante automatico.
+- Falta QA visual en Android real con huecos entre transito/comida/rutina.
 
 Criterio de salida:
 - El bloque parcial no marca la tarea completa.
@@ -174,10 +189,13 @@ Problemas:
 - Teclado tapa campos.
 - Falta opcion clara de rutinas personalizadas.
 
-Accion:
-- Usar bottom sheets con safe area y KeyboardAvoidingView.
+Estado:
+- Primera compactacion implementada.
+- Formularios principales usan hoja segura.
+- Traslados recalculan duracion automaticamente.
+
+Accion pendiente:
 - Crear editor compacto por secciones: sueno, comidas, transitos, personalizados.
-- Recalcular duracion automaticamente al editar hora inicio/fin.
 - Permitir bloque personalizado con tipo, hora, duracion y dureza.
 
 Criterio de salida:
@@ -187,13 +205,14 @@ Criterio de salida:
 P2.2 Corregir teclado en toda la app
 
 Pantallas a revisar:
-- Home quick task/event.
+- Home quick task/event: primera solucion implementada.
 - Pool task form.
-- Notes.
-- Routines.
+- Notes: primera solucion implementada.
+- Routines: primera solucion implementada.
 - Alarms.
 - Settings inputs numericos.
 - Dialogos de completion/partial.
+- Habits: primera solucion implementada.
 
 Accion:
 - Estandarizar contenedores con safe area, scroll y keyboardShouldPersistTaps.
@@ -224,12 +243,17 @@ Criterio de salida:
 
 P3.2 Habitos desde notificacion
 
-Accion:
-- Categoria de notificacion de habito con acciones:
-  - Completado.
-  - No completado.
-  - Recordar despues.
-- Procesar accion en app/_layout.tsx sin abrir UI.
+Estado:
+- Categoria de notificacion de habito implementada.
+- Acciones actuales:
+  - Hecho: completa el objetivo diario del habito.
+  - Hoy no: omite esta respuesta y reprograma recordatorio.
+- Procesamiento conectado en app/_layout.tsx sin abrir una pantalla especifica.
+
+Pendiente:
+- QA Android real en foreground/background/cold start.
+- Evaluar agregar "Recordar despues" como tercera accion.
+- Verificar comportamiento de opensAppToForeground=false: Expo advierte que si la app esta cerrada el listener puede no ejecutarse.
 
 Criterio de salida:
 - El usuario responde desde la notificacion y el habit log cambia correctamente.
@@ -248,10 +272,9 @@ Accion pendiente:
 
 P4.1 Mantener + o - para ajustar cantidad
 
-Accion:
-- Implementar press-and-hold con intervalo progresivo lento.
-- Aceleracion suave, con limite para evitar saltos absurdos.
-- Feedback visual del valor actual.
+Estado:
+- Implementado press-and-hold con intervalo progresivo lento, aceleracion suave y limite inferior.
+- Tap suma/resta 1.
 
 Criterio de salida:
 - Tap suma/resta 1.
@@ -277,28 +300,36 @@ Criterio de salida:
 
 P5.1 Energia cognitiva
 
-Problema:
-El usuario no entiende que es ni para que sirve.
+Estado:
+- Se aplico B en corto plazo: energia cognitiva salio de Stats principal.
+- La lectura de energia queda en Metricas Avanzadas como "Energia de hoy".
 
-Opciones:
-A) Simplificarla como "energia de hoy" y ocultar tecnicismos.
-B) Sacarla de UI principal y dejarla como metrica avanzada.
-C) Mantenerla solo si cada recomendacion explica su efecto.
-
-Recomendacion:
-B en corto plazo, C a mediano plazo.
+Siguiente accion:
+- Mantenerla fuera de la UI principal mientras no explique decisiones claras.
+- Si vuelve a Stats, debe hacerlo como recomendacion simple, no como drenaje tecnico:
+  - "baja exigencia";
+  - "puedes meter una tarea intensa";
+  - "conviene descanso o tareas livianas".
 
 P5.2 Stats sin redundancia
 
-Accion:
-- Eliminar "estado del pool" si no aporta decision.
-- Priorizar metricas de uso:
+Estado:
+- "Estado del pool" fue eliminado de Estadisticas.
+- Metricas avanzadas tiene primera pasada enfocada en uso real:
+  - cumplimiento del dia;
+  - ejecucion real;
+  - replans aceptados/rechazados;
+  - huecos libres;
+  - transito observado;
+  - energia de hoy.
+
+Siguiente accion:
+- Validar en uso real si cada metrica responde una pregunta accionable.
+- Ampliar metricas de uso:
   - tareas completadas por hora;
   - tareas movidas;
-  - replans aceptados/rechazados;
   - tiempo libre usado vs desperdiciado;
   - precision ETA;
-  - transitos tarde/a tiempo;
   - cumplimiento de rutinas;
   - tasa de completion desde notificacion.
 
@@ -307,10 +338,12 @@ Criterio de salida:
 
 P5.3 Logros
 
-Accion:
-- Grid compacto.
+Estado:
+- Grid compacto implementado.
 - Header con desbloqueados/total/secretos.
 - Logros secretos con pista, no condicion totalmente oculta.
+
+Accion pendiente:
 - Mantener detalle en modal.
 
 Criterio de salida:
@@ -318,17 +351,27 @@ Criterio de salida:
 
 P5.4 Atributos y habilidades
 
-Accion:
-- Al tocar atributo/habilidad, explicar:
+Estado:
+- Primera pasada implementada en Stats.
+- Al tocar atributo/habilidad, ahora explica:
   - que significa;
   - como se sube;
   - que acciones dan EXP;
   - nivel actual y progreso.
-- Cada atributo/habilidad debe tener nivel propio.
-- Completar nivel debe dar XP o recompensa clara.
+- Cada atributo/habilidad tiene nivel derivado propio.
+- Cada 100 puntos de atributo cruza un nivel y entrega bonus de EXP de perfil.
+- Sabiduria ya sube al crear notas utiles o ampliar notas de forma significativa.
+
+Siguiente accion:
+- Ampliar Sabiduria a otras acciones reales:
+  - revisar notas;
+  - cerrar reflexiones del dia;
+  - revisar metricas y tomar una decision.
+- Ajustar balance de bonus si sube muy rapido o muy lento.
 
 Criterio de salida:
 - El usuario entiende el RPG sin documento externo.
+- Sabiduria tiene fuentes reales y no solo texto explicativo.
 
 ============================================================
 8. P6 - TASK POOL Y UX DE EJECUCION

@@ -2,6 +2,7 @@ import type { StateCreator } from 'zustand';
 import type { LifeStore } from '../lifeStore.types';
 import { getTodayStr } from '../../utils/date';
 import type { BadgeId, BadgeUnlock } from '../../types';
+import { applyXpProgress, computeSkillLevelBonus } from '../domain/profileProgress';
 
 interface BadgeDefinition extends Omit<BadgeUnlock, 'unlockedAt'> {
   xpReward: number;
@@ -38,29 +39,17 @@ export const createProfileSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
   addXP: (amount, skill) => {
     set((state) => {
       const { level, currentXP, skills } = state.userProfile;
-      const nextSkills = { ...skills, [skill]: Math.max(0, skills[skill] + amount) };
-      let nextXP = currentXP + amount;
-      let nextLevel = level;
-
-      while (nextXP >= nextLevel * 100) {
-        nextXP -= nextLevel * 100;
-        nextLevel += 1;
-      }
-
-      while (nextXP < 0 && nextLevel > 1) {
-        nextLevel -= 1;
-        nextXP += nextLevel * 100;
-      }
-
-      if (nextXP < 0) {
-        nextXP = 0;
-      }
+      const beforeSkillPoints = skills[skill];
+      const nextSkillPoints = Math.max(0, beforeSkillPoints + amount);
+      const skillLevelBonus = computeSkillLevelBonus(beforeSkillPoints, nextSkillPoints);
+      const nextSkills = { ...skills, [skill]: nextSkillPoints };
+      const xpProgress = applyXpProgress(currentXP, level, amount + skillLevelBonus);
 
       return {
         userProfile: {
           ...state.userProfile,
-          level: nextLevel,
-          currentXP: nextXP,
+          level: xpProgress.level,
+          currentXP: xpProgress.currentXP,
           skills: nextSkills
         }
       };
@@ -103,18 +92,13 @@ export const createProfileSlice: StateCreator<LifeStore, [], [], Pick<LifeStore,
         .filter((def) => unlockedNow.some((badge) => badge.id === def.id))
         .reduce((sum, def) => sum + def.xpReward, 0);
 
-      let nextLevel = profile.level;
-      let nextXP = profile.currentXP + xpFromBadges;
-      while (nextXP >= nextLevel * 100) {
-        nextXP -= nextLevel * 100;
-        nextLevel += 1;
-      }
+      const xpProgress = applyXpProgress(profile.currentXP, profile.level, xpFromBadges);
 
       return {
         userProfile: {
           ...profile,
-          level: nextLevel,
-          currentXP: nextXP,
+          level: xpProgress.level,
+          currentXP: xpProgress.currentXP,
           consistency: {
             currentStreak,
             bestStreak,
