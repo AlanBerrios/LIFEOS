@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 import type { ReactElement } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAppTheme } from '../theme';
 import type { ScheduleOverflowCandidate } from '../store/lifeStore.types';
+import { FormSheet } from './FormSheet';
+import { AppButton } from './ui';
 
 interface FreeBlockOpportunityPromptProps {
   visible: boolean;
@@ -29,10 +31,9 @@ export function FreeBlockOpportunityPrompt({
   const styles = useMemo(() => createStyles(lifeTheme), [lifeTheme]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
-      <Pressable style={styles.overlay} onPress={onDismiss}>
-        <Pressable style={styles.card} onPress={(event) => event.stopPropagation()}>
-          <Text style={styles.title}>Hueco libre util</Text>
+    <FormSheet visible={visible} onClose={onDismiss} align="center" animationType="fade">
+        <View style={styles.card}>
+          <Text style={styles.title}>Bloque libre disponible</Text>
           <Text style={styles.subtitle}>
             Hay {totalMinutes} min libres. Puedo dejar {bufferMinutes} min de descanso al inicio y al final, y usar {usableMinutes} min para avanzar una tarea.
           </Text>
@@ -48,7 +49,7 @@ export function FreeBlockOpportunityPrompt({
             </View>
           </View>
 
-          <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+          <ScrollView style={styles.list} contentContainerStyle={styles.listContent} nestedScrollEnabled>
             {candidateTasks.map((task) => {
               const recommended = task.id === recommendedTaskId;
               return (
@@ -75,30 +76,16 @@ export function FreeBlockOpportunityPrompt({
           </ScrollView>
 
           <View style={styles.actions}>
-            <Pressable style={styles.secondaryBtn} onPress={onDismiss}>
-              <Text style={styles.secondaryText}>Dejar libre</Text>
-            </Pressable>
+            <AppButton label="Dejar libre" variant="outlined" onPress={onDismiss} fullWidth />
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </View>
+    </FormSheet>
   );
 }
 
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
-    overlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.55)',
-      justifyContent: 'center',
-      paddingHorizontal: lifeTheme.spacing.md
-    },
     card: {
-      backgroundColor: lifeTheme.colors.surface,
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      borderRadius: lifeTheme.radius.md,
-      padding: lifeTheme.spacing.md,
       gap: lifeTheme.spacing.sm,
       maxHeight: '78%'
     },
@@ -182,20 +169,5 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       flexDirection: 'row',
       gap: 10
     },
-    secondaryBtn: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      borderRadius: 10,
-      paddingVertical: 11,
-      backgroundColor: lifeTheme.colors.surfaceAlt
-    },
-    secondaryText: {
-      color: lifeTheme.colors.text,
-      fontSize: 13,
-      fontWeight: '800'
-    }
   });
 }

@@ -1,12 +1,15 @@
 import type { ReactElement } from 'react';
 import { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
 import { getSkillProgress, SKILL_LEVEL_BONUS_XP } from '../../src/store/domain/profileProgress';
+import { Award, ChartNoAxesCombined } from 'lucide-react-native';
+import { AppButton, ScreenHeader, SectionHeader } from '../../src/components/ui';
+import { FormSheet } from '../../src/components/FormSheet';
 
 function formatMinutes(mins: number): string {
   if (mins < 60) return `${mins}m`;
@@ -208,15 +211,16 @@ export default function StatsScreen(): ReactElement {
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: 48 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View entering={FadeInDown.duration(300)} style={styles.hero}>
-          <View style={styles.heroGlow} />
-          <Text style={styles.heroKicker}>Sistema Operativo Personal</Text>
-          <Text style={styles.heroTitle}>Estadísticas</Text>
-          <Text style={styles.heroSub}>Panel simplificado de hoy con acceso a detalle avanzado.</Text>
+        <Animated.View entering={FadeInDown.duration(220)}>
+          <ScreenHeader
+            eyebrow="Progreso"
+            title="Métricas"
+            subtitle="Actividad, constancia y habilidades."
+          />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(70).duration(260)} style={styles.section}>
-          <Text style={styles.sectionTitle}>1. Resumen de Hoy</Text>
+          <SectionHeader title="Resumen de hoy" />
           <View style={styles.statGrid}>
             <StatCard label="Completadas" value={`${completedToday}`} icon="✅" accent={lifeTheme.colors.success} delay={80} />
             <StatCard label="Saltadas" value={`${skippedToday}`} icon="⏭️" accent={lifeTheme.colors.muted} delay={120} />
@@ -239,7 +243,7 @@ export default function StatsScreen(): ReactElement {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(150).duration(260)} style={styles.section}>
-          <Text style={styles.sectionTitle}>2. Últimos 7 Días</Text>
+          <SectionHeader title="Últimos 7 días" />
           <View style={styles.sparklineRow}>
             {last7.map((date, i) => {
               const completed = sessionMap[date]?.tasksCompleted ?? 0;
@@ -270,7 +274,7 @@ export default function StatsScreen(): ReactElement {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(190).duration(260)} style={styles.section}>
-          <Text style={styles.sectionTitle}>3. Atributos y Habilidades</Text>
+          <SectionHeader title="Atributos y habilidades" subtitle="Toca uno para ver cómo progresa" />
           <View style={styles.skillGrid}>
             {SKILL_DEFINITIONS.map((definition, index) => (
               <SkillCard
@@ -286,7 +290,7 @@ export default function StatsScreen(): ReactElement {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(270).duration(260)} style={styles.section}>
-          <Text style={styles.sectionTitle}>4. Logros RPG</Text>
+          <SectionHeader title="Logros" />
           <View style={styles.achievementsSummaryRow}>
             <View style={styles.achievementMiniCard}>
               <Text style={styles.achievementMiniValue}>{unlockedBadges}</Text>
@@ -301,14 +305,11 @@ export default function StatsScreen(): ReactElement {
               <Text style={styles.achievementMiniLabel}>Secretos</Text>
             </View>
           </View>
-          <Text style={styles.smallHint}>Catálogo ampliado con logros comunes, épicos, legendarios y secretos.</Text>
-          <Pressable style={styles.primaryBtn} onPress={() => router.push('/achievements' as any)}>
-            <Text style={styles.primaryBtnText}>Abrir página de Logros RPG</Text>
-          </Pressable>
+          <AppButton label="Ver logros" icon={Award} onPress={() => router.push('/achievements' as any)} />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(310).duration(260)} style={styles.section}>
-          <Text style={styles.sectionTitle}>5. Métricas</Text>
+          <SectionHeader title="Tendencias" />
           <View style={styles.simpleMetricsRow}>
             <View style={styles.simpleMetricCard}>
               <Text style={styles.simpleMetricValue}>{completionRate}%</Text>
@@ -323,16 +324,12 @@ export default function StatsScreen(): ReactElement {
               <Text style={styles.simpleMetricLabel}>Racha actual</Text>
             </View>
           </View>
-          <Text style={styles.smallHint}>Vista rápida para decisiones del día. El análisis completo vive en la pantalla avanzada.</Text>
-          <Pressable style={styles.secondaryBtn} onPress={() => router.push('/advanced-metrics' as any)}>
-            <Text style={styles.secondaryBtnText}>Ver Métricas Avanzadas</Text>
-          </Pressable>
+          <AppButton label="Ver métricas de uso" icon={ChartNoAxesCombined} variant="outlined" onPress={() => router.push('/advanced-metrics' as any)} />
         </Animated.View>
       </ScrollView>
 
-      <Modal visible={selectedSkill != null} transparent animationType="fade" onRequestClose={() => setSelectedSkill(null)}>
-        <Pressable style={styles.skillModalOverlay} onPress={() => setSelectedSkill(null)}>
-          <Pressable style={styles.skillModalCard} onPress={(event) => event.stopPropagation()}>
+      <FormSheet visible={selectedSkill != null} onClose={() => setSelectedSkill(null)} align="center" animationType="fade">
+          <View style={styles.skillModalCard}>
             {selectedSkill && (
               <>
                 <View style={styles.skillModalHeader}>
@@ -366,14 +363,11 @@ export default function StatsScreen(): ReactElement {
                 </Text>
                 <Text style={styles.skillModalMeta}>{selectedSkill.systemNote}</Text>
 
-                <Pressable style={styles.skillModalCloseBtn} onPress={() => setSelectedSkill(null)}>
-                  <Text style={styles.skillModalCloseText}>Cerrar</Text>
-                </Pressable>
+                <AppButton label="Cerrar" onPress={() => setSelectedSkill(null)} fullWidth />
               </>
             )}
-          </Pressable>
-        </Pressable>
-      </Modal>
+          </View>
+      </FormSheet>
     </>
   );
 }
@@ -388,40 +382,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       padding: lifeTheme.spacing.lg,
       gap: lifeTheme.spacing.lg
     },
-    hero: {
-      backgroundColor: lifeTheme.colors.surface,
-      borderRadius: lifeTheme.radius.lg,
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      padding: lifeTheme.spacing.lg,
-      gap: 8,
-      overflow: 'hidden'
-    },
-    heroGlow: {
-      position: 'absolute',
-      right: -24,
-      top: -24,
-      width: 120,
-      height: 120,
-      borderRadius: 999,
-      backgroundColor: `${lifeTheme.colors.primary}22`
-    },
-    heroKicker: {
-      color: lifeTheme.colors.success,
-      fontSize: 11,
-      fontWeight: '800',
-      textTransform: 'uppercase'
-    },
-    heroTitle: {
-      color: lifeTheme.colors.text,
-      fontSize: 24,
-      fontWeight: '900'
-    },
-    heroSub: {
-      color: lifeTheme.colors.muted,
-      fontSize: 12,
-      lineHeight: 18
-    },
     section: {
       backgroundColor: lifeTheme.colors.surface,
       borderWidth: 1,
@@ -429,12 +389,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       borderRadius: lifeTheme.radius.lg,
       padding: lifeTheme.spacing.lg,
       gap: 12
-    },
-    sectionTitle: {
-      color: lifeTheme.colors.text,
-      fontSize: 14,
-      fontWeight: '800',
-      textTransform: 'uppercase'
     },
     statGrid: {
       flexDirection: 'row',
@@ -618,19 +572,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       fontSize: 11,
       fontWeight: '700'
     },
-    primaryBtn: {
-      marginTop: 2,
-      backgroundColor: lifeTheme.colors.primary,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 12
-    },
-    primaryBtnText: {
-      color: lifeTheme.colors.onPrimary,
-      fontSize: 13,
-      fontWeight: '800'
-    },
     simpleMetricsRow: {
       flexDirection: 'row',
       gap: 10
@@ -655,32 +596,10 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       fontSize: 11,
       fontWeight: '700'
     },
-    secondaryBtn: {
-      marginTop: 2,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 11,
-      backgroundColor: `${lifeTheme.colors.primary}12`
-    },
-    secondaryBtnText: {
-      color: lifeTheme.colors.primary,
-      fontSize: 13,
-      fontWeight: '800'
-    },
     smallHint: {
       color: lifeTheme.colors.muted,
       fontSize: 11,
       lineHeight: 17
-    },
-    skillModalOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.68)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 22
     },
     skillModalCard: {
       width: '100%',
@@ -729,18 +648,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       color: lifeTheme.colors.muted,
       fontSize: 12,
       lineHeight: 18
-    },
-    skillModalCloseBtn: {
-      alignSelf: 'flex-end',
-      backgroundColor: lifeTheme.colors.primary,
-      borderRadius: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 9
-    },
-    skillModalCloseText: {
-      color: lifeTheme.colors.onPrimary,
-      fontSize: 12,
-      fontWeight: '900'
     },
   });
 }

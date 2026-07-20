@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useAppTheme } from '../theme';
 import { ColorWheelPicker } from './ColorWheelPicker';
+import { FormSheet } from './FormSheet';
+import { AppButton } from './ui';
 
 interface AppColorPickerSheetProps {
   visible: boolean;
@@ -133,9 +135,8 @@ export function AppColorPickerSheet({
   const brightness = useMemo(() => getBrightnessFromHex(draftColor), [draftColor]);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={styles.card} onPress={(event) => event.stopPropagation()}>
+    <FormSheet visible={visible} onClose={onClose}>
+        <View style={styles.card}>
           <Text style={styles.title}>{title ?? 'Selecciona un color'}</Text>
 
           <View style={styles.previewRow}>
@@ -168,50 +169,35 @@ export function AppColorPickerSheet({
           </View>
 
           <View style={styles.actions}>
-            <Pressable style={styles.actionSecondary} onPress={onClose}>
-              <Text style={styles.actionSecondaryText}>Cancelar</Text>
-            </Pressable>
+            <View style={styles.action}><AppButton label="Cancelar" variant="outlined" onPress={onClose} fullWidth /></View>
             {onClear ? (
-              <Pressable
-                style={styles.actionSecondary}
+              <View style={styles.action}><AppButton
+                label="Limpiar"
+                variant="text"
                 onPress={() => {
                   onClear();
                   onClose();
                 }}
-              >
-                <Text style={styles.actionSecondaryText}>Limpiar</Text>
-              </Pressable>
+                fullWidth
+              /></View>
             ) : null}
-            <Pressable
-              style={styles.actionPrimary}
+            <View style={styles.action}><AppButton
+              label="Aplicar"
               onPress={() => {
                 onApply(draftColor);
                 onClose();
               }}
-            >
-              <Text style={styles.actionPrimaryText}>Aplicar</Text>
-            </Pressable>
+              fullWidth
+            /></View>
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </View>
+    </FormSheet>
   );
 }
 
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
-    overlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.55)',
-      justifyContent: 'center',
-      paddingHorizontal: 20
-    },
     card: {
-      backgroundColor: lifeTheme.colors.surface,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      padding: 14,
       gap: 12
     },
     title: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800' },
@@ -256,25 +242,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     brightnessLabel: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
     slider: { width: '100%', height: 30 },
     actions: { flexDirection: 'row', gap: 10 },
-    actionSecondary: {
-      flex: 1,
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 10,
-      backgroundColor: lifeTheme.colors.surfaceAlt
-    },
-    actionSecondaryText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
-    actionPrimary: {
-      flex: 1,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 10,
-      backgroundColor: lifeTheme.colors.primary
-    },
-    actionPrimaryText: { color: lifeTheme.colors.onPrimary, fontSize: 12, fontWeight: '800' }
+    action: { flex: 1 },
   });
 }

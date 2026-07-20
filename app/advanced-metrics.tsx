@@ -1,12 +1,14 @@
 import type { ReactElement } from 'react';
 import { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useLifeStore } from '../src/store/useLifeStore';
 import { useAppTheme } from '../src/theme';
 import type { ScheduleBlock } from '../src/types';
+import { FormSheet } from '../src/components/FormSheet';
+import { AppButton, ScreenHeader, SectionHeader } from '../src/components/ui';
 
 function localDateKey(date: Date): string {
   const year = date.getFullYear();
@@ -220,14 +222,13 @@ export default function AdvancedMetricsScreen(): ReactElement {
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: 48 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View entering={FadeInDown.duration(260)} style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backBtnText}>Atras</Text>
-          </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>Metricas de Uso</Text>
-            <Text style={styles.headerSub}>Que paso hoy y que patron se esta formando.</Text>
-          </View>
+        <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
+          <ScreenHeader
+            onBack={() => router.back()}
+            eyebrow="Actividad"
+            title="Métricas de uso"
+            subtitle="Qué pasó hoy y qué patrón se está formando."
+          />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(60).duration(260)} style={styles.summaryBand}>
@@ -291,7 +292,7 @@ export default function AdvancedMetricsScreen(): ReactElement {
             onPress={setDetailModal}
           />
           <MetricCard
-            title="Energia de hoy"
+            title="Ajuste de carga"
             value={energyHitRate}
             label={todayEnergy?.telemetry ? 'match' : 'estado'}
             hint={todayEnergy ? 'Usa energia para ajustar exigencia, no como juicio.' : 'Registra energia para mejorar sugerencias.'}
@@ -302,7 +303,7 @@ export default function AdvancedMetricsScreen(): ReactElement {
         </View>
 
         <Animated.View entering={FadeInDown.delay(120).duration(260)} style={styles.section}>
-          <Text style={styles.sectionTitle}>Tendencia reciente</Text>
+          <SectionHeader title="Tendencia reciente" />
           <View style={styles.trendRow}>
             <View style={styles.trendCard}>
               <Text style={styles.trendValue}>{sevenDayAvg}</Text>
@@ -319,22 +320,10 @@ export default function AdvancedMetricsScreen(): ReactElement {
           </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(160).duration(260)} style={styles.techSection}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.techTitle}>Estado tecnico del scheduler</Text>
-            <Text style={styles.techText}>
-              {schedulerParity ? schedulerParity.summary : 'Sin verificacion reciente. El scheduler local sigue siendo el runtime principal.'}
-            </Text>
-          </View>
-          <Pressable style={styles.techBtn} onPress={() => setDetailModal({ title: 'Scheduler tecnico', items: schedulerDetails })}>
-            <Text style={styles.techBtnText}>Detalle</Text>
-          </Pressable>
-        </Animated.View>
       </ScrollView>
 
-      <Modal visible={detailModal != null} transparent animationType="fade" onRequestClose={() => setDetailModal(null)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setDetailModal(null)}>
-          <Pressable style={styles.modalCard} onPress={(event) => event.stopPropagation()}>
+      <FormSheet visible={detailModal != null} onClose={() => setDetailModal(null)} align="center" animationType="fade">
+          <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{detailModal?.title}</Text>
             <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
               {(detailModal?.items ?? []).map((item, index) => (
@@ -343,12 +332,9 @@ export default function AdvancedMetricsScreen(): ReactElement {
                 </View>
               ))}
             </ScrollView>
-            <Pressable style={styles.modalCloseBtn} onPress={() => setDetailModal(null)}>
-              <Text style={styles.modalCloseBtnText}>Cerrar</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </Modal>
+            <AppButton label="Cerrar" onPress={() => setDetailModal(null)} fullWidth />
+          </View>
+      </FormSheet>
     </>
   );
 }
@@ -367,29 +353,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12
-    },
-    backBtn: {
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      backgroundColor: `${lifeTheme.colors.primary}18`,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: `${lifeTheme.colors.primary}30`
-    },
-    backBtnText: {
-      color: lifeTheme.colors.primary,
-      fontWeight: '800',
-      fontSize: 12
-    },
-    headerTitle: {
-      color: lifeTheme.colors.text,
-      fontSize: 23,
-      fontWeight: '900'
-    },
-    headerSub: {
-      color: lifeTheme.colors.muted,
-      fontSize: 12,
-      lineHeight: 17
     },
     summaryBand: {
       flexDirection: 'row',
@@ -471,11 +434,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       padding: 12,
       gap: 10
     },
-    sectionTitle: {
-      color: lifeTheme.colors.text,
-      fontSize: 14,
-      fontWeight: '900'
-    },
     trendRow: {
       flexDirection: 'row',
       gap: 8
@@ -499,46 +457,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       color: lifeTheme.colors.muted,
       fontSize: 10,
       fontWeight: '700'
-    },
-    techSection: {
-      flexDirection: 'row',
-      gap: 10,
-      alignItems: 'center',
-      backgroundColor: lifeTheme.colors.surface,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      padding: 12
-    },
-    techTitle: {
-      color: lifeTheme.colors.text,
-      fontSize: 13,
-      fontWeight: '900'
-    },
-    techText: {
-      color: lifeTheme.colors.muted,
-      fontSize: 11,
-      lineHeight: 15,
-      marginTop: 2
-    },
-    techBtn: {
-      backgroundColor: `${lifeTheme.colors.primary}18`,
-      borderWidth: 1,
-      borderColor: `${lifeTheme.colors.primary}35`,
-      borderRadius: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 8
-    },
-    techBtnText: {
-      color: lifeTheme.colors.primary,
-      fontSize: 12,
-      fontWeight: '800'
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.62)',
-      justifyContent: 'center',
-      padding: 20
     },
     modalCard: {
       backgroundColor: lifeTheme.colors.surface,
@@ -573,17 +491,5 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       fontSize: 12,
       lineHeight: 17
     },
-    modalCloseBtn: {
-      alignSelf: 'flex-end',
-      backgroundColor: lifeTheme.colors.primary,
-      borderRadius: 10,
-      paddingHorizontal: 14,
-      paddingVertical: 9
-    },
-    modalCloseBtnText: {
-      color: lifeTheme.colors.onPrimary,
-      fontSize: 12,
-      fontWeight: '800'
-    }
   });
 }

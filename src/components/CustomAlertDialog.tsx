@@ -3,11 +3,10 @@ import {
   Modal,
   View,
   Text,
-  Pressable,
   StyleSheet,
-  Platform,
 } from 'react-native';
 import { useAppTheme } from '../theme';
+import { AnimatedPressable } from './ui/AnimatedPressable';
 
 export interface AlertButtonConfig {
   text: string;
@@ -43,24 +42,23 @@ export const CustomAlertDialog: React.FC<CustomAlertDialogProps> = ({
       transparent
       animationType="fade"
       statusBarTranslucent
+      navigationBarTranslucent
       onRequestClose={onDismiss}
     >
-      <View style={[styles.overlay, { backgroundColor: 'rgba(0, 0, 0, 0.68)' }]}>
+      <View style={[styles.overlay, { backgroundColor: theme.colors.scrim }]}>
         <View
           style={[
             styles.dialog,
             {
               backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-              shadowColor: '#000'
+              borderColor: theme.colors.border
             },
           ]}
         >
-          <View style={[styles.accentBar, { backgroundColor: theme.colors.primary }]} />
           <Text
             style={[
               styles.title,
-              { color: theme.colors.text, fontWeight: '800' },
+                { color: theme.colors.text },
             ]}
           >
             {title}
@@ -83,13 +81,12 @@ export const CustomAlertDialog: React.FC<CustomAlertDialogProps> = ({
               const isCancel = button.style === 'cancel' || buttons.length > 1 && index > 0;
 
               return (
-                <Pressable
+                <AnimatedPressable
                   key={index}
                   style={[
                     styles.button,
                     buttons.length > 2 && styles.buttonColumn,
                     isCancel && styles.buttonCancel,
-                    buttons.length <= 2 && index < buttons.length - 1 && styles.buttonBorder,
                     {
                       borderColor: theme.colors.border,
                       backgroundColor: isDestructive
@@ -115,7 +112,7 @@ export const CustomAlertDialog: React.FC<CustomAlertDialogProps> = ({
                   >
                     {button.text}
                   </Text>
-                </Pressable>
+                </AnimatedPressable>
               );
             })}
           </View>
@@ -133,46 +130,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   dialog: {
-    borderRadius: 24,
+    borderRadius: 16,
     borderWidth: 1,
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 14,
-    maxWidth: 340,
-    width: '85%',
-    ...Platform.select({
-      ios: {
-        shadowOpacity: 0.35,
-        shadowRadius: 18,
-        shadowOffset: { width: 0, height: 14 },
-      },
-      android: {
-        elevation: 18,
-      },
-    }),
-  },
-  accentBar: {
-    width: 48,
-    height: 5,
-    borderRadius: 999,
-    alignSelf: 'center',
-    marginBottom: 14,
+    padding: 20,
+    maxWidth: 360,
+    width: '100%',
   },
   title: {
-    fontSize: 19,
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: '900',
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   message: {
     fontSize: 14,
     lineHeight: 20,
     marginBottom: 18,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   buttonsContainer: {
     flexDirection: 'row',
     gap: 10,
-    paddingTop: 4,
+    paddingTop: 6,
   },
   buttonsColumn: {
     flexDirection: 'column',
@@ -183,12 +163,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    minHeight: 44,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  buttonBorder: {
-    borderRightWidth: 0,
+    minHeight: 48,
+    borderRadius: 12,
   },
   buttonColumn: {
     width: '100%',

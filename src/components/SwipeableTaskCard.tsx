@@ -75,8 +75,8 @@ export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props)
   function triggerDelete()   { onDelete(task.id); }
 
   const panGesture = Gesture.Pan()
-    .activeOffsetX([-28, 28])
-    .failOffsetY([-12, 12])
+    .activeOffsetX([-36, 36])
+    .failOffsetY([-8, 8])
     // Completed tasks: only swipe left to delete. Pending: both directions.
     .onUpdate((event) => {
       if (isCompleted) {
@@ -146,7 +146,7 @@ export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props)
       </Animated.View>
 
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.card, isCompleted && styles.cardDone, borderColorStyle, cardStyle, { borderLeftColor: accentColor }] }>
+        <Animated.View style={[styles.card, isCompleted && styles.cardDone, borderColorStyle, cardStyle]}>
           {/* Top row */}
           <View style={styles.topRow}>
             <View style={styles.titleWrap}>
@@ -217,9 +217,6 @@ export function SwipeableTaskCard({ task, onEdit, onDelete, onComplete }: Props)
                 <Text style={styles.deleteBtnText}>🗑 Eliminar</Text>
               </Pressable>
             )}
-            <Text style={styles.swipeHint}>
-              {isCompleted ? '← deslizá para borrar' : '← borrar · completar →'}
-            </Text>
           </View>
         </Animated.View>
       </GestureDetector>
@@ -265,17 +262,17 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   chipText: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '600' },
   actionsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingTop: 2 },
   completeBtn: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 9,
+    minHeight: 48, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
     backgroundColor: `${lifeTheme.colors.success}14`, borderWidth: 1, borderColor: `${lifeTheme.colors.success}44`
   },
   completeBtnText: { color: lifeTheme.colors.success, fontSize: 12, fontWeight: '800' },
   editBtn: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 9,
+    minHeight: 48, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
     backgroundColor: lifeTheme.colors.surfaceAlt, borderWidth: 1, borderColor: lifeTheme.colors.border
   },
   editBtnText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
   deleteBtn: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 9,
+    minHeight: 48, justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8,
     backgroundColor: 'rgba(252,108,143,0.1)', borderWidth: 1, borderColor: `${lifeTheme.colors.alert}40`
   },
   deleteBtnText: { color: lifeTheme.colors.alert, fontSize: 12, fontWeight: '700' },

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAppTheme } from '../theme';
+import { FormSheet } from './FormSheet';
+import { AppButton } from './ui';
 
 export type AppDateTimePickerMode = 'date' | 'time';
 
@@ -126,9 +128,8 @@ export function AppDateTimePickerSheet({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={styles.card} onPress={(event) => event.stopPropagation()}>
+    <FormSheet visible={visible} onClose={onClose} align="center" animationType="fade" maxHeight="88%">
+        <View style={styles.card}>
           <View style={styles.header}>
             <Text style={styles.title}>{title}</Text>
             {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
@@ -142,7 +143,7 @@ export function AppDateTimePickerSheet({
           </View>
 
           {mode === 'date' ? (
-            <ScrollView style={styles.scrollArea} contentContainerStyle={styles.sectionContent}>
+            <ScrollView style={styles.scrollArea} contentContainerStyle={styles.sectionContent} nestedScrollEnabled>
               <Text style={styles.sectionTitle}>Año</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
                 {yearOptions.map((year) => (
@@ -180,7 +181,7 @@ export function AppDateTimePickerSheet({
               </View>
             </ScrollView>
           ) : (
-            <ScrollView style={styles.scrollArea} contentContainerStyle={styles.sectionContent}>
+            <ScrollView style={styles.scrollArea} contentContainerStyle={styles.sectionContent} nestedScrollEnabled>
               <Text style={styles.sectionTitle}>Hora</Text>
               <View style={styles.grid}>
                 {hourOptions.map((hour) => (
@@ -208,33 +209,17 @@ export function AppDateTimePickerSheet({
           )}
 
           <View style={styles.actions}>
-            <Pressable style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelText}>Cancelar</Text>
-            </Pressable>
-            <Pressable style={styles.confirmBtn} onPress={() => onConfirm(draft)}>
-              <Text style={styles.confirmText}>{confirmLabel ?? 'Aplicar'}</Text>
-            </Pressable>
+            <View style={styles.action}><AppButton label="Cancelar" variant="outlined" onPress={onClose} fullWidth /></View>
+            <View style={styles.action}><AppButton label={confirmLabel ?? 'Aplicar'} onPress={() => onConfirm(draft)} fullWidth /></View>
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </View>
+    </FormSheet>
   );
 }
 
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
-    overlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.60)',
-      justifyContent: 'center',
-      paddingHorizontal: lifeTheme.spacing.md
-    },
     card: {
-      backgroundColor: lifeTheme.colors.surface,
-      borderRadius: lifeTheme.radius.lg,
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      padding: lifeTheme.spacing.md,
       gap: lifeTheme.spacing.sm,
       maxHeight: '84%'
     },
@@ -265,7 +250,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       fontSize: 11,
       fontWeight: '700',
       textTransform: 'uppercase',
-      letterSpacing: 0.5
+      letterSpacing: 0
     },
     previewValue: {
       color: lifeTheme.colors.text,
@@ -284,7 +269,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       fontSize: 12,
       fontWeight: '800',
       textTransform: 'uppercase',
-      letterSpacing: 0.6
+      letterSpacing: 0
     },
     row: {
       gap: 8,
@@ -316,31 +301,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       gap: 10,
       marginTop: 2
     },
-    cancelBtn: {
-      flex: 1,
-      paddingVertical: 12,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      alignItems: 'center',
-      backgroundColor: lifeTheme.colors.surfaceAlt
-    },
-    cancelText: {
-      color: lifeTheme.colors.text,
-      fontSize: 14,
-      fontWeight: '800'
-    },
-    confirmBtn: {
-      flex: 1,
-      paddingVertical: 12,
-      borderRadius: 14,
-      alignItems: 'center',
-      backgroundColor: lifeTheme.colors.primary
-    },
-    confirmText: {
-      color: lifeTheme.colors.onPrimary,
-      fontSize: 14,
-      fontWeight: '800'
-    }
+    action: { flex: 1 },
   });
 }

@@ -3,7 +3,7 @@
     "name": "LifeOS",
     "slug": "lifeos",
     "scheme": "lifeos",
-    "version": "4.1.0",
+    "version": "4.2.0",
     "icon": "./assets/branding/icon-v4.png",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -20,14 +20,15 @@
       "expo-notifications",
       "expo-task-manager",
       "expo-location",
-      "expo-background-fetch"
+      "expo-background-fetch",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true
     },
     "android": {
       "package": "com.alan.lifeos",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/branding/adaptive-icon-v4.png",
         "backgroundColor": "#000000"
@@ -47,7 +48,7 @@
       "router": {},
       "buildMetadata": {
         "commitHash": "pending-commit",
-        "buildTimestamp": "2026-05-07T16:26:47-04:00"
+        "buildTimestamp": "2026-07-20T15:00:45-04:00"
       },
       "eas": {
         "projectId": "d7d211ca-fcee-48ec-ae92-b9424924dd45"

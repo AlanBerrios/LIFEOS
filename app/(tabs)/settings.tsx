@@ -33,6 +33,7 @@ import * as Sharing from 'expo-sharing';
 import { getBuildMetadata } from '../../src/config/buildInfo';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
+import { ScreenHeader } from '../../src/components/ui';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 import { ColorWheelPicker } from '../../src/components/ColorWheelPicker';
 
@@ -351,9 +352,15 @@ export default function SettingsScreen(): ReactElement {
       style={styles.screen}
       contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16 }]}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
     >
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Configuración</Text>
+        <ScreenHeader
+          eyebrow="LifeOS"
+          title="Ajustes"
+          subtitle="Personaliza la planificación, la apariencia y los avisos."
+        />
       </View>
 
       <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Apariencia" icon="🎨">
@@ -484,7 +491,7 @@ export default function SettingsScreen(): ReactElement {
         </SettingRow>
       </Accordion>
 
-      <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Rutinas y Alarmas" icon="🌙">
+      <Accordion styles={styles} primaryColor={lifeTheme.colors.primary} title="Rutinas y Recordatorios" icon="🌙">
         <SettingRow styles={styles} label="Hora de dormir" subtitle="Inicio del periodo de descanso">
           <TextInput
             style={styles.timeInput}
@@ -507,7 +514,7 @@ export default function SettingsScreen(): ReactElement {
           style={({ pressed }) => [styles.applyBtn, pressed && styles.pressed, { backgroundColor: lifeTheme.colors.surfaceAlt, borderWidth: 1, borderColor: lifeTheme.colors.primary }]}
           onPress={() => router.push('/alarms' as any)}
         >
-          <Text style={[styles.applyBtnText, { color: lifeTheme.colors.primary }]}>⏰ Tablero de Alarmas</Text>
+          <Text style={[styles.applyBtnText, { color: lifeTheme.colors.primary }]}>Abrir recordatorios</Text>
         </Pressable>
       </Accordion>
 
@@ -550,7 +557,7 @@ export default function SettingsScreen(): ReactElement {
           />
         </SettingRow>
         <View style={styles.divider} />
-        <SettingRow styles={styles} label="Alarmas forzadas" subtitle="Sonido incluso en modo silencio">
+        <SettingRow styles={styles} label="Avisos prioritarios" subtitle="Usa el canal de alta prioridad disponible en Android">
           <Switch
             value={settings.alarmsBypassSilent}
             onValueChange={(v) => updateSettings({ alarmsBypassSilent: v })}
@@ -636,27 +643,15 @@ export default function SettingsScreen(): ReactElement {
       </Accordion>
 
       <View style={styles.footer}>
-        <Text style={styles.footerTitle}>Características de la app</Text>
-        <Text style={styles.featureLine}>• Stack: Expo Router, React Native, TypeScript y Zustand</Text>
-        <Text style={styles.featureLine}>• Notificaciones locales con alarmas, rutinas, eventos y notas</Text>
         <Text style={styles.buildInfo}>
           LifeOS v{buildInfo.appVersion} · commit {buildInfo.commitHash} · build {buildInfo.buildTimestamp}
         </Text>
       </View>
 
       <View style={styles.footerInfo}>
-        <Text style={styles.footerText}>LifeOS v{buildInfo.appVersion} "Consolidation" | Desarrollado por Alan Berrios Estay (aka BlitZx)</Text>
+        <Text style={styles.footerText}>LifeOS v{buildInfo.appVersion} | Desarrollado por Alan Berrios Estay (aka BlitZx)</Text>
         <Pressable onPress={() => Linking.openURL('https://github.com/AlanBerrios/LIFEOS')}>
           <Text style={[styles.footerText, { color: lifeTheme.colors.primary, marginTop: 4, fontWeight: '800' }]}>GitHub: AlanBerrios/LIFEOS</Text>
-        </Pressable>
-        <Pressable 
-          style={{ marginTop: 16, backgroundColor: `${lifeTheme.colors.primary}15`, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: `${lifeTheme.colors.primary}55` }}
-          onPress={() => {
-            updateSettings({ showTutorial: true, tutorialStep: 0 });
-            showAlert('Tutorial reiniciado', 'Puedes abrir cualquier pestaña para empezar la guía.');
-          }}
-        >
-          <Text style={{ color: lifeTheme.colors.primary, fontSize: 13, fontWeight: '800' }}>Reiniciar Guía Tutorial</Text>
         </Pressable>
       </View>
 
@@ -677,7 +672,6 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.colors.background },
   header: { paddingHorizontal: 16, marginBottom: 12 },
-  headerTitle: { color: theme.colors.text, fontSize: 32, fontWeight: '900', letterSpacing: -0.5 },
   scroll: { paddingHorizontal: 16, paddingBottom: 50, gap: 16 },
 
   accordionCard: {
@@ -767,8 +761,6 @@ function createStyles(theme: ReturnType<typeof useAppTheme>) {
   dangerBtn: { backgroundColor: `${theme.colors.alert}15`, padding: 16, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: `${theme.colors.alert}55` },
   dangerBtnText: { color: theme.colors.alert, fontWeight: '800', fontSize: 14 },
   footer: { marginTop: 12, paddingHorizontal: 4, gap: 8 },
-  footerTitle: { color: theme.colors.text, fontSize: 16, fontWeight: '800' },
-  featureLine: { color: theme.colors.muted, fontSize: 12, lineHeight: 18 },
   buildInfo: { color: theme.colors.muted, fontSize: 11, fontWeight: '600' },
   
   footerInfo: { alignItems: 'center', paddingVertical: 24 },

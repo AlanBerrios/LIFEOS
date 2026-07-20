@@ -1,5 +1,5 @@
 LIFEOS - PROXIMOS PASOS UNIFICADOS
-Actualizado: 2026-07-17
+Actualizado: 2026-07-20
 
 Este archivo reemplaza To_do_ideas, ANALISIS ACTUAL, AUDITORIA_Y_PLAN_LIFEOS y el reporte suelto de backend.
 Es el backlog operativo unico por impacto.
@@ -49,9 +49,20 @@ Estos puntos de la lista del usuario ya tienen primera solucion:
 - Atributos/habilidades: tarjetas tocables con nivel, progreso, fuente de puntos y bonus de EXP por nivel.
 - Sabiduria: crear o ampliar notas utiles entrega puntos reales.
 - Tests agregados: 51 pasando.
+- Sistema visual Android unificado para modo claro/oscuro y acento configurable.
+- Navegacion principal simplificada a Hoy, Calendario, Tareas, Habitos y Mas.
+- Pantalla Mas agrupa rutas secundarias sin perder acceso a funciones existentes.
+- Formularios y prompts principales migrados a FormSheet seguro para teclado y safe area.
+- Selector de emoji compartido; eliminada duplicacion en Home, Tareas, Notas y Calendario.
+- Calendario Mes/Semana/Dia usa controles tactiles y cabecera coherente.
+- Pantallas secundarias comparten jerarquia visual, controles y lenguaje.
+- La UI llama Recordatorios a las notificaciones programadas y deja de prometer alarma nativa.
+- Tutorial de ocho pestañas y MaterialTabs eliminados por obsolescencia.
+- Dependencias material-top-tabs y pager-view eliminadas.
+- Bundle Android Hermes de produccion validado con 3449 modulos.
 
 Pendiente:
-Validar en build Android instalada, no solo en tests. Regenerar APK despues de cambios recientes si se quiere probar esta tanda exacta.
+Validar visualmente en Android instalado. El AVD local no arranco por falta de espacio en C: (1,34 GB libres).
 
 ============================================================
 2. P0 - CONFIABILIDAD ANDROID
@@ -76,7 +87,7 @@ Criterio de salida:
 P0.2 Build release real y version visible
 
 Problema:
-Antes habia desalineacion: docs v4.1, package.json 4.0.0 y textos internos historicos v3/v4. La base quedo unificada en v4.1.0.
+Antes habia desalineacion: docs v4.1, package.json 4.0.0 y textos internos historicos v3/v4. La base queda unificada en v4.2.0 para el rediseño integral, con versionCode Android 7.
 
 Accion:
 - Mantener version actual unica en cada release.
@@ -190,8 +201,8 @@ Problemas:
 - Falta opcion clara de rutinas personalizadas.
 
 Estado:
-- Primera compactacion implementada.
-- Formularios principales usan hoja segura.
+- Rediseño compacto implementado en sueño, comidas, traslados y recordatorios.
+- Formularios principales usan hoja segura comun.
 - Traslados recalculan duracion automaticamente.
 
 Accion pendiente:
@@ -205,14 +216,14 @@ Criterio de salida:
 P2.2 Corregir teclado en toda la app
 
 Pantallas a revisar:
-- Home quick task/event: primera solucion implementada.
-- Pool task form.
-- Notes: primera solucion implementada.
-- Routines: primera solucion implementada.
-- Alarms.
+- Home quick task/event: migrado.
+- Pool task form: migrado.
+- Notes: migrado.
+- Routines: migrado.
+- Recordatorios: migrado.
 - Settings inputs numericos.
-- Dialogos de completion/partial.
-- Habits: primera solucion implementada.
+- Dialogos de completion/partial: migrado.
+- Habits: migrado.
 
 Accion:
 - Estandarizar contenedores con safe area, scroll y keyboardShouldPersistTaps.
@@ -443,34 +454,39 @@ Estado actual de esos puntos:
 - ExecutionRecord y replan history existen.
 - Scheduler local es runtime principal.
 - Paridad backend queda como soporte.
-- Falta cerrar UX Android y QA real.
+- La base UX Android esta unificada en codigo; falta QA visual real.
+
+Validacion de la revision 2026-07-20:
+
+- npm run typecheck: OK.
+- npm test: OK, 4 archivos y 51 tests.
+- expo export --platform android --clear: OK, bundle Hermes generado.
+- QA en AVD: bloqueado por solo 1,34 GB libres en C:.
+- npm audit: 14 hallazgos moderados del tooling Expo/Xcode; las altas y criticas quedaron resueltas con actualizaciones compatibles. No aplicar --force porque propone bajar Expo 54 a Expo 46.
+- expo-doctor: 17/18; el aviso restante exige resincronizar android/ cuando cambie la configuracion prebuild de app.json.
 
 ============================================================
 11. ORDEN RECOMENDADO DE EJECUCION
 ============================================================
 
 Sprint 1:
-- P0.1 permisos Android.
-- P0.2 version visible.
 - P0.3 QA E2E notificaciones.
-- P2.2 teclado en formularios principales.
+- QA visual de teclado/safe area en dispositivo Android.
+- Generar e instalar APK exacta de esta revision.
 
 Sprint 2:
-- P1.1 politica Libre.
-- P1.2 avances en huecos.
 - P1.4 explicabilidad del plan.
-- P2.1 rutinas UI.
+- P2.1 bloques de rutina personalizados.
+- Cerrar saldo restante de avances parciales.
 
 Sprint 3:
 - P3.1 decision alarmas nativas.
-- P3.2 habitos desde notificacion.
-- P4.1 hold + / - en habitos.
 - P5.1 energia simplificada.
+- Seguimiento de las 14 vulnerabilidades moderadas restantes hasta que Expo publique una ruta compatible.
 
 Sprint 4:
 - P5.2 metricas de uso.
-- P5.3 logros compactos con pistas.
-- P5.4 atributos/habilidades con niveles.
+- Profundizar metricas historicas y uso real.
 - P7 diseno tecnico de audio.
 - P8 diseno tecnico de integracion Google Calendar/ICS.
 

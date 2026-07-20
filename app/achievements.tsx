@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useLifeStore } from '../src/store/useLifeStore';
 import { useAppTheme } from '../src/theme';
+import { ScreenHeader } from '../src/components/ui';
 
 type Rarity = 'común' | 'raro' | 'épico' | 'legendario' | 'misterioso';
 
@@ -465,14 +466,13 @@ export default function AchievementsScreen(): ReactElement {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: 48 }]}
       showsVerticalScrollIndicator={false}
     >
-      <Animated.View entering={FadeInDown.duration(320)} style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>← Atrás</Text>
-        </Pressable>
-        <View>
-          <Text style={styles.headerTitle}>Logros RPG</Text>
-          <Text style={styles.headerSub}>{unlockedCount}/{totalCount} logros desbloqueados</Text>
-        </View>
+      <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
+        <ScreenHeader
+          onBack={() => router.back()}
+          eyebrow="Progreso"
+          title="Logros"
+          subtitle={`${unlockedCount}/${totalCount} desbloqueados`}
+        />
       </Animated.View>
 
       <Animated.View entering={FadeInDown.delay(90).duration(260)} style={styles.statsRow}>
@@ -496,7 +496,7 @@ export default function AchievementsScreen(): ReactElement {
           onPress={() => setFilterSecret((prev) => !prev)}
         >
           <Text style={styles.filterBtnText}>
-            {filterSecret ? '🔐 Mostrando solo secretos' : '🔓 Mostrar solo secretos'}
+            {filterSecret ? 'Mostrando secretos' : 'Mostrar solo secretos'}
           </Text>
         </Pressable>
       </Animated.View>
@@ -585,30 +585,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       gap: 12,
       marginBottom: 8
     },
-    backBtn: {
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      backgroundColor: `${lifeTheme.colors.primary}20`,
-      borderRadius: 8,
-      justifyContent: 'center',
-      alignItems: 'center'
-    },
-    backBtnText: {
-      color: lifeTheme.colors.primary,
-      fontWeight: '600',
-      fontSize: 14
-    },
-    headerTitle: {
-      fontSize: 22,
-      fontWeight: '900',
-      color: lifeTheme.colors.text,
-      marginBottom: 4
-    },
-    headerSub: {
-      fontSize: 12,
-      color: lifeTheme.colors.muted,
-      fontWeight: '500'
-    },
     statsRow: {
       flexDirection: 'row',
       gap: 8
@@ -635,6 +611,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       textTransform: 'uppercase'
     },
     filterBtn: {
+      minHeight: 48,
       backgroundColor: lifeTheme.colors.surface,
       borderWidth: 1,
       borderColor: lifeTheme.colors.border,
@@ -667,7 +644,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       borderColor: lifeTheme.colors.border,
       padding: 10,
       gap: 6,
-      minHeight: 178,
+      minHeight: 168,
       position: 'relative'
     },
     achievementCardLocked: {

@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { PostponeReason, SkipReason, Task } from '../types';
 import { useAppTheme } from '../theme';
+import { FormSheet } from './FormSheet';
+import { AppButton } from './ui';
 
 type CompletionChoice = 'ok' | 'partial' | 'skipped' | 'postponed';
 
@@ -88,9 +90,8 @@ export function TaskCompletionCheckDialog({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
+    <FormSheet visible={visible} onClose={onClose} align="center" animationType="fade">
+        <View style={styles.card}>
           <Text style={styles.title}>Cierre de bloque</Text>
           <Text style={styles.subtitle}>
             {task ? `"${task.title}"` : 'Tarea actual'}
@@ -175,20 +176,11 @@ export function TaskCompletionCheckDialog({
           ) : null}
 
           <View style={styles.actions}>
-            <Pressable style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelText}>Cancelar</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.confirmBtn, !canSubmit && styles.confirmBtnDisabled]}
-              disabled={!canSubmit}
-              onPress={() => void handleSubmit()}
-            >
-              <Text style={styles.confirmText}>{isSubmitting ? 'Guardando...' : 'Confirmar'}</Text>
-            </Pressable>
+            <View style={styles.action}><AppButton label="Cancelar" variant="outlined" onPress={onClose} fullWidth /></View>
+            <View style={styles.action}><AppButton label="Confirmar" loading={isSubmitting} disabled={!canSubmit} onPress={() => void handleSubmit()} fullWidth /></View>
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </View>
+    </FormSheet>
   );
 }
 
@@ -217,18 +209,7 @@ function ChoiceChip({
 
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    paddingHorizontal: lifeTheme.spacing.md
-  },
   card: {
-    backgroundColor: lifeTheme.colors.surface,
-    borderRadius: lifeTheme.radius.md,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    padding: lifeTheme.spacing.md,
     gap: lifeTheme.spacing.sm
   },
   title: {
@@ -249,7 +230,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.6
+    letterSpacing: 0
   },
   choiceRow: {
     flexDirection: 'row',
@@ -267,6 +248,8 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 12,
+    minHeight: 44,
+    justifyContent: 'center',
     paddingVertical: 8
   },
   chipCompact: {
@@ -304,36 +287,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     gap: 10,
     marginTop: 6
   },
-  cancelBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    backgroundColor: lifeTheme.colors.surfaceAlt,
-    borderRadius: 12,
-    paddingVertical: 12
-  },
-  cancelText: {
-    color: lifeTheme.colors.muted,
-    fontSize: 13,
-    fontWeight: '700'
-  },
-  confirmBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: lifeTheme.colors.primary,
-    borderRadius: 12,
-    paddingVertical: 12
-  },
-  confirmBtnDisabled: {
-    opacity: 0.5
-  },
-  confirmText: {
-    color: lifeTheme.colors.onPrimary,
-    fontSize: 13,
-    fontWeight: '800'
-  }
+  action: { flex: 1 },
   });
 }

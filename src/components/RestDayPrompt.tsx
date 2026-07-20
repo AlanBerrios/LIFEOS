@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '../theme';
 import type { ReactElement } from 'react';
 import { CheckCircle, AlertTriangle, X } from 'lucide-react-native';
+import { AppButton } from './ui';
 
 interface RestDayPromptProps {
   visible: boolean;
@@ -67,27 +68,8 @@ export function RestDayPrompt({
 
             {/* Acciones */}
             <View style={styles.actionsContainer}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.confirmButton,
-                  pressed && { opacity: 0.8 }
-                ]}
-                onPress={onConfirm}
-              >
-                <CheckCircle size={20} color={theme.colors.background} strokeWidth={2} />
-                <Text style={styles.confirmButtonText}>Sí, es día de descanso</Text>
-              </Pressable>
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.cancelButton,
-                  pressed && { opacity: 0.7 }
-                ]}
-                onPress={onCancel}
-              >
-                <X size={18} color={theme.colors.muted} strokeWidth={2.5} />
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
-              </Pressable>
+              <AppButton label="Confirmar descanso" icon={CheckCircle} onPress={onConfirm} fullWidth />
+              <AppButton label="Cancelar" variant="outlined" onPress={onCancel} fullWidth />
             </View>
           </ScrollView>
         </View>
@@ -130,7 +112,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontWeight: '700',
       color: theme.colors.text,
       marginBottom: 12,
-      letterSpacing: -0.5,
+      letterSpacing: 0,
       textAlign: 'center'
     },
     description: {
@@ -156,7 +138,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       color: theme.colors.text,
       marginBottom: 12,
       textTransform: 'uppercase',
-      letterSpacing: 0.4
+      letterSpacing: 0
     },
     benefitItem: {
       flexDirection: 'row',
@@ -179,33 +161,4 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       width: '100%',
       gap: 12
     },
-    confirmButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: theme.colors.primary,
-      borderRadius: 12,
-      paddingVertical: 14,
-      paddingHorizontal: 20,
-      gap: 8
-    },
-    confirmButtonText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: theme.colors.background,
-      letterSpacing: -0.3
-    },
-    cancelButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 8,
-      paddingVertical: 12,
-      paddingHorizontal: 16
-    },
-    cancelButtonText: {
-      fontSize: 15,
-      fontWeight: '500',
-      color: theme.colors.muted
-    }
   });

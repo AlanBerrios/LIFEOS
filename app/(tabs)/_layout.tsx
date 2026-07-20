@@ -1,104 +1,90 @@
-import { MaterialTabs } from '../../src/components/MaterialTabs';
-import { TutorialOverlay } from '../../src/components/TutorialOverlay';
 import type { ReactElement } from 'react';
+import { Tabs, usePathname } from 'expo-router';
+import { CalendarDays, CheckCircle2, Grid2X2, ListTodo, Zap } from 'lucide-react-native';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '../../src/theme';
 
-import { Zap, Calendar, CheckCircle, ListTodo, Clock, Settings, Book, BarChart } from 'lucide-react-native';
+const PRIMARY_TABS = [
+  { name: 'index', label: 'Hoy', Icon: Zap },
+  { name: 'calendar', label: 'Calendario', Icon: CalendarDays },
+  { name: 'pool', label: 'Tareas', Icon: ListTodo },
+  { name: 'habits', label: 'Hábitos', Icon: CheckCircle2 },
+  { name: 'more', label: 'Más', Icon: Grid2X2 }
+] as const;
 
-const TABS = [
-  { name: 'index',    label: 'Hoy',        IconComponent: Zap },
-  { name: 'calendar', label: 'Calendario', IconComponent: Calendar },
-  { name: 'pool',     label: 'Tareas',     IconComponent: ListTodo },
-  { name: 'habits',   label: 'Hábitos',    IconComponent: CheckCircle },
-  { name: 'routines', label: 'Rutinas',    IconComponent: Clock },
-  { name: 'notes',    label: 'Notas',      IconComponent: Book },
-  { name: 'stats',    label: 'Métricas',   IconComponent: BarChart },
-  { name: 'settings', label: 'Ajustes',    IconComponent: Settings }
-];
+const HIDDEN_TABS = ['routines', 'notes', 'stats', 'settings'] as const;
 
 export default function TabLayout(): ReactElement {
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
   const theme = useAppTheme();
-  const barHeight = 64 + Math.max(insets.bottom, 12);
   const styles = createStyles(theme);
+  const moreOwnsCurrentRoute = HIDDEN_TABS.some((route) => pathname.includes(`/${route}`));
 
   return (
-    <>
-      <MaterialTabs
-        tabBarPosition="bottom"
-        keyboardDismissMode="on-drag"
-        screenOptions={({ route }: { route: { name: string } }) => ({
-          tabBarIndicatorStyle: { height: 0 }, // Hide the default top indicator
-          tabBarStyle: [styles.tabBar, { height: barHeight }],
-          tabBarActiveTintColor: theme.colors.primary,
-          tabBarInactiveTintColor: theme.colors.muted,
-          tabBarShowLabel: true,
-          tabBarLabelStyle: {
-            fontSize: 9,
-            fontWeight: '700',
-            textTransform: 'none',
-            marginBottom: Math.max(insets.bottom / 2, 4)
-          },
-          tabBarItemStyle: { padding: 0 },
-          tabBarIcon: ({ focused }: { focused: boolean }) => {
-            const tab = TABS.find((t) => t.name === route.name);
-            if (!tab) return <View style={styles.iconContainer} />;
-            return (
-              <View style={styles.iconContainer}>
-                {focused && <View style={styles.activePill} />}
-                <View style={focused && { transform: [{ scale: 1.1 }] }}>
-                  <tab.IconComponent size={22} color={focused ? theme.colors.primary : theme.colors.muted} strokeWidth={focused ? 2.5 : 2} />
-                </View>
+    <Tabs
+      backBehavior="history"
+      screenOptions={{
+        headerShown: false,
+        lazy: true,
+        sceneStyle: { backgroundColor: theme.colors.background },
+        tabBarHideOnKeyboard: true,
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.muted,
+        tabBarLabelStyle: styles.label,
+        tabBarItemStyle: styles.item,
+        tabBarStyle: [styles.bar, { height: 68 + Math.max(insets.bottom, 8) }]
+      }}
+    >
+      {PRIMARY_TABS.map(({ name, label, Icon }) => (
+        <Tabs.Screen
+          key={name}
+          name={name}
+          options={{
+            title: label,
+            tabBarAccessibilityLabel: label,
+            tabBarLabel: ({ focused }) => {
+              const active = focused || (name === 'more' && moreOwnsCurrentRoute);
+              return <Text style={[styles.label, { color: active ? theme.colors.primary : theme.colors.muted }]}>{label}</Text>;
+            },
+            tabBarIcon: ({ focused, color }) => (
+              <View style={[styles.iconWrap, (focused || (name === 'more' && moreOwnsCurrentRoute)) && styles.iconWrapActive]}>
+                <Icon
+                  size={21}
+                  color={focused || (name === 'more' && moreOwnsCurrentRoute) ? theme.colors.primary : color}
+                  strokeWidth={focused || (name === 'more' && moreOwnsCurrentRoute) ? 2.5 : 2}
+                />
               </View>
-            );
-          }
-        })}
-      >
-        {TABS.map((tab) => (
-          <MaterialTabs.Screen 
-            key={tab.name} 
-            name={tab.name} 
-            options={{
-              tabBarLabel: tab.label
-            }}
-          />
-        ))}
-      </MaterialTabs>
-      <TutorialOverlay />
-    </>
+            )
+          }}
+        />
+      ))}
+      {HIDDEN_TABS.map((name) => (
+        <Tabs.Screen key={name} name={name} options={{ href: null }} />
+      ))}
+    </Tabs>
   );
 }
 
 function createStyles(theme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
-    tabBar: {
+    bar: {
       backgroundColor: theme.colors.surface,
       borderTopWidth: 1,
       borderTopColor: theme.colors.border,
-      paddingBottom: 0,
-      paddingTop: 0,
-      elevation: 0,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: -2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4
+      paddingTop: 5,
+      paddingBottom: 0
     },
-    iconContainer: {
+    item: { minHeight: 56, paddingVertical: 0 },
+    label: { fontSize: 11, lineHeight: 14, fontWeight: '700' },
+    iconWrap: {
+      width: 44,
+      height: 30,
+      borderRadius: theme.radius.full,
       alignItems: 'center',
-      justifyContent: 'center',
-      paddingTop: 8,
-      width: 48,
-      overflow: 'visible'
+      justifyContent: 'center'
     },
-    activePill: {
-      position: 'absolute',
-      top: -4,
-      width: 28,
-      height: 3,
-      borderRadius: 3,
-      backgroundColor: theme.colors.primary
-    }
+    iconWrapActive: { backgroundColor: theme.colors.softPrimary }
   });
 }

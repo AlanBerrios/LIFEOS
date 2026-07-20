@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View
@@ -19,6 +20,8 @@ import type { MealRoutine, TransitRoutine } from '../../src/types';
 import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 import { FormSheet } from '../../src/components/FormSheet';
+import { BellPlus, Plus, Trash2 } from 'lucide-react-native';
+import { AppButton, AppIconButton, ScreenHeader, SectionHeader } from '../../src/components/ui';
 
 const DAYS_SHORT = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 type RoutineDraftKind = 'meal' | 'transit';
@@ -314,10 +317,13 @@ export default function RoutinesScreen(): ReactElement {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 16 }]}>
-      <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>Gestor de Rutinas</Text>
+      <View style={styles.headerWrap}>
+        <ScreenHeader
+          eyebrow="Semana base"
+          title="Rutinas"
+          subtitle="Horarios fijos para cada día."
+        />
       </View>
-      <Text style={styles.headerSubtitle}>Configura tus bloques fijos para que tu día se planifique solo.</Text>
       
       {/* Selector de Días Optimizado */}
       <View style={styles.daySelectorStatic}>
@@ -326,6 +332,7 @@ export default function RoutinesScreen(): ReactElement {
             key={idx}
             style={[styles.dayCircle, selectedDay === idx && styles.dayCircleActive]}
             onPress={() => setSelectedDay(idx)}
+            hitSlop={5}
           >
             <Text style={[styles.dayCircleText, selectedDay === idx && styles.dayCircleTextActive]}>{dayName}</Text>
           </Pressable>
@@ -358,8 +365,7 @@ export default function RoutinesScreen(): ReactElement {
         
         {/* Horas de Sueño */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🛌 Horas de Sueño</Text>
-          <Text style={styles.sectionHint}>Define cuándo descansas para que el plan respete tu energía.</Text>
+          <SectionHeader title="Sueño" subtitle="Horario protegido" />
           <View style={styles.card}>
             <SafeTimePicker
               label="Hora de Dormir"
@@ -377,16 +383,14 @@ export default function RoutinesScreen(): ReactElement {
 
         {/* Alarmas */}
         <View style={styles.section}>
-          <View style={[styles.row, { marginBottom: 8 }]}> 
-            <Text style={styles.sectionTitle}>⏰ Alarmas</Text>
-            <Pressable onPress={() => setIsAlarmModalVisible(true)} style={styles.addBtn}>
-              <Text style={styles.addBtnText}>+ Nueva</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.sectionHint}>Activa recordatorios para iniciar o cerrar momentos clave.</Text>
+          <SectionHeader
+            title="Recordatorios"
+            subtitle="Avisos asociados a tu rutina"
+            action={<AppButton label="Nuevo" icon={BellPlus} compact variant="tonal" onPress={() => setIsAlarmModalVisible(true)} />}
+          />
 
           {alarms.length === 0 ? (
-            <Text style={styles.emptyText}>No hay alarmas configuradas.</Text>
+            <Text style={styles.emptyText}>No hay recordatorios configurados.</Text>
           ) : (
             alarms.map((alarm) => (
               <View key={alarm.id} style={styles.mealCard}>
@@ -396,17 +400,13 @@ export default function RoutinesScreen(): ReactElement {
                     <Text style={styles.label}>{alarm.time} · {alarm.days.map((day) => DAYS_SHORT[day]).join(' ')}</Text>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Pressable
-                      style={[styles.togglePill, alarm.enabled && styles.togglePillActive]}
-                      onPress={() => void handleToggleAlarm(alarm.id, !alarm.enabled)}
-                    >
-                      <Text style={[styles.togglePillText, alarm.enabled && styles.togglePillTextActive]}>
-                        {alarm.enabled ? 'ON' : 'OFF'}
-                      </Text>
-                    </Pressable>
-                    <Pressable onPress={() => void handleDeleteAlarm(alarm.id)} style={styles.deleteBtn}>
-                      <Text style={{ color: lifeTheme.colors.alert, fontWeight: 'bold' }}>✕</Text>
-                    </Pressable>
+                    <Switch
+                      value={alarm.enabled}
+                      onValueChange={(enabled) => void handleToggleAlarm(alarm.id, enabled)}
+                      trackColor={{ false: lifeTheme.colors.border, true: lifeTheme.colors.primary }}
+                      thumbColor={alarm.enabled ? lifeTheme.colors.onPrimary : lifeTheme.colors.muted}
+                    />
+                    <AppIconButton icon={Trash2} label={`Eliminar recordatorio ${alarm.label}`} size="small" danger onPress={() => void handleDeleteAlarm(alarm.id)} />
                   </View>
                 </View>
               </View>
@@ -416,13 +416,10 @@ export default function RoutinesScreen(): ReactElement {
 
         {/* Comidas */}
         <View style={styles.section}>
-          <View style={[styles.row, { marginBottom: 8 }]}>
-            <Text style={styles.sectionTitle}>🍽️ Comidas del Día</Text>
-            <Pressable onPress={handleAddMeal} style={styles.addBtn}>
-              <Text style={styles.addBtnText}>+ Añadir</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.sectionHint}>Cada comida crea un bloque fijo y alimenta tu balance diario.</Text>
+          <SectionHeader
+            title="Comidas"
+            action={<AppButton label="Añadir" icon={Plus} compact variant="tonal" onPress={handleAddMeal} />}
+          />
 
           {currentRoutine.meals.map((meal) => (
             <View key={meal.id} style={styles.mealCard} onLayout={(event) => handleNewRoutineLayout(meal.id, event)}>
@@ -434,9 +431,7 @@ export default function RoutinesScreen(): ReactElement {
                    placeholder="Nombre comida"
                    placeholderTextColor={lifeTheme.colors.muted}
                  />
-                 <Pressable onPress={() => handleDeleteMeal(meal.id)} style={styles.deleteBtn}>
-                   <Text style={{ color: lifeTheme.colors.alert, fontWeight: 'bold' }}>✕</Text>
-                 </Pressable>
+                 <AppIconButton icon={Trash2} label={`Eliminar ${meal.type}`} size="small" danger onPress={() => handleDeleteMeal(meal.id)} />
                </View>
 
                <View style={styles.mealDetails}>
@@ -469,13 +464,10 @@ export default function RoutinesScreen(): ReactElement {
 
         {/* Traslados */}
         <View style={styles.section}>
-          <View style={[styles.row, { marginBottom: 8 }]}>
-            <Text style={styles.sectionTitle}>🚗 Traslados</Text>
-            <Pressable onPress={handleAddTransit} style={styles.addBtn}>
-              <Text style={styles.addBtnText}>+ Añadir</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.sectionHint}>Bloquea tiempo de traslado para evitar solapes.</Text>
+          <SectionHeader
+            title="Traslados"
+            action={<AppButton label="Añadir" icon={Plus} compact variant="tonal" onPress={handleAddTransit} />}
+          />
 
           {currentRoutine.transits.map((transit) => (
             <View key={transit.id} style={styles.mealCard} onLayout={(event) => handleNewRoutineLayout(transit.id, event)}>
@@ -487,9 +479,7 @@ export default function RoutinesScreen(): ReactElement {
                    placeholder="Nombre traslado"
                    placeholderTextColor={lifeTheme.colors.muted}
                  />
-                 <Pressable onPress={() => handleDeleteTransit(transit.id)} style={styles.deleteBtn}>
-                   <Text style={{ color: lifeTheme.colors.alert, fontWeight: 'bold' }}>✕</Text>
-                 </Pressable>
+                 <AppIconButton icon={Trash2} label={`Eliminar ${transit.label}`} size="small" danger onPress={() => handleDeleteTransit(transit.id)} />
                </View>
 
                <View style={styles.mealDetails}>
@@ -526,21 +516,10 @@ export default function RoutinesScreen(): ReactElement {
           )}
         </View>
 
-        <View style={styles.section}>
-          <View style={styles.introCard}>
-            <Text style={styles.introTitle}>Base diaria</Text>
-            <Text style={styles.introText}>
-              Sueño, comidas y traslados se convierten en bloques del timeline y alertas.
-            </Text>
-            <Text style={styles.introBullet}>• Evita solapes y protege tus hábitos.</Text>
-            <Text style={styles.introBullet}>• Puedes ajustar cada día sin romper la semana.</Text>
-          </View>
-        </View>
-
       </ScrollView>
 
       <FormSheet visible={isAlarmModalVisible} onClose={() => setIsAlarmModalVisible(false)}>
-            <Text style={styles.sectionTitle}>Nueva alarma</Text>
+            <Text style={styles.sectionTitle}>Nuevo recordatorio</Text>
 
             <Text style={styles.label}>Etiqueta</Text>
             <TextInput
@@ -562,6 +541,7 @@ export default function RoutinesScreen(): ReactElement {
                     key={label + day}
                     style={[styles.dayChip, active && styles.dayChipActive]}
                     onPress={() => toggleAlarmDay(day)}
+                    hitSlop={7}
                   >
                     <Text style={[styles.dayChipText, active && styles.dayChipTextActive]}>{label}</Text>
                   </Pressable>
@@ -570,12 +550,8 @@ export default function RoutinesScreen(): ReactElement {
             </View>
 
             <View style={styles.row}>
-              <Pressable style={styles.cancelBtnModal} onPress={() => setIsAlarmModalVisible(false)}>
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </Pressable>
-              <Pressable style={styles.addBtnModal} onPress={() => void handleCreateAlarm()}>
-                <Text style={styles.addBtnText}>Guardar</Text>
-              </Pressable>
+              <AppButton label="Cancelar" variant="outlined" onPress={() => setIsAlarmModalVisible(false)} />
+              <AppButton label="Guardar" onPress={() => void handleCreateAlarm()} />
             </View>
       </FormSheet>
 
@@ -633,11 +609,9 @@ export default function RoutinesScreen(): ReactElement {
             )}
 
             <View style={styles.row}>
-              <Pressable style={styles.cancelBtnModal} onPress={closeRoutineModal}>
-                <Text style={styles.cancelBtnText}>Cancelar</Text>
-              </Pressable>
-              <Pressable
-                style={styles.addBtnModal}
+              <AppButton label="Cancelar" variant="outlined" onPress={closeRoutineModal} />
+              <AppButton
+                label="Guardar"
                 onPress={() => {
                   if (routineDraftKind === 'meal') {
                     handleCreateMeal();
@@ -645,9 +619,7 @@ export default function RoutinesScreen(): ReactElement {
                     handleCreateTransit();
                   }
                 }}
-              >
-                <Text style={styles.addBtnText}>Guardar</Text>
-              </Pressable>
+              />
             </View>
       </FormSheet>
 
@@ -665,21 +637,8 @@ export default function RoutinesScreen(): ReactElement {
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 16 },
-  headerTitle: { color: lifeTheme.colors.text, fontSize: 26, fontWeight: '900' },
-  headerSubtitle: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18, paddingHorizontal: 16, marginTop: -10, marginBottom: 12 },
-  introCard: {
-    backgroundColor: lifeTheme.colors.surface,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    gap: 6
-  },
-  introTitle: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '800' },
-  introText: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18 },
-  introBullet: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18 },
-  overviewCard: { flexDirection: 'row', justifyContent: 'space-between', gap: 6, backgroundColor: lifeTheme.colors.surface, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 9, borderWidth: 1, borderColor: lifeTheme.colors.border },
+  headerWrap: { paddingHorizontal: 16, paddingBottom: 14 },
+  overviewCard: { flexDirection: 'row', justifyContent: 'space-between', gap: 6, backgroundColor: lifeTheme.colors.surface, borderRadius: lifeTheme.radius.md, paddingHorizontal: 10, paddingVertical: 10, borderWidth: 1, borderColor: lifeTheme.colors.border },
   sectionLabel: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginBottom: 6 },
   overviewItem: { flex: 1, alignItems: 'center', gap: 1 },
   overviewValue: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '900' },
@@ -693,44 +652,34 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   
   scroll: { flex: 1 },
   section: { gap: 10 },
-  sectionTitle: { color: lifeTheme.colors.text, fontSize: 19, fontWeight: '900', letterSpacing: -0.5 },
+  sectionTitle: { color: lifeTheme.colors.text, fontSize: 19, fontWeight: '900', letterSpacing: 0 },
   sectionHint: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18, marginTop: -6 },
-  card: { backgroundColor: lifeTheme.colors.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: lifeTheme.colors.border },
+  card: { backgroundColor: lifeTheme.colors.surface, borderRadius: lifeTheme.radius.md, padding: 12, borderWidth: 1, borderColor: lifeTheme.colors.border },
   
-  mealCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: lifeTheme.colors.border, gap: 8 },
-  mealDetails: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 10, padding: 10, gap: 6 },
+  mealCard: { backgroundColor: lifeTheme.colors.surface, borderRadius: lifeTheme.radius.md, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: lifeTheme.colors.border, gap: 6 },
+  mealDetails: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: lifeTheme.radius.sm, paddingHorizontal: 10, paddingVertical: 6, gap: 4 },
   
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   label: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '700' },
   
   timePickerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  timeValueBtn: { backgroundColor: `${lifeTheme.colors.primary}15`, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 9 },
+  timeValueBtn: { minHeight: 44, minWidth: 76, justifyContent: 'center', alignItems: 'center', backgroundColor: lifeTheme.colors.softPrimary, paddingHorizontal: 12, paddingVertical: 7, borderRadius: lifeTheme.radius.sm },
   timeValueText: { color: lifeTheme.colors.primary, fontWeight: '900', fontSize: 16 },
   
-  mealTypeInput: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '900', flex: 1, textTransform: 'capitalize', paddingVertical: 2 },
-  deleteBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  mealTypeInput: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800', flex: 1, textTransform: 'capitalize', paddingVertical: 6 },
   
   durationInputGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  durationInput: { color: lifeTheme.colors.primary, fontWeight: '900', fontSize: 16, textAlign: 'right', minWidth: 42, paddingVertical: 2 },
+  durationInput: { color: lifeTheme.colors.primary, fontWeight: '900', fontSize: 16, textAlign: 'right', minWidth: 54, minHeight: 44, paddingVertical: 6 },
   durationSuffix: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
   
   divider: { height: 1, backgroundColor: lifeTheme.colors.border, marginVertical: 2 },
-  addBtn: { backgroundColor: `${lifeTheme.colors.primary}15`, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
-  addBtnText: { color: lifeTheme.colors.primary, fontWeight: '900', fontSize: 13 },
-  emptyText: { color: lifeTheme.colors.muted, textAlign: 'center', fontStyle: 'italic', marginTop: 20 }
+  emptyText: { color: lifeTheme.colors.muted, textAlign: 'center', marginVertical: 16 }
   ,
-  togglePill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: lifeTheme.colors.border, backgroundColor: lifeTheme.colors.surfaceAlt },
-  togglePillActive: { backgroundColor: `${lifeTheme.colors.primary}20`, borderColor: `${lifeTheme.colors.primary}80` },
-  togglePillText: { color: lifeTheme.colors.muted, fontWeight: '800', fontSize: 11 },
-  togglePillTextActive: { color: lifeTheme.colors.primary },
-  alarmInput: { borderWidth: 1, borderColor: lifeTheme.colors.border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: lifeTheme.colors.text, backgroundColor: lifeTheme.colors.surfaceAlt },
+  alarmInput: { minHeight: 48, borderWidth: 1, borderColor: lifeTheme.colors.border, borderRadius: lifeTheme.radius.md, paddingHorizontal: 12, paddingVertical: 10, color: lifeTheme.colors.text, backgroundColor: lifeTheme.colors.surfaceAlt },
   daysChipRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   dayChip: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: lifeTheme.colors.surfaceAlt, borderWidth: 1, borderColor: lifeTheme.colors.border },
   dayChipActive: { backgroundColor: `${lifeTheme.colors.primary}20`, borderColor: lifeTheme.colors.primary },
   dayChipText: { color: lifeTheme.colors.muted, fontWeight: '800', fontSize: 12 },
   dayChipTextActive: { color: lifeTheme.colors.primary },
-  cancelBtnModal: { backgroundColor: lifeTheme.colors.surfaceAlt, borderWidth: 1, borderColor: lifeTheme.colors.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10 },
-  addBtnModal: { backgroundColor: lifeTheme.colors.primary, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10 },
-  cancelBtnText: { color: lifeTheme.colors.text, fontWeight: '800' }
   });
 }

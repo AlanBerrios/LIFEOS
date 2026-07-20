@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAppTheme } from '../theme';
 import type { ScheduleOverflowCandidate } from '../store/lifeStore.types';
+import { FormSheet } from './FormSheet';
+import { AppButton } from './ui';
 
 interface ScheduleOverflowPromptProps {
   visible: boolean;
@@ -50,9 +52,8 @@ export function ScheduleOverflowPrompt({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
-      <Pressable style={styles.overlay} onPress={onDismiss}>
-        <Pressable style={styles.card} onPress={(event) => event.stopPropagation()}>
+    <FormSheet visible={visible} onClose={onDismiss} align="center" animationType="fade">
+        <View style={styles.card}>
           <Text style={styles.title}>No cabe todo hoy</Text>
           <Text style={styles.subtitle}>{reason}</Text>
 
@@ -61,7 +62,7 @@ export function ScheduleOverflowPrompt({
             <View style={styles.infoChip}><Text style={styles.infoLabel}>Sugeridas</Text><Text style={styles.infoValue}>{recommendedTaskIds.length}</Text></View>
           </View>
 
-          <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+          <ScrollView style={styles.list} contentContainerStyle={styles.listContent} nestedScrollEnabled>
             {candidateTasks.map((task) => {
               const selected = selectedIds.includes(task.id);
               const recommended = recommendedTaskIds.includes(task.id);
@@ -90,33 +91,17 @@ export function ScheduleOverflowPrompt({
           </ScrollView>
 
           <View style={styles.actions}>
-            <Pressable style={styles.secondaryBtn} onPress={onDismiss}>
-              <Text style={styles.secondaryText}>Usar sugeridas</Text>
-            </Pressable>
-            <Pressable style={styles.primaryBtn} onPress={handleApply}>
-              <Text style={styles.primaryText}>Aplicar y posponer resto</Text>
-            </Pressable>
+            <View style={styles.action}><AppButton label="Cancelar" variant="outlined" onPress={onDismiss} fullWidth /></View>
+            <View style={styles.action}><AppButton label="Aplicar selección" onPress={handleApply} fullWidth /></View>
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </View>
+    </FormSheet>
   );
 }
 
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
-    overlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.55)',
-      justifyContent: 'center',
-      paddingHorizontal: lifeTheme.spacing.md
-    },
     card: {
-      backgroundColor: lifeTheme.colors.surface,
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      borderRadius: lifeTheme.radius.md,
-      padding: lifeTheme.spacing.md,
       gap: lifeTheme.spacing.sm,
       maxHeight: '82%'
     },
@@ -209,33 +194,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       flexDirection: 'row',
       gap: 10
     },
-    secondaryBtn: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      borderRadius: 12,
-      paddingVertical: 12,
-      backgroundColor: lifeTheme.colors.surfaceAlt
-    },
-    secondaryText: {
-      color: lifeTheme.colors.text,
-      fontSize: 13,
-      fontWeight: '800'
-    },
-    primaryBtn: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 12,
-      paddingVertical: 12,
-      backgroundColor: lifeTheme.colors.primary
-    },
-    primaryText: {
-      color: lifeTheme.colors.onPrimary,
-      fontSize: 13,
-      fontWeight: '800'
-    }
+    action: { flex: 1 },
   });
 }

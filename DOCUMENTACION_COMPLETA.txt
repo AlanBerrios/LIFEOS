@@ -1,5 +1,5 @@
 LIFEOS - DOCUMENTACION COMPLETA
-Actualizado: 2026-07-17
+Actualizado: 2026-07-20
 
 Este documento describe el estado actual del proyecto y reemplaza la documentacion raiz historica que estaba mezclada entre auditorias, changelogs y backlog.
 
@@ -21,12 +21,13 @@ Estado validado en esta revision:
 
 - TypeScript: npm run typecheck OK.
 - Tests unitarios: npm test OK, 4 archivos, 51 tests.
+- Bundle Android de produccion: expo export --platform android OK, 3449 modulos y bytecode Hermes generado.
 - Runtime principal: app local con scheduler TypeScript.
 - Backend Python: soporte de paridad, validacion y benchmark; no runtime principal.
-- Version visible unificada: 4.1.0 en package.json, package-lock.json, app.json, Android versionName, splash y Settings.
+- Version visible unificada: 4.2.0 en package.json, package-lock.json, app.json, Android versionName, splash y Settings; versionCode Android 7.
 
 Veredicto:
-El proyecto tiene una vision coherente y un nucleo funcional real, pero todavia necesita consolidacion de UX Android, reglas del scheduler y documentacion operativa.
+El proyecto tiene una vision coherente, un nucleo funcional real y una base visual Android unificada. Falta validar esta revision en dispositivo/emulador con espacio suficiente y seguir cerrando reglas avanzadas del scheduler.
 
 ============================================================
 2. STACK Y ESTRUCTURA ACTUAL
@@ -45,19 +46,23 @@ Stack:
 - Expo Notifications.
 - Backend FastAPI/Python para scheduler remoto/paridad.
 
-Rutas principales Android:
+Navegacion principal Android:
 
-- app/(tabs)/index.tsx: Home/timeline diario.
-- app/(tabs)/pool.tsx: task pool.
-- app/(tabs)/calendar.tsx: calendario mensual/semanal/diario.
-- app/(tabs)/habits.tsx: habitos.
-- app/(tabs)/routines.tsx: rutinas y alarmas.
+- Hoy: Home y timeline diario.
+- Calendario: vistas mensual, semanal y diaria.
+- Tareas: task pool.
+- Habitos: seguimiento diario.
+- Mas: acceso agrupado a rutinas, notas, metricas, logros, analitica, recordatorios y ajustes.
+
+Rutas secundarias:
+
+- app/(tabs)/routines.tsx: rutinas y recordatorios.
 - app/(tabs)/notes.tsx: notas.
-- app/(tabs)/stats.tsx: estadisticas.
-- app/(tabs)/settings.tsx: configuracion.
+- app/(tabs)/stats.tsx: metricas y atributos.
+- app/(tabs)/settings.tsx: ajustes.
 - app/achievements.tsx: logros.
 - app/advanced-metrics.tsx: metricas avanzadas.
-- app/alarms.tsx: tablero de alarmas.
+- app/alarms.tsx: tablero de recordatorios programados.
 - app/analytics.tsx: analiticas.
 
 Dominio:
@@ -108,7 +113,7 @@ La raiz tenia demasiados documentos con responsabilidades mezcladas:
 Eso generaba contradicciones:
 
 - Fases marcadas como completadas y pendientes en distintas secciones.
-- README/package/app/Android ahora comparten version 4.1.0.
+- README/package/app/Android ahora comparten version 4.2.0.
 - Algunos textos seguian diciendo que el transito ajustaba automaticamente la rutina base, comportamiento que ya no debe ser vigente.
 - Se mezclaba backend como runtime posible con la decision actual local-first.
 - Algunas auditorias antiguas hablaban de errores que ya no estan vigentes o de limitaciones de herramientas de otra sesion.
@@ -245,6 +250,29 @@ Estado:
 - Atributos/habilidades existen dentro del perfil y se muestran como tarjetas tocables con nivel propio derivado.
 - Achievements tiene grilla compacta, contador inicial y pistas para logros secretos bloqueados.
 
+4.9 Sistema visual y UX Android
+
+Estado actual:
+
+- Navegacion reducida de ocho destinos simultaneos a cinco pestañas persistentes.
+- Pantalla Mas agrupa herramientas secundarias y mantiene todas las rutas a dos toques como maximo.
+- Tema semantico comun para modo claro/oscuro, acento configurable, estados, tipografia, espaciado y radios.
+- Componentes compartidos para botones, icon buttons, headers, badges, empty states y press feedback.
+- FormSheet comun con KeyboardAvoidingView, scroll interno, safe area y soporte para barra de navegacion Android.
+- Selectores compartidos de fecha/hora, color y emoji.
+- Modales de tareas, eventos, notas, rutinas, habitos, recordatorios, completion y replan usan el patron comun.
+- Calendario conserva Mes/Semana/Dia con controles tactiles mayores, selector segmentado y formulario seguro.
+- Task Pool mantiene swipe como atajo y ofrece Completar, Editar y Borrar como acciones visibles.
+- La UI presenta las notificaciones programadas como Recordatorios mientras no exista una alarma nativa.
+- Tutorial historico de ocho pestañas eliminado porque ya no correspondia a la arquitectura actual.
+- Splash muestra la version canonica sin codename historico.
+
+Limpieza asociada:
+
+- Eliminados MaterialTabs y TutorialOverlay sin uso.
+- Eliminadas dependencias @react-navigation/material-top-tabs y react-native-pager-view.
+- Eliminados estados y estilos muertos de selectores y cabeceras antiguas.
+
 Riesgos:
 
 - Energia cognitiva fue retirada de Stats principal y queda como metrica avanzada hasta que sea mas accionable.
@@ -326,6 +354,9 @@ Validado en esta revision:
 - npm run typecheck: OK.
 - npm test: OK.
 - Vitest: 4 test files, 51 tests.
+- expo export --platform android --clear: OK; bundle Hermes Android generado.
+- npm audit: 14 hallazgos moderados del arbol de tooling Expo/Xcode. Se aplicaron las correcciones compatibles sin --force; las altas y criticas quedaron resueltas. No se usa --force porque npm propone bajar Expo 54 a Expo 46.
+- expo-doctor: 17/18 controles. El unico aviso corresponde a mantener android/ junto a configuracion prebuild; despues de cambiar app.json se debe ejecutar la sincronizacion nativa, como se hizo en esta revision.
 
 Validacion pendiente:
 
@@ -336,6 +367,7 @@ Validacion pendiente:
 - Pruebas de teclado/safe area en formularios.
 - Pruebas ICS con calendario real.
 - Pruebas de rutinas personalizadas.
+- QA visual de esta revision: el AVD Pixel_8 no pudo iniciar porque C: solo tenia 1,34 GB libres. No se considera validacion visual aprobada.
 
 ============================================================
 8. VEREDICTO DE COHERENCIA

@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
-  Modal,
   PanResponder,
   Pressable,
   ScrollView,
@@ -14,6 +13,7 @@ import {
 import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { CalendarPlus, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
 import { AppDateTimePickerSheet } from '../../src/components/AppDateTimePickerSheet';
@@ -23,6 +23,9 @@ import type { Task, StaticEvent, ScheduleBlock, RecurrenceFrequency } from '../.
 import { CustomAlertDialog, type AlertButtonConfig } from '../../src/components/CustomAlertDialog';
 import { AppColorPickerSheet } from '../../src/components/AppColorPickerSheet';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
+import { FormSheet } from '../../src/components/FormSheet';
+import { AppEmojiPickerSheet } from '../../src/components/AppEmojiPickerSheet';
+import { AppButton, AppIconButton, ScreenHeader } from '../../src/components/ui';
 
 type ShowAlertFn = (title: string, message?: string, buttons?: AlertButtonConfig[]) => void;
 
@@ -585,6 +588,7 @@ function MonthView({ currentDate, selectedDay, tasks, events, onSelectDay, onOpe
                       isOutsideMonth && styles.dayCellOutsideMonth
                     ]}
                     onPress={() => onSelectDay(date)}
+                    hitSlop={{ top: 8, bottom: 8 }}
                   >
                     <Text
                       style={[
@@ -1130,8 +1134,6 @@ function EventModal({
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [isEmojiPickerVisible, setIsEmojiPickerVisible] = useState(false);
-  const [isCustomEmojiInputVisible, setIsCustomEmojiInputVisible] = useState(false);
-  const [customEmojiDraft, setCustomEmojiDraft] = useState('');
   const [isColorPickerVisible, setIsColorPickerVisible] = useState(false);
 
   useEffect(() => {
@@ -1214,21 +1216,8 @@ function EventModal({
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <ScrollView
-          style={styles.modalScroll}
-          contentContainerStyle={[
-            styles.modalScrollContent,
-            {
-              paddingTop: insets.top + 16,
-              paddingBottom: Math.max(insets.bottom, 16) + 20
-            }
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-        <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+    <FormSheet visible={visible} onClose={onClose}>
+        <View style={styles.modalCard}>
           <Text style={styles.modalTitle}>{editId ? 'Editar Evento' : 'Nuevo Evento Fijo'}</Text>
           <Text style={styles.modalSub}>Clases, reuniones, compromisos inamovibles.</Text>
           
@@ -1354,97 +1343,25 @@ function EventModal({
           </View>
 
           <View style={styles.modalBtns}>
-            <Pressable style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>Cancelar</Text>
-            </Pressable>
-            <Pressable style={styles.saveBtn} onPress={handleSave}>
-              <Text style={styles.saveBtnText}>{editId ? 'Guardar' : 'Crear'}</Text>
-            </Pressable>
+            <View style={styles.modalButtonSlot}>
+              <AppButton label="Cancelar" variant="outlined" onPress={onClose} fullWidth />
+            </View>
+            <View style={styles.modalButtonSlotWide}>
+              <AppButton label={editId ? 'Guardar' : 'Crear'} onPress={handleSave} fullWidth />
+            </View>
           </View>
 
           {editId && (
-            <Pressable style={[styles.cancelBtn, { borderColor: lifeTheme.colors.alert, marginTop: 4 }]} onPress={handleDelete}>
-              <Text style={[styles.cancelBtnText, { color: lifeTheme.colors.alert }]}>Eliminar Evento</Text>
-            </Pressable>
+            <AppButton label="Eliminar evento" variant="danger" onPress={handleDelete} fullWidth />
           )}
-        </Pressable>
-        </ScrollView>
-      </View>
-
-      <Modal
+        </View>
+      <AppEmojiPickerSheet
         visible={isEmojiPickerVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setIsEmojiPickerVisible(false);
-          setIsCustomEmojiInputVisible(false);
-          setCustomEmojiDraft('');
-        }}
-      >
-        <Pressable
-          style={styles.pickerOverlay}
-          onPress={() => {
-            setIsEmojiPickerVisible(false);
-            setIsCustomEmojiInputVisible(false);
-            setCustomEmojiDraft('');
-          }}
-        >
-          <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.pickerTitle}>Selecciona un emoji</Text>
-            <Pressable
-              style={styles.customEmojiToggleBtn}
-              onPress={() => setIsCustomEmojiInputVisible((value) => !value)}
-            >
-              <Text style={styles.customEmojiToggleIcon}>🙂➕</Text>
-              <Text style={styles.customEmojiToggleText}>Agregar con teclado</Text>
-            </Pressable>
-
-            {isCustomEmojiInputVisible && (
-              <View style={styles.customEmojiInputWrap}>
-                <TextInput
-                  style={styles.customEmojiInput}
-                  value={customEmojiDraft}
-                  onChangeText={setCustomEmojiDraft}
-                  placeholder="Escribe o pega un emoji"
-                  placeholderTextColor={lifeTheme.colors.muted}
-                  autoFocus
-                  returnKeyType="done"
-                />
-                <Pressable
-                  style={styles.customEmojiApplyBtn}
-                  onPress={() => {
-                    const nextEmoji = customEmojiDraft.trim();
-                    if (!nextEmoji) return;
-                    setEmoji(nextEmoji);
-                    setIsEmojiPickerVisible(false);
-                    setIsCustomEmojiInputVisible(false);
-                    setCustomEmojiDraft('');
-                  }}
-                >
-                  <Text style={styles.customEmojiApplyText}>Usar</Text>
-                </Pressable>
-              </View>
-            )}
-
-            <View style={styles.emojiGrid}>
-              {EMOJI_OPTIONS.map((option) => (
-                <Pressable
-                  key={option}
-                  style={[styles.emojiChip, emoji === option && styles.emojiChipActive]}
-                  onPress={() => {
-                    setEmoji(option);
-                    setIsEmojiPickerVisible(false);
-                    setIsCustomEmojiInputVisible(false);
-                    setCustomEmojiDraft('');
-                  }}
-                >
-                  <Text style={styles.emojiChipText}>{option}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        value={emoji}
+        options={EMOJI_OPTIONS}
+        onClose={() => setIsEmojiPickerVisible(false)}
+        onApply={setEmoji}
+      />
 
       <AppColorPickerSheet
         visible={isColorPickerVisible}
@@ -1453,7 +1370,7 @@ function EventModal({
         onClear={() => setColor('')}
         onApply={(hex) => setColor(hex)}
       />
-    </Modal>
+    </FormSheet>
   );
 }
 
@@ -1644,7 +1561,7 @@ export default function CalendarScreen(): ReactElement {
     if (view === 'month') return `${MONTH_NAMES[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
     if (view === 'week') {
       const ws = startOfWeek(currentDate);
-      return `${ws.getDate()} ${MONTH_NAMES[ws.getMonth()]} — ${addDays(ws, 6).getDate()} ${MONTH_NAMES[addDays(ws, 6).getMonth()]}`;
+      return `${ws.getDate()} ${MONTH_NAMES[ws.getMonth()]} - ${addDays(ws, 6).getDate()} ${MONTH_NAMES[addDays(ws, 6).getMonth()]}`;
     }
     return currentDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
   }
@@ -1657,32 +1574,32 @@ export default function CalendarScreen(): ReactElement {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 4 }]}>
-      {/* Top bar */}
-      <View style={styles.topBar}>
-        <Pressable style={styles.navBtn} onPress={() => navigate(-1)} accessibilityRole="button" accessibilityLabel="Ir al periodo anterior">
-          <Text style={styles.navBtnText}>‹</Text>
-        </Pressable>
-        <Text style={styles.headerTitle}>{titleText}</Text>
-        <Pressable style={styles.navBtn} onPress={() => navigate(1)} accessibilityRole="button" accessibilityLabel="Ir al siguiente periodo">
-          <Text style={styles.navBtnText}>›</Text>
-        </Pressable>
+      <View style={styles.calendarHeader}>
+        <ScreenHeader
+          eyebrow="Calendario"
+          title={titleText}
+          action={<AppButton label="Hoy" compact variant="tonal" onPress={() => { const today = new Date(); setCurrentDate(today); setSelectedDay(today); }} />}
+        />
       </View>
 
-      {/* View selector */}
-      <View style={styles.viewSelector}>
-        {(['month', 'week', 'day'] as CalendarView[]).map((v) => (
-          <Pressable
-            key={v}
-            style={[styles.viewTab, view === v && styles.viewTabActive]}
-            onPress={() => setView(v)}
-            accessibilityRole="button"
-            accessibilityLabel={`Cambiar a vista ${v === 'month' ? 'mes' : v === 'week' ? 'semana' : 'dia'}`}
-          >
-            <Text style={[styles.viewTabText, view === v && styles.viewTabTextActive]}>
-              {v === 'month' ? 'Mes' : v === 'week' ? 'Semana' : 'Día'}
-            </Text>
-          </Pressable>
-        ))}
+      <View style={styles.calendarControls}>
+        <AppIconButton icon={ChevronLeft} label="Periodo anterior" onPress={() => navigate(-1)} />
+        <View style={styles.viewSelector}>
+          {(['month', 'week', 'day'] as CalendarView[]).map((v) => (
+            <Pressable
+              key={v}
+              style={[styles.viewTab, view === v && styles.viewTabActive]}
+              onPress={() => setView(v)}
+              accessibilityRole="button"
+              accessibilityLabel={`Cambiar a vista ${v === 'month' ? 'mes' : v === 'week' ? 'semana' : 'dia'}`}
+            >
+              <Text style={[styles.viewTabText, view === v && styles.viewTabTextActive]}>
+                {v === 'month' ? 'Mes' : v === 'week' ? 'Semana' : 'Día'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <AppIconButton icon={ChevronRight} label="Periodo siguiente" onPress={() => navigate(1)} />
       </View>
 
       {/* Calendar body */}
@@ -1738,9 +1655,9 @@ export default function CalendarScreen(): ReactElement {
       )}
 
       {/* FAB */}
-      <Pressable style={[styles.fab, { bottom: 16 }]} onPress={onAddEvent} accessibilityRole="button" accessibilityLabel="Crear nuevo evento fijo">
-        <Text style={styles.fabText}>+ Evento</Text>
-      </Pressable>
+      <View style={[styles.fab, { bottom: 16 }]}>
+        <AppButton label="Evento" icon={CalendarPlus} onPress={onAddEvent} />
+      </View>
 
       <EventModal
         visible={modalVisible}
@@ -1765,39 +1682,27 @@ export default function CalendarScreen(): ReactElement {
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
-  topBar: {
+  calendarHeader: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10 },
+  calendarControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: lifeTheme.spacing.md + 2,
-    paddingVertical: lifeTheme.spacing.sm + 2
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 10
   },
-  navBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+  viewSelector: {
+    flex: 1,
+    flexDirection: 'row',
     backgroundColor: lifeTheme.colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: lifeTheme.radius.md,
+    padding: 4,
     borderWidth: 1,
     borderColor: lifeTheme.colors.border
   },
-  navBtnText: { color: lifeTheme.colors.text, fontSize: 22, fontWeight: '700' },
-  headerTitle: { color: lifeTheme.colors.text, fontSize: lifeTheme.typography.body, fontWeight: '800', textTransform: 'capitalize' },
-  viewSelector: {
-    flexDirection: 'row',
-    marginHorizontal: lifeTheme.spacing.md + 2,
-    backgroundColor: lifeTheme.colors.surface,
-    borderRadius: 12,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    marginBottom: 8
-  },
-  viewTab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 9 },
-  viewTabActive: { backgroundColor: lifeTheme.colors.primary },
+  viewTab: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: lifeTheme.radius.sm },
+  viewTabActive: { backgroundColor: lifeTheme.colors.softPrimary },
   viewTabText: { color: lifeTheme.colors.muted, fontSize: lifeTheme.typography.bodySm, fontWeight: '700' },
-  viewTabTextActive: { color: lifeTheme.colors.onPrimary },
+  viewTabTextActive: { color: lifeTheme.colors.primary },
   calBody: { flex: 1 },
   calBodyMonth: { flex: 0 },
   // Month
@@ -1812,12 +1717,11 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   weekdayHeader: { width: '14.28%', alignItems: 'center', paddingVertical: 7 },
   weekdayText: { color: lifeTheme.colors.muted, fontSize: lifeTheme.typography.bodySm, fontWeight: '700' },
   monthWeekRow: {
-    borderWidth: 1,
-    borderColor: `${lifeTheme.colors.border}66`,
-    borderRadius: 12,
+    borderBottomWidth: 1,
+    borderColor: lifeTheme.colors.border,
     paddingTop: 4,
     paddingBottom: 6,
-    backgroundColor: `${lifeTheme.colors.surface}99`
+    backgroundColor: lifeTheme.colors.background
   },
   monthDaysRow: {
     flexDirection: 'row',
@@ -1866,8 +1770,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     textAlign: 'right',
     paddingRight: 4
   },
-  dayIndicatorsSlot: { minHeight: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
-  calDot: { width: 5, height: 5, borderRadius: 3 },
   // Week Vertical
   weekContainer: { flex: 1 },
   weekZoomRow: {
@@ -1888,9 +1790,9 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   weekZoomBadgeText: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '800' },
   weekZoomControls: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   weekZoomBtn: {
-    minWidth: 34,
-    height: 28,
-    borderRadius: 999,
+    minWidth: 48,
+    height: 48,
+    borderRadius: lifeTheme.radius.md,
     borderWidth: 1,
     borderColor: lifeTheme.colors.border,
     backgroundColor: lifeTheme.colors.surface,
@@ -1921,7 +1823,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderRadius: 8,
     borderWidth: 1,
     borderColor: lifeTheme.colors.border,
-    borderLeftWidth: 4,
     paddingHorizontal: 8,
     paddingVertical: 6,
     overflow: 'hidden'
@@ -1938,22 +1839,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     paddingVertical: 2,
     borderRadius: 6
   },
-  miniDot: { width: 6, height: 6, borderRadius: 3 },
-  // View switches...
-
-  weekDayNum: { color: lifeTheme.colors.text, fontSize: 18, fontWeight: '800' },
-  weekDayNumToday: { color: lifeTheme.colors.onPrimary },
-  weekTasks: { flex: 1, gap: 4 },
-  weekTaskChip: {
-    backgroundColor: lifeTheme.colors.surface,
-    borderRadius: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderLeftWidth: 3
-  },
-  weekTaskText: { color: lifeTheme.colors.text, fontSize: 12 },
-  moreText: { color: lifeTheme.colors.muted, fontSize: 11, marginTop: 2 },
-  emptyDayText: { color: lifeTheme.colors.border, fontSize: 14 },
   // Day view
   dayTimelineScroll: { flex: 1, paddingHorizontal: 12 },
   dayLegendRow: { flexDirection: 'row', gap: 12, marginBottom: 8, marginTop: 2, flexWrap: 'wrap' },
@@ -1984,7 +1869,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderRadius: 10,
     borderWidth: 1,
     borderColor: lifeTheme.colors.border,
-    borderLeftWidth: 4,
     paddingHorizontal: 10,
     paddingVertical: 7,
     overflow: 'hidden'
@@ -2021,20 +1905,9 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusDone: { backgroundColor: lifeTheme.colors.success },
   statusPending: { backgroundColor: lifeTheme.colors.border },
-  
-  // Modal & Forms
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)' },
-  modalScroll: { flex: 1 },
-  modalScrollContent: { paddingHorizontal: 16 },
   modalCard: {
-    backgroundColor: lifeTheme.colors.surface,
-    borderRadius: 20,
-    padding: 24,
-    gap: 14,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
+    gap: 12,
     width: '100%',
-    maxWidth: 720,
     alignSelf: 'center'
   },
   modalTitle: { color: lifeTheme.colors.text, fontSize: 18, fontWeight: '800' },
@@ -2065,97 +1938,8 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   },
   selectorColorText: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
   modalBtns: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  cancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: lifeTheme.colors.border },
-  cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
-  saveBtn: { flex: 2, paddingVertical: 14, alignItems: 'center', borderRadius: 12, backgroundColor: lifeTheme.colors.primary },
-  saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' },
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    paddingHorizontal: 20
-  },
-  pickerCard: {
-    backgroundColor: lifeTheme.colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    padding: 14,
-    gap: 12
-  },
-  pickerTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800' },
-  customEmojiToggleBtn: {
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    backgroundColor: lifeTheme.colors.surfaceAlt,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  customEmojiToggleIcon: { fontSize: 16 },
-  customEmojiToggleText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
-  customEmojiInputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8
-  },
-  customEmojiInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    borderRadius: 12,
-    backgroundColor: lifeTheme.colors.surfaceAlt,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: lifeTheme.colors.text,
-    fontSize: 14,
-    fontWeight: '600'
-  },
-  customEmojiApplyBtn: {
-    borderRadius: 12,
-    backgroundColor: lifeTheme.colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 10
-  },
-  customEmojiApplyText: { color: lifeTheme.colors.onPrimary, fontSize: 12, fontWeight: '800' },
-  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  emojiChip: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    backgroundColor: lifeTheme.colors.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  emojiChipActive: {
-    borderColor: lifeTheme.colors.primary,
-    backgroundColor: lifeTheme.colors.softPrimary
-  },
-  emojiChipText: { fontSize: 22 },
-  colorPickerCard: {
-    backgroundColor: lifeTheme.colors.surface,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    padding: 14,
-    gap: 12,
-    marginTop: 'auto'
-  },
-  colorWheelWrap: {
-    height: 280,
-    backgroundColor: lifeTheme.colors.surfaceAlt,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    padding: 8
-  },
-  colorPickerActions: { flexDirection: 'row', gap: 10 },
+  modalButtonSlot: { flex: 1 },
+  modalButtonSlotWide: { flex: 2 },
   
   dateBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: lifeTheme.colors.surfaceAlt, borderColor: lifeTheme.colors.border, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
   dateBtnText: { color: lifeTheme.colors.muted, fontSize: 13, flex: 1 },
@@ -2163,8 +1947,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   dateClear: { color: lifeTheme.colors.alert, fontSize: 16, paddingLeft: 8 },
 
   // FAB
-  fab: { position: 'absolute', right: 20, backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 30, elevation: 5, shadowColor: '#000', shadowOffset: {width:0, height:3}, shadowOpacity: 0.3, shadowRadius: 5 },
-  fabText: { color: lifeTheme.colors.onPrimary, fontWeight: '900', fontSize: 14 },
+  fab: { position: 'absolute', right: 16, elevation: 4 },
 
   freqChip: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: lifeTheme.colors.border, backgroundColor: lifeTheme.colors.surfaceAlt },
   freqChipActive: { backgroundColor: lifeTheme.colors.primary, borderColor: lifeTheme.colors.primary },

@@ -16,6 +16,8 @@ import { useAppTheme } from '../../src/theme';
 import { CustomAlertDialog } from '../../src/components/CustomAlertDialog';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 import { FormSheet } from '../../src/components/FormSheet';
+import { Activity, Pen, Plus, Trash2 } from 'lucide-react-native';
+import { AppButton, AppIconButton, EmptyState, ScreenHeader, SectionHeader } from '../../src/components/ui';
 
 const EMOJI_OPTIONS = ['💧', '🏃', '🥗', '🧘', '📚', '💊', '🍎', '💤', '🚶', '💪', '🧠', '✨'];
 
@@ -164,14 +166,12 @@ export default function HabitsScreen(): ReactElement {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.hdr}>
-        <Text style={styles.title}>🌟 Mis Hábitos</Text>
-        <Pressable style={styles.addBtn} onPress={() => { setEditingHabitId(null); setModalVisible(true); }}>
-          <Text style={styles.addBtnText}>+ Nuevo</Text>
-        </Pressable>
-      </View>
-
-      <Text style={styles.subtitle}>Construye constancia con pequeños actos diarios.</Text>
+      <ScreenHeader
+        eyebrow="Constancia"
+        title="Hábitos"
+        subtitle="Pequeños actos, progreso visible."
+        action={<AppButton label="Nuevo" icon={Plus} compact onPress={() => { setEditingHabitId(null); setModalVisible(true); }} />}
+      />
 
       <View style={styles.summaryCard}>
         <View style={styles.summaryItem}>
@@ -188,13 +188,11 @@ export default function HabitsScreen(): ReactElement {
         </View>
       </View>
 
-      <Text style={styles.helperText}>Tip: toca + o - para ajustar de a uno; mantenlo presionado para avanzar continuo.</Text>
-
       {habits.length > 0 && (() => {
         const maxStreak = Math.max(...habits.map((h) => h.streak), 7);
         return (
           <View style={styles.streakPanel}>
-            <Text style={styles.sectLabel}>Rachas Actuales</Text>
+            <SectionHeader title="Rachas actuales" />
             <View style={styles.streakChart}>
               {habits.map((h) => (
                 <View key={h.id} style={styles.streakRow}>
@@ -221,7 +219,13 @@ export default function HabitsScreen(): ReactElement {
       <View style={styles.list}>
         {habits.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No tienes hábitos configurados.{"\n"}¡Crea uno para empezar tu racha!</Text>
+            <EmptyState
+              icon={Activity}
+              title="Aún no tienes hábitos"
+              message="Crea el primero para comenzar a registrar tu constancia."
+              actionLabel="Crear hábito"
+              onAction={() => { setEditingHabitId(null); setModalVisible(true); }}
+            />
           </View>
         ) : (
           habits.map((habit, idx) => {
@@ -307,28 +311,25 @@ export default function HabitsScreen(): ReactElement {
                     </Text>
                   </Pressable>
 
-                  <Pressable
-                    style={styles.editBtn}
+                  <AppIconButton
+                    icon={Pen}
+                    label={`Editar hábito ${habit.name}`}
                     onPress={() => handleEdit(habit)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Editar habito ${habit.name}`}
-                  >
-                    <Text style={styles.delBtnText}>✏️</Text>
-                  </Pressable>
+                    size="small"
+                  />
 
-                  <Pressable
-                    style={styles.delBtn}
+                  <AppIconButton
+                    icon={Trash2}
+                    label={`Eliminar hábito ${habit.name}`}
                     onPress={() => {
                       showAlert('Eliminar', `¿Borrar hábito "${habit.name}"?`, [
                         { text: 'Cancelar', style: 'cancel' },
                         { text: 'Eliminar', style: 'destructive', onPress: () => deleteHabit(habit.id) }
                       ]);
                     }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Eliminar habito ${habit.name}`}
-                  >
-                    <Text style={styles.delBtnText}>🗑</Text>
-                  </Pressable>
+                    size="small"
+                    danger
+                  />
                 </View>
               </Animated.View>
             );
@@ -404,12 +405,12 @@ export default function HabitsScreen(): ReactElement {
                 </View>
 
                 <View style={styles.modalBtns}>
-                  <Pressable style={styles.cancelBtn} onPress={() => { setModalVisible(false); setEditingHabitId(null); }}>
-                    <Text style={styles.cancelBtnText}>Cancelar</Text>
-                  </Pressable>
-                  <Pressable style={styles.saveBtn} onPress={handleSave}>
-                    <Text style={styles.saveBtnText}>{editingHabitId ? 'Guardar' : 'Crear'}</Text>
-                  </Pressable>
+                  <View style={styles.modalAction}>
+                    <AppButton label="Cancelar" variant="outlined" onPress={() => { setModalVisible(false); setEditingHabitId(null); }} fullWidth />
+                  </View>
+                  <View style={styles.modalActionWide}>
+                    <AppButton label={editingHabitId ? 'Guardar' : 'Crear'} onPress={handleSave} fullWidth />
+                  </View>
                 </View>
       </FormSheet>
 
@@ -429,15 +430,10 @@ export default function HabitsScreen(): ReactElement {
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
-    content: { paddingHorizontal: lifeTheme.spacing.lg, gap: lifeTheme.spacing.lg },
-    hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    title: { color: lifeTheme.colors.text, fontSize: lifeTheme.typography.titleLg, fontWeight: '900' },
-    subtitle: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18, marginTop: -8 },
-    addBtn: { backgroundColor: lifeTheme.colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
-    addBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 13 },
+    content: { paddingHorizontal: 16, gap: 16 },
     summaryCard: {
       backgroundColor: lifeTheme.colors.surface,
-      borderRadius: 18,
+      borderRadius: lifeTheme.radius.md,
       padding: 14,
       borderWidth: 1,
       borderColor: lifeTheme.colors.border,
@@ -447,9 +443,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     summaryItem: { alignItems: 'center', flex: 1, gap: 2 },
     summaryValue: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '900' },
     summaryLabel: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '700' },
-    helperText: { color: lifeTheme.colors.muted, fontSize: 11, lineHeight: 16 },
     modalSuggestions: { gap: 8, marginBottom: 8 },
-    sectLabel: { color: lifeTheme.colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginLeft: 4 },
     suggestionList: { gap: 10, paddingRight: 40 },
     suggestionItemSmall: {
       flexDirection: 'row',
@@ -465,12 +459,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     suggestionEmojiSmall: { fontSize: 14 },
     suggestionNameSmall: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
     streakPanel: {
-      backgroundColor: lifeTheme.colors.surface,
-      borderRadius: 20,
-      padding: 16,
-      borderWidth: 1,
-      borderColor: lifeTheme.colors.border,
-      marginBottom: 10,
+      paddingVertical: 4,
       gap: 12
     },
     streakChart: { gap: 8 },
@@ -482,7 +471,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     list: { gap: 10 },
     habitCard: {
       backgroundColor: lifeTheme.colors.surface,
-      borderRadius: 14,
+      borderRadius: lifeTheme.radius.md,
       borderWidth: 1,
       borderColor: lifeTheme.colors.border,
       padding: 12,
@@ -501,7 +490,8 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     habitProgressFill: { height: '100%', borderRadius: 999 },
     habitActions: { flexDirection: 'row', gap: 8 },
     stepBtn: {
-      width: 42,
+      width: 48,
+      minHeight: 48,
       backgroundColor: lifeTheme.colors.surfaceAlt,
       paddingVertical: 10,
       borderRadius: 10,
@@ -516,6 +506,8 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     stepBtnText: { color: lifeTheme.colors.text, fontWeight: '900', fontSize: 16 },
     completeBtn: {
       flex: 1,
+      minHeight: 48,
+      justifyContent: 'center',
       backgroundColor: lifeTheme.colors.primary,
       paddingVertical: 10,
       borderRadius: 10,
@@ -525,11 +517,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
       backgroundColor: lifeTheme.colors.success
     },
     completeBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800', fontSize: 12 },
-    editBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
-    delBtn: { backgroundColor: lifeTheme.colors.surfaceAlt, paddingHorizontal: 12, borderRadius: 10, justifyContent: 'center', borderWidth: 1, borderColor: lifeTheme.colors.border },
-    delBtnText: { fontSize: 14 },
-    emptyCard: { padding: 40, alignItems: 'center' },
-    emptyText: { color: lifeTheme.colors.muted, textAlign: 'center', lineHeight: 22 },
+    emptyCard: { borderWidth: 1, borderColor: lifeTheme.colors.border, borderRadius: lifeTheme.radius.md, alignItems: 'center' },
     modalTitle: { color: lifeTheme.colors.text, fontSize: 20, fontWeight: '900', marginBottom: 4 },
     label: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
     input: { backgroundColor: lifeTheme.colors.surfaceAlt, borderRadius: 12, padding: 14, color: lifeTheme.colors.text, fontSize: 16, borderWidth: 1, borderColor: lifeTheme.colors.border },
@@ -538,9 +526,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     emojiBtnActive: { borderColor: lifeTheme.colors.primary, backgroundColor: 'rgba(124,108,252,0.1)' },
     goalRow: { flexDirection: 'row', gap: 12 },
     modalBtns: { flexDirection: 'row', gap: 12, marginTop: 10 },
-    cancelBtn: { flex: 1, paddingVertical: 14, alignItems: 'center' },
-    cancelBtnText: { color: lifeTheme.colors.muted, fontWeight: '700' },
-    saveBtn: { flex: 2, backgroundColor: lifeTheme.colors.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
-    saveBtnText: { color: lifeTheme.colors.onPrimary, fontWeight: '800' }
+    modalAction: { flex: 1 },
+    modalActionWide: { flex: 2 },
   });
 }

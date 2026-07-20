@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 import type { ReactElement } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAppTheme } from '../theme';
 import type { ScheduleBlock } from '../types';
+import { FormSheet } from './FormSheet';
+import { AppButton } from './ui';
 
 interface ReplanificationPromptProps {
   visible: boolean;
@@ -32,9 +34,8 @@ export function ReplanificationPrompt({
   const diffMinutes = minutesDiff(previousBlocks, nextBlocks);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onReject}>
-      <Pressable style={styles.overlay} onPress={onReject}>
-        <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
+    <FormSheet visible={visible} onClose={onReject} align="center" animationType="fade">
+        <View style={styles.card}>
           <Text style={styles.title}>Plan actualizado</Text>
           <Text style={styles.subtitle}>
             Se detecto un desvio y se preparo una replanificacion para el resto del dia.
@@ -59,7 +60,7 @@ export function ReplanificationPrompt({
           </View>
 
           <Text style={styles.sectionLabel}>Nuevo orden sugerido</Text>
-          <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+          <ScrollView style={styles.list} contentContainerStyle={styles.listContent} nestedScrollEnabled>
             {nextBlocks.map((block, index) => (
               <View key={`${block.id}-${index}`} style={styles.row}>
                 <Text style={styles.time}>
@@ -74,34 +75,18 @@ export function ReplanificationPrompt({
           </ScrollView>
 
           <View style={styles.actions}>
-            <Pressable style={styles.rejectBtn} onPress={onReject}>
-              <Text style={styles.rejectText}>Mantener plan actual</Text>
-            </Pressable>
-            <Pressable style={styles.confirmBtn} onPress={onConfirm}>
-              <Text style={styles.confirmText}>Aceptar nuevo plan</Text>
-            </Pressable>
+            <View style={styles.action}><AppButton label="Mantener actual" variant="outlined" onPress={onReject} fullWidth /></View>
+            <View style={styles.action}><AppButton label="Aceptar cambio" onPress={onConfirm} fullWidth /></View>
           </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </View>
+    </FormSheet>
   );
 }
 
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    paddingHorizontal: lifeTheme.spacing.md
-  },
   card: {
     maxHeight: '80%',
-    backgroundColor: lifeTheme.colors.surface,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    borderRadius: lifeTheme.radius.md,
-    padding: lifeTheme.spacing.md,
     gap: lifeTheme.spacing.sm
   },
   title: {
@@ -142,7 +127,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.6
+    letterSpacing: 0
   },
   reasonBox: {
     borderWidth: 1,
@@ -158,7 +143,7 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5
+    letterSpacing: 0
   },
   reasonText: {
     color: lifeTheme.colors.text,
@@ -212,33 +197,6 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     gap: 10,
     marginTop: 4
   },
-  rejectBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    borderRadius: 12,
-    backgroundColor: lifeTheme.colors.surfaceAlt,
-    paddingVertical: 12
-  },
-  rejectText: {
-    color: lifeTheme.colors.muted,
-    fontSize: 12,
-    fontWeight: '700'
-  },
-  confirmBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-    backgroundColor: lifeTheme.colors.primary,
-    paddingVertical: 12
-  },
-  confirmText: {
-    color: lifeTheme.colors.onPrimary,
-    fontSize: 12,
-    fontWeight: '800'
-  }
+  action: { flex: 1 },
   });
 }

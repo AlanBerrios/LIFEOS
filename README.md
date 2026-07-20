@@ -30,6 +30,10 @@ Si en el futuro aparece documentacion historica o auxiliar, estos tres archivos 
 - Expo Notifications
 - React Native Reanimated
 
+## Navegacion actual
+
+La barra inferior mantiene cinco destinos de uso frecuente: Hoy, Calendario, Tareas, Habitos y Mas. Las rutinas, notas, metricas, logros, recordatorios y ajustes viven en Mas y siguen estando a un maximo de dos toques.
+
 ## Comandos
 
 ```bash
@@ -47,15 +51,18 @@ android/app/build/outputs/apk/release/app-release.apk
 
 ## Estado reciente
 
+Version actual: `4.2.0` (`versionCode` Android 7).
+
 Validacion reciente:
 
 - `npm run typecheck`: OK.
-- `npm test`: OK, 3 archivos, 44 tests.
+- `npm test`: OK, 4 archivos, 51 tests.
+- `expo export --platform android --clear`: OK, bundle Hermes generado.
 
 Foco actual:
 
 - Confiabilidad Android.
 - Scheduler/timeline coherente.
 - Rutinas y formularios sin problemas de teclado.
-- Notificaciones y alarmas realmente accionables.
+- Recordatorios accionables y definicion futura de alarmas nativas reales.
 - Metricas y logros mas utiles.

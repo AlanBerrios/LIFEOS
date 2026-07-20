@@ -6,6 +6,7 @@ import { getTodayStr } from '../utils/date';
 import type { ReactElement } from 'react';
 import { useState, useMemo } from 'react';
 import { Clock, AlertCircle, Edit3 } from 'lucide-react-native';
+import { AppButton } from './ui';
 
 interface DailyStartPromptProps {
   visible: boolean;
@@ -66,7 +67,7 @@ export function DailyStartPrompt({
             {/* Cabecera */}
             <View style={styles.header}>
               <Clock size={32} color={theme.colors.primary} strokeWidth={2} />
-              <Text style={styles.title}>¿Listos para hoy?</Text>
+              <Text style={styles.title}>Tu día está listo</Text>
             </View>
 
             {/* Resumen del día */}
@@ -115,42 +116,16 @@ export function DailyStartPrompt({
             {/* Acciones */}
             <View style={styles.actionsContainer}>
               {/* Botón principal: Empezar día */}
-              <Pressable
-                style={({ pressed }) => [
-                  styles.primaryButton,
-                  pressed && { opacity: 0.8 }
-                ]}
-                onPress={onStartDay}
-              >
-                <Clock size={20} color={theme.colors.background} strokeWidth={2} />
-                <Text style={styles.primaryButtonText}>Empezar día</Text>
-              </Pressable>
+              <AppButton label="Empezar día" icon={Clock} onPress={onStartDay} fullWidth />
 
               {/* Botón secundario: Capturar rápido */}
               {!hasTasks && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.secondaryButton,
-                    pressed && { opacity: 0.7 }
-                  ]}
-                  onPress={onCaptureQuick}
-                >
-                  <Edit3 size={18} color={theme.colors.primary} strokeWidth={2} />
-                  <Text style={styles.secondaryButtonText}>Capturar tareas rápido</Text>
-                </Pressable>
+                <AppButton label="Capturar tareas" icon={Edit3} variant="outlined" onPress={onCaptureQuick} fullWidth />
               )}
 
               {/* Botón terciario: Descanso */}
               {!hasTasks && (
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.tertiaryButton,
-                    pressed && { opacity: 0.7 }
-                  ]}
-                  onPress={onRestDay}
-                >
-                  <Text style={styles.tertiaryButtonText}>Hoy es día de descanso</Text>
-                </Pressable>
+                <AppButton label="Declarar día de descanso" variant="text" onPress={onRestDay} fullWidth />
               )}
             </View>
           </ScrollView>
@@ -189,7 +164,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 24,
       fontWeight: '700',
       color: theme.colors.text,
-      letterSpacing: -0.5
+      letterSpacing: 0
     },
     summaryCard: {
       backgroundColor: theme.colors.surface,
@@ -222,7 +197,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontWeight: '600',
       color: theme.colors.muted,
       textTransform: 'uppercase',
-      letterSpacing: 0.4,
+      letterSpacing: 0,
       marginBottom: 4
     },
     timelineItem: {
@@ -264,51 +239,4 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       gap: 12,
       marginBottom: 16
     },
-    primaryButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: theme.colors.primary,
-      borderRadius: 12,
-      paddingVertical: 14,
-      paddingHorizontal: 20,
-      gap: 8
-    },
-    primaryButtonText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: theme.colors.background,
-      letterSpacing: -0.3
-    },
-    secondaryButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: theme.colors.surface,
-      borderRadius: 12,
-      paddingVertical: 12,
-      paddingHorizontal: 20,
-      gap: 8,
-      borderWidth: 1.5,
-      borderColor: theme.colors.primary
-    },
-    secondaryButtonText: {
-      fontSize: 15,
-      fontWeight: '600',
-      color: theme.colors.primary,
-      letterSpacing: -0.3
-    },
-    tertiaryButton: {
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderRadius: 8,
-      backgroundColor: 'transparent'
-    },
-    tertiaryButtonText: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: theme.colors.muted,
-      textAlign: 'center',
-      textDecorationLine: 'underline'
-    }
   });

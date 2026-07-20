@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLifeStore } from '../src/store/useLifeStore';
 import { useAppTheme } from '../src/theme';
+import { ScreenHeader, SectionHeader } from '../src/components/ui';
 
 export default function AnalyticsScreen(): ReactElement {
   const insets = useSafeAreaInsets();
@@ -18,7 +19,7 @@ export default function AnalyticsScreen(): ReactElement {
     totalTasks: tasks.length,
     completed: tasks.filter(t => t.status === 'completed').length,
     pending: tasks.filter(t => t.status !== 'completed').length,
-    focusZons: travel.filter(t => t.type === 'arrive_uni').length
+    focusZones: travel.filter(t => t.type === 'arrive_uni').length
   };
 
   const completionRate = stats.totalTasks === 0 ? 0 : Math.round((stats.completed / stats.totalTasks) * 100);
@@ -26,38 +27,36 @@ export default function AnalyticsScreen(): ReactElement {
   return (
     <View style={[styles.screen, { paddingTop: insets.top + 16 }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>{'<'} Volver</Text>
-        </Pressable>
-        <Text style={styles.title}>Maestría Personal 📈</Text>
+        <ScreenHeader
+          onBack={() => router.back()}
+          eyebrow="Historial"
+          title="Analítica"
+          subtitle="Resumen acumulado de tu actividad."
+        />
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
         
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Tasa de Finalización de Tareas</Text>
-          <Text style={styles.cardDesc}>Mide el porcentaje de tareas concluidas frente al total programado hoy. Refleja tu efectividad inmediata.</Text>
+          <SectionHeader title="Finalización de tareas" />
           <View style={styles.barCont}>
             <View style={[styles.barFill, { width: `${completionRate}%` }]} />
           </View>
-          <Text style={styles.statText}>{completionRate}% Completadas hoy</Text>
+          <Text style={styles.statText}>{completionRate}% completadas</Text>
         </View>
 
         <View style={styles.metricsGrid}>
           <View style={styles.metricSquare}>
             <Text style={styles.metricVal}>{stats.completed}</Text>
             <Text style={styles.metricLabel}>Concluidas</Text>
-            <Text style={styles.metricDesc}>Tareas que ya no están pendientes.</Text>
           </View>
           <View style={styles.metricSquare}>
             <Text style={styles.metricVal}>{stats.pending}</Text>
             <Text style={styles.metricLabel}>Pendientes</Text>
-            <Text style={styles.metricDesc}>Lo que falta para ganar el día.</Text>
           </View>
           <View style={styles.metricSquare}>
-            <Text style={styles.metricVal}>{stats.focusZons}</Text>
-            <Text style={styles.metricLabel}>Zonas Focus</Text>
-            <Text style={styles.metricDesc}>Veces que has llegado a la Univ. o zonas de estudio.</Text>
+            <Text style={styles.metricVal}>{stats.focusZones}</Text>
+            <Text style={styles.metricLabel}>Llegadas registradas</Text>
           </View>
         </View>
 
@@ -69,21 +68,15 @@ export default function AnalyticsScreen(): ReactElement {
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 24 },
-  backBtn: { marginRight: 16 },
-  backBtnText: { color: lifeTheme.colors.primary, fontSize: 16, fontWeight: '700' },
-  title: { fontSize: 24, fontWeight: '900', color: lifeTheme.colors.text },
+  header: { paddingHorizontal: 16, marginBottom: 16 },
   scroll: { paddingHorizontal: 16, gap: 16 },
-  card: { backgroundColor: lifeTheme.colors.surface, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: lifeTheme.colors.border },
-  cardTitle: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  card: { backgroundColor: lifeTheme.colors.surface, padding: 16, borderRadius: lifeTheme.radius.md, borderWidth: 1, borderColor: lifeTheme.colors.border, gap: 12 },
   barCont: { height: 12, backgroundColor: lifeTheme.colors.background, borderRadius: 6, overflow: 'hidden', marginBottom: 8 },
   barFill: { height: '100%', backgroundColor: lifeTheme.colors.primary, borderRadius: 6 },
   statText: { color: lifeTheme.colors.muted, fontSize: 14, fontWeight: '600', textAlign: 'right' },
   metricsGrid: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
-  metricSquare: { flex: 1, minWidth: '30%', backgroundColor: lifeTheme.colors.surface, padding: 16, borderRadius: 16, alignItems: 'center', borderColor: lifeTheme.colors.border, borderWidth: 1 },
+  metricSquare: { flex: 1, minWidth: '30%', backgroundColor: lifeTheme.colors.surface, padding: 14, borderRadius: lifeTheme.radius.md, alignItems: 'center', borderColor: lifeTheme.colors.border, borderWidth: 1 },
   metricVal: { fontSize: 32, fontWeight: '900', color: lifeTheme.colors.primary, marginBottom: 4 },
   metricLabel: { fontSize: 13, color: lifeTheme.colors.text, fontWeight: '700' },
-  metricDesc: { fontSize: 10, color: lifeTheme.colors.muted, textAlign: 'center', marginTop: 4 },
-  cardDesc: { color: lifeTheme.colors.muted, fontSize: 12, marginBottom: 16, lineHeight: 18 }
   });
 }

@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { useEffect } from 'react';
 import type { ReactElement } from 'react';
 import {
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +14,7 @@ import Slider from '@react-native-community/slider';
 import Animated, { FadeInDown, FadeOutUp, Layout } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
+import { ChevronDown, Inbox, Plus } from 'lucide-react-native';
 import { SwipeableTaskCard } from '../../src/components/SwipeableTaskCard';
 import { TaskCompletionCheckDialog } from '../../src/components/TaskCompletionCheckDialog';
 import { ReplanificationPrompt } from '../../src/components/ReplanificationPrompt';
@@ -24,6 +24,9 @@ import { useLifeStore } from '../../src/store/useLifeStore';
 import { useAppTheme } from '../../src/theme';
 import { useCustomAlert } from '../../src/hooks/useCustomAlert';
 import type { PostponeReason, ScheduleBlock, SkipReason, Task, TaskUrgency } from '../../src/types';
+import { FormSheet } from '../../src/components/FormSheet';
+import { AppEmojiPickerSheet } from '../../src/components/AppEmojiPickerSheet';
+import { AppButton, EmptyState, ScreenHeader, SectionHeader, StatusBadge } from '../../src/components/ui';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -225,8 +228,6 @@ export default function PoolScreen(): ReactElement {
   const [filter, setFilter] = useState<FilterType>('all');
   const [isTaskModalVisible, setIsTaskModalVisible] = useState(false);
   const [isEmojiPickerVisible, setIsEmojiPickerVisible] = useState(false);
-  const [isCustomEmojiInputVisible, setIsCustomEmojiInputVisible] = useState(false);
-  const [customEmojiDraft, setCustomEmojiDraft] = useState('');
   const [isColorPickerVisible, setIsColorPickerVisible] = useState(false);
   const [isFilterMenuVisible, setIsFilterMenuVisible] = useState(false);
   const [recentlyCompletedTaskIds, setRecentlyCompletedTaskIds] = useState<string[]>([]);
@@ -435,33 +436,29 @@ export default function PoolScreen(): ReactElement {
       showsVerticalScrollIndicator={false}
       showsHorizontalScrollIndicator={false}
     >
-      {/* Header */}
-      <View style={styles.hdr}>
-        <View style={styles.hdrLeft}>
-          <Text style={styles.title}>📋 Task Pool</Text>
-          <Text style={styles.subtitle}>Captura, organiza y prioriza tus tareas antes de programarlas.</Text>
-        </View>
-        <View style={styles.badges}>
-          <View style={[styles.badge, { borderColor: `${lifeTheme.colors.success}55` }]}>
-            <Text style={[styles.badgeNum, { color: lifeTheme.colors.success }]}>{doneCount}</Text>
-            <Text style={styles.badgeLbl}>✓</Text>
-          </View>
-        </View>
+      <ScreenHeader
+        eyebrow="Planificación"
+        title="Tareas"
+        subtitle="Captura y prioriza lo pendiente."
+        action={<AppButton label="Nueva" icon={Plus} compact onPress={openNewTaskModal} />}
+      />
+
+      <View style={styles.summaryRow}>
+        <StatusBadge label={`${totalCount} registradas`} />
+        <StatusBadge label={`${doneCount} completadas`} tone="success" />
       </View>
 
       {/* Filters */}
       <View style={styles.filterDropdownRow}>
-        <Text style={styles.fieldLabel}>Filtro activo</Text>
+        <Text style={styles.fieldLabel}>Mostrar</Text>
         <Pressable style={styles.filterDropdownBtn} onPress={() => setIsFilterMenuVisible(true)}>
           <Text style={styles.filterDropdownText}>{FILTER_OPTIONS.find((opt) => opt.key === filter)?.label ?? 'Todas'}</Text>
-          <Text style={styles.filterDropdownIcon}>▼</Text>
+          <ChevronDown size={18} color={lifeTheme.colors.muted} />
         </Pressable>
-        <Text style={styles.filterHint}>Tip: usa "Pendientes hoy" para enfocarte en lo urgente.</Text>
       </View>
 
-      <Modal visible={isFilterMenuVisible} transparent animationType="fade" onRequestClose={() => setIsFilterMenuVisible(false)}>
-        <Pressable style={styles.filterModalOverlay} onPress={() => setIsFilterMenuVisible(false)}>
-          <Pressable style={styles.filterModalCard} onPress={(e) => e.stopPropagation()}>
+      <FormSheet visible={isFilterMenuVisible} onClose={() => setIsFilterMenuVisible(false)} align="center" animationType="fade">
+          <View style={styles.filterModalCard}>
             <Text style={styles.filterModalTitle}>Seleccionar filtro</Text>
             <View style={styles.filterModalList}>
               {FILTER_OPTIONS.map((option) => {
@@ -482,26 +479,23 @@ export default function PoolScreen(): ReactElement {
                 );
               })}
             </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+          </View>
+      </FormSheet>
 
       {/* List header */}
-      <View style={styles.listHdr}>
-        <Text style={styles.listHdrTitle}>Tareas</Text>
-        <Text style={styles.listHdrCount}>{sorted.length} registradas</Text>
-      </View>
+      <SectionHeader title="Lista" subtitle={`${sorted.length} visibles`} />
 
       {/* Task list */}
       <View style={styles.list}>
         {sorted.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Sin tareas aquí</Text>
-            <Text style={styles.emptyText}>
-              {filter === 'today'
-                ? 'No hay tareas marcadas para hoy. ¡Crea una!'
-                : 'Usa el botón flotante para crear tu primera tarea.'}
-            </Text>
+            <EmptyState
+              icon={Inbox}
+              title="Sin tareas aquí"
+              message={filter === 'today' ? 'No tienes tareas pendientes para hoy.' : 'No hay tareas que coincidan con este filtro.'}
+              actionLabel="Crear tarea"
+              onAction={openNewTaskModal}
+            />
           </View>
         ) : (
           sorted.map((task, idx) => (
@@ -525,34 +519,13 @@ export default function PoolScreen(): ReactElement {
         )}
       </View>
 
-      <View style={styles.guideCard}>
-        <Text style={styles.guideTitle}>Cómo aprovechar el Pool</Text>
-        <Text style={styles.guideItem}>• Vuelca todo lo pendiente sin fricción.</Text>
-        <Text style={styles.guideItem}>• Ajusta urgencia, prioridad y duración para ordenar.</Text>
-        <Text style={styles.guideItem}>• Completa desde la lista para registrar tu avance.</Text>
-        <Text style={styles.guideMeta}>Tienes {totalCount} tarea{totalCount !== 1 ? 's' : ''} registradas.</Text>
-      </View>
-
-      <View style={{ height: 96 }} />
+      <View style={{ height: 24 }} />
     </ScrollView>
 
-      <Modal visible={isTaskModalVisible} transparent animationType="slide" onRequestClose={() => setIsTaskModalVisible(false)}>
-        <View style={styles.formModalOverlay}>
-          <ScrollView
-            style={styles.formModalScroll}
-            contentContainerStyle={[
-              styles.formModalContent,
-              {
-                paddingTop: insets.top + 24,
-                paddingBottom: Math.max(insets.bottom, 16) + 24
-              }
-            ]}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
+      <FormSheet visible={isTaskModalVisible} onClose={() => setIsTaskModalVisible(false)}>
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>{editingId ? '✏️ Editar tarea' : '+ Nueva tarea'}</Text>
-              <Text style={styles.formHint}>Usa este formulario para definir contexto, tiempo y prioridad.</Text>
+              <Text style={styles.cardTitle}>{editingId ? 'Editar tarea' : 'Nueva tarea'}</Text>
+              <Text style={styles.formHint}>Define el tiempo, la urgencia y las condiciones necesarias.</Text>
 
               <TextInput
                 style={styles.input}
@@ -701,98 +674,30 @@ export default function PoolScreen(): ReactElement {
               <Text style={styles.fieldHint}>Si hay horario fijo, usa inicio y fin para respetar tu agenda.</Text>
 
               <View style={styles.formBtns}>
-                <Pressable style={styles.primaryBtn} onPress={handleSubmit}>
-                  <Text style={styles.primaryBtnText}>{editingId ? 'Actualizar tarea' : 'Guardar tarea'}</Text>
-                </Pressable>
-                <Pressable
-                  style={styles.cancelBtn}
+                <View style={styles.formActionWide}>
+                  <AppButton label={editingId ? 'Actualizar tarea' : 'Guardar tarea'} onPress={handleSubmit} fullWidth />
+                </View>
+                <View style={styles.formAction}>
+                  <AppButton
+                  label="Cerrar"
+                  variant="outlined"
                   onPress={() => {
                     setIsTaskModalVisible(false);
                     if (!editingId) resetForm();
                   }}
-                >
-                  <Text style={styles.cancelBtnText}>Cerrar</Text>
-                </Pressable>
+                  fullWidth
+                  />
+                </View>
               </View>
             </View>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      <Modal
+      </FormSheet>
+      <AppEmojiPickerSheet
         visible={isEmojiPickerVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setIsEmojiPickerVisible(false);
-          setIsCustomEmojiInputVisible(false);
-          setCustomEmojiDraft('');
-        }}
-      >
-        <Pressable
-          style={styles.pickerOverlay}
-          onPress={() => {
-            setIsEmojiPickerVisible(false);
-            setIsCustomEmojiInputVisible(false);
-            setCustomEmojiDraft('');
-          }}
-        >
-          <Pressable style={styles.pickerCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.pickerTitle}>Selecciona un emoji</Text>
-            <Pressable
-              style={styles.customEmojiToggleBtn}
-              onPress={() => setIsCustomEmojiInputVisible((value) => !value)}
-            >
-              <Text style={styles.customEmojiToggleIcon}>🙂➕</Text>
-              <Text style={styles.customEmojiToggleText}>Agregar con teclado</Text>
-            </Pressable>
-
-            {isCustomEmojiInputVisible && (
-              <View style={styles.customEmojiInputWrap}>
-                <TextInput
-                  style={styles.customEmojiInput}
-                  value={customEmojiDraft}
-                  onChangeText={setCustomEmojiDraft}
-                  placeholder="Escribe o pega un emoji"
-                  placeholderTextColor={lifeTheme.colors.muted}
-                  autoFocus
-                  returnKeyType="done"
-                />
-                <Pressable
-                  style={styles.customEmojiApplyBtn}
-                  onPress={() => {
-                    const nextEmoji = customEmojiDraft.trim();
-                    if (!nextEmoji) return;
-                    setForm((current) => ({ ...current, emoji: nextEmoji }));
-                    setIsEmojiPickerVisible(false);
-                    setIsCustomEmojiInputVisible(false);
-                    setCustomEmojiDraft('');
-                  }}
-                >
-                  <Text style={styles.customEmojiApplyText}>Usar</Text>
-                </Pressable>
-              </View>
-            )}
-
-            <View style={styles.emojiGrid}>
-              {EMOJI_OPTIONS.map((emoji) => (
-                <Pressable
-                  key={emoji}
-                  style={[styles.emojiChip, form.emoji === emoji && styles.emojiChipActive]}
-                  onPress={() => {
-                    setForm((current) => ({ ...current, emoji }));
-                    setIsEmojiPickerVisible(false);
-                    setIsCustomEmojiInputVisible(false);
-                    setCustomEmojiDraft('');
-                  }}
-                >
-                  <Text style={styles.emojiChipText}>{emoji}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        value={form.emoji}
+        options={EMOJI_OPTIONS}
+        onClose={() => setIsEmojiPickerVisible(false)}
+        onApply={(emoji) => setForm((current) => ({ ...current, emoji }))}
+      />
 
       <AppColorPickerSheet
         visible={isColorPickerVisible}
@@ -801,15 +706,6 @@ export default function PoolScreen(): ReactElement {
         onClear={() => setForm((current) => ({ ...current, color: '' }))}
         onApply={(hex) => setForm((current) => ({ ...current, color: hex }))}
       />
-
-      <Pressable
-        style={[styles.fab, { bottom: Math.max(insets.bottom, 16) + 8 }]}
-        onPress={openNewTaskModal}
-        accessibilityRole="button"
-        accessibilityLabel="Crear nueva tarea"
-      >
-        <Text style={styles.fabText}>+ Tarea</Text>
-      </Pressable>
 
       <TaskCompletionCheckDialog
         visible={completionTask != null}
@@ -859,63 +755,13 @@ export default function PoolScreen(): ReactElement {
 function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   return StyleSheet.create({
   screen: { flex: 1, backgroundColor: lifeTheme.colors.background },
-  content: { paddingHorizontal: 16, gap: 14, paddingBottom: 32 },
-  formModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end'
-  },
-  formModalScroll: { flex: 1 },
-  formModalContent: { paddingHorizontal: 12, paddingTop: 46, paddingBottom: 24 },
-  hdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  hdrLeft: { gap: 8 },
-  title: { color: lifeTheme.colors.text, fontSize: 22, fontWeight: '800' },
-  subtitle: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18, maxWidth: 260 },
-  formToggleBtn: {
-    alignSelf: 'flex-start',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    backgroundColor: lifeTheme.colors.surface
-  },
-  formToggleText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
-  badges: { flexDirection: 'row', gap: 6 },
-  badge: {
-    backgroundColor: lifeTheme.colors.surface, borderRadius: 10,
-    paddingHorizontal: 9, paddingVertical: 5, alignItems: 'center',
-    borderWidth: 1, borderColor: lifeTheme.colors.border
-  },
-  badgeNum: { fontSize: 14, fontWeight: '800' },
-  badgeLbl: { color: lifeTheme.colors.muted, fontSize: 8, fontWeight: '600' },
-  guideCard: {
-    backgroundColor: lifeTheme.colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    padding: 14,
-    gap: 6
-  },
-  guideTitle: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '800' },
-  guideItem: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18 },
-  guideMeta: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700', marginTop: 4 },
+  content: { paddingHorizontal: 16, gap: 16, paddingBottom: 32 },
+  summaryRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   card: {
-    backgroundColor: lifeTheme.colors.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: lifeTheme.colors.border, padding: 16, gap: 16
+    gap: 16
   },
   cardTitle: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '800' },
   formHint: { color: lifeTheme.colors.muted, fontSize: 12, lineHeight: 18 },
-  formCollapsedCard: {
-    backgroundColor: lifeTheme.colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    padding: 14,
-    gap: 4
-  },
-  formCollapsedTitle: { color: lifeTheme.colors.text, fontSize: 14, fontWeight: '800' },
-  formCollapsedSubtitle: { color: lifeTheme.colors.muted, fontSize: 12 },
   input: {
     backgroundColor: lifeTheme.colors.surfaceAlt, borderColor: lifeTheme.colors.border,
     borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
@@ -945,11 +791,11 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   },
   selectorColorText: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
   textArea: { minHeight: 70, textAlignVertical: 'top' },
-  fieldLabel: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  fieldLabel: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0 },
   fieldHint: { color: lifeTheme.colors.muted, fontSize: 11, lineHeight: 16, marginTop: 6 },
   urgencyRow: { flexDirection: 'row', gap: 8 },
   urgencyChip: {
-    flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 12,
+    flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: lifeTheme.radius.md,
     backgroundColor: lifeTheme.colors.surfaceAlt, borderWidth: 1,
     borderColor: lifeTheme.colors.border, gap: 3
   },
@@ -967,16 +813,8 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   dateBtnTextActive: { color: lifeTheme.colors.text, fontWeight: '600' },
   dateClear: { color: lifeTheme.colors.alert, fontSize: 16, paddingLeft: 8 },
   formBtns: { flexDirection: 'row', gap: 10 },
-  primaryBtn: {
-    flex: 1, backgroundColor: lifeTheme.colors.primary,
-    borderRadius: 12, paddingVertical: 14, alignItems: 'center'
-  },
-  primaryBtnText: { color: lifeTheme.colors.onPrimary, fontSize: 14, fontWeight: '800' },
-  cancelBtn: {
-    paddingHorizontal: 16, borderRadius: 12, borderWidth: 1,
-    borderColor: lifeTheme.colors.border, justifyContent: 'center'
-  },
-  cancelBtnText: { color: lifeTheme.colors.muted, fontSize: 13, fontWeight: '700' },
+  formAction: { flex: 1 },
+  formActionWide: { flex: 2 },
   filterDropdownRow: { gap: 6 },
   filterDropdownBtn: {
     flexDirection: 'row',
@@ -987,17 +825,10 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
     borderColor: lifeTheme.colors.border,
     backgroundColor: lifeTheme.colors.surface,
     paddingHorizontal: 12,
+    minHeight: 48,
     paddingVertical: 10
   },
   filterDropdownText: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
-  filterDropdownIcon: { color: lifeTheme.colors.muted, fontSize: 12, fontWeight: '700' },
-  filterHint: { color: lifeTheme.colors.muted, fontSize: 11, lineHeight: 16 },
-  filterModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    paddingHorizontal: 20
-  },
   filterModalCard: {
     backgroundColor: lifeTheme.colors.surface,
     borderRadius: 14,
@@ -1022,116 +853,11 @@ function createStyles(lifeTheme: ReturnType<typeof useAppTheme>) {
   },
   filterModalItemText: { color: lifeTheme.colors.text, fontSize: 13, fontWeight: '700' },
   filterModalItemTextActive: { color: lifeTheme.colors.primary },
-  listHdr: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  listHdrTitle: { color: lifeTheme.colors.text, fontSize: 16, fontWeight: '800' },
-  listHdrCount: { color: lifeTheme.colors.muted, fontSize: 12 },
   list: { gap: 10 },
   emptyCard: {
-    backgroundColor: lifeTheme.colors.surface, borderRadius: 14,
+    backgroundColor: lifeTheme.colors.surface, borderRadius: lifeTheme.radius.md,
     borderWidth: 1, borderColor: lifeTheme.colors.border,
-    padding: 24, gap: 8, alignItems: 'center'
+    alignItems: 'center'
   },
-  emptyTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '700' },
-  emptyText: { color: lifeTheme.colors.muted, fontSize: 13, textAlign: 'center', lineHeight: 20 },
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'center',
-    paddingHorizontal: 20
-  },
-  pickerCard: {
-    backgroundColor: lifeTheme.colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    padding: 14,
-    gap: 12
-  },
-  pickerTitle: { color: lifeTheme.colors.text, fontSize: 15, fontWeight: '800' },
-  customEmojiToggleBtn: {
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    backgroundColor: lifeTheme.colors.surfaceAlt,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  customEmojiToggleIcon: { fontSize: 16 },
-  customEmojiToggleText: { color: lifeTheme.colors.text, fontSize: 12, fontWeight: '700' },
-  customEmojiInputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8
-  },
-  customEmojiInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    borderRadius: 12,
-    backgroundColor: lifeTheme.colors.surfaceAlt,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: lifeTheme.colors.text,
-    fontSize: 14
-  },
-  customEmojiApplyBtn: {
-    borderRadius: 12,
-    backgroundColor: lifeTheme.colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 10
-  },
-  customEmojiApplyText: { color: lifeTheme.colors.onPrimary, fontSize: 12, fontWeight: '800' },
-  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  emojiChip: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    backgroundColor: lifeTheme.colors.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  emojiChipActive: {
-    borderColor: lifeTheme.colors.primary,
-    backgroundColor: lifeTheme.colors.softPrimary
-  },
-  emojiChipText: { fontSize: 22 },
-  colorPickerCard: {
-    backgroundColor: lifeTheme.colors.surface,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    padding: 14,
-    gap: 12,
-    marginTop: 'auto'
-  },
-  colorWheelWrap: {
-    height: 280,
-    backgroundColor: lifeTheme.colors.surfaceAlt,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: lifeTheme.colors.border,
-    padding: 8
-  },
-  colorPickerActions: { flexDirection: 'row', gap: 10 },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    backgroundColor: lifeTheme.colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 28,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5
-  },
-  fabText: { color: lifeTheme.colors.onPrimary, fontWeight: '900', fontSize: 14 }
   });
 }
